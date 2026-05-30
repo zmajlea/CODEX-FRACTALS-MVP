@@ -1,0 +1,6 @@
+(() => {
+  const ed = window.monaco?.editor?.getEditors?.()?.[0];
+  if (!ed) return 'no editor';
+  ed.focus();
+  return 'focused';
+})()

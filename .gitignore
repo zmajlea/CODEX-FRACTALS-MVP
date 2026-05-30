@@ -1,6 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +8,62 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# Next.js
 /.next/
 /out/
 
-# production
+# Production / build
 /build
+/dist
+*.tsbuildinfo
 
-# misc
-.DS_Store
-*.pem
+# Testing
+/coverage
 
-# debug
+# Environment (keep .env.example committable)
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Local scratch / debug artifacts
+tmp-*/
+*.headers
+tmp-*.log
+tmp-*.tar.gz
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
-.env*
+# ESLint
+.eslintcache
 
-# vercel
-.vercel
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Editor (optional local overrides)
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets / keys
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# Misc
+.turbo

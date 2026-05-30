@@ -41,37 +41,6 @@ begin
 end;
 $$;
 
-create or replace function public.is_vault_member(p_vault_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.vault_members vm
-    where vm.vault_id = p_vault_id
-      and vm.user_id = auth.uid()
-  );
-$$;
-
-create or replace function public.is_vault_admin(p_vault_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.vault_members vm
-    where vm.vault_id = p_vault_id
-      and vm.user_id = auth.uid()
-      and vm.role in ('SUPER_ADMIN', 'ADMIN')
-  );
-$$;
-
 -- ---------------------------------------------------------------------------
 -- users (profile; id mirrors auth.users)
 -- ---------------------------------------------------------------------------
@@ -127,6 +96,38 @@ create index vault_members_vault_id_idx on public.vault_members (vault_id);
 create trigger vault_members_set_updated_at
 before update on public.vault_members
 for each row execute function public.set_updated_at();
+
+-- RLS helpers (must be created after vault_members — SQL functions validate table refs at create time)
+create or replace function public.is_vault_member(p_vault_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.vault_members vm
+    where vm.vault_id = p_vault_id
+      and vm.user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_vault_admin(p_vault_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.vault_members vm
+    where vm.vault_id = p_vault_id
+      and vm.user_id = auth.uid()
+      and vm.role in ('SUPER_ADMIN', 'ADMIN')
+  );
+$$;
 
 -- ---------------------------------------------------------------------------
 -- records (agreements / ledger entries per vault)
@@ -270,6 +271,10 @@ create policy vaults_select_member
 on public.vaults for select
 using (public.is_vault_member(id));
 
+create policy vaults_select_own
+on public.vaults for select
+using (created_by = auth.uid());
+
 create policy vaults_insert_authenticated
 on public.vaults for insert
 with check (auth.uid() is not null and created_by = auth.uid());
@@ -385,3 +390,52 @@ $$;
 create trigger on_vault_created
 after insert on public.vaults
 for each row execute function public.handle_new_vault();
+
+-- ---------------------------------------------------------------------------
+-- Vault creation RPC (sets created_by server-side; avoids RLS spoofing)
+-- ---------------------------------------------------------------------------
+create or replace function public.create_vault(p_name text)
+returns public.vaults
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_vault public.vaults;
+  v_email text;
+  v_name text;
+begin
+  if v_user is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if nullif(trim(p_name), '') is null then
+    raise exception 'Vault name is required';
+  end if;
+
+  v_email := coalesce(auth.jwt() ->> 'email', '');
+  v_name := coalesce(
+    auth.jwt() -> 'user_metadata' ->> 'full_name',
+    auth.jwt() -> 'user_metadata' ->> 'name',
+    split_part(v_email, '@', 1)
+  );
+
+  insert into public.users (id, email, display_name)
+  values (v_user, v_email, v_name)
+  on conflict (id) do update
+  set
+    email = excluded.email,
+    display_name = coalesce(excluded.display_name, public.users.display_name),
+    updated_at = now();
+
+  insert into public.vaults (name, created_by)
+  values (trim(p_name), v_user)
+  returning * into v_vault;
+
+  return v_vault;
+end;
+$$;
+
+revoke all on function public.create_vault(text) from public;
+grant execute on function public.create_vault(text) to authenticated;

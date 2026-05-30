@@ -286,6 +286,10 @@ export interface Database {
           kind: TemporalObjectKind;
           title_ciphertext: string;
           body_ciphertext: string | null;
+          explanation_ciphertext: string | null;
+          category: string | null;
+          parsed_date: string | null;
+          lens_id: string | null;
           page_number: number | null;
           start_offset: number | null;
           end_offset: number | null;
@@ -305,6 +309,10 @@ export interface Database {
           kind?: TemporalObjectKind;
           title_ciphertext: string;
           body_ciphertext?: string | null;
+          explanation_ciphertext?: string | null;
+          category?: string | null;
+          parsed_date?: string | null;
+          lens_id?: string | null;
           page_number?: number | null;
           start_offset?: number | null;
           end_offset?: number | null;
@@ -324,6 +332,10 @@ export interface Database {
           kind?: TemporalObjectKind;
           title_ciphertext?: string;
           body_ciphertext?: string | null;
+          explanation_ciphertext?: string | null;
+          category?: string | null;
+          parsed_date?: string | null;
+          lens_id?: string | null;
           page_number?: number | null;
           start_offset?: number | null;
           end_offset?: number | null;
@@ -375,6 +387,18 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      create_vault: {
+        Args: { p_name: string };
+        Returns: {
+          id: string;
+          name: string;
+          created_by: string | null;
+          encryption_test: string | null;
+          encryption_test_updated_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
       is_vault_member: {
         Args: { p_vault_id: string };
         Returns: boolean;

@@ -28,6 +28,21 @@ export function clearVaultSessionKey(vaultId: string): void {
   }
 }
 
+/** Clear all vault session keys (call on logout). */
+export function clearVaultSessionKeys(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (key?.startsWith("codexone_key_")) keys.push(key);
+    }
+    keys.forEach((k) => window.sessionStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
 // Hybrid fallback: prefer session key, but allow legacy localStorage key.
 export function getVaultKeyWithFallback(vaultId: string): string | null {
   const sessionKey = getVaultSessionKey(vaultId);
