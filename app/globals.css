@@ -25,6 +25,7 @@
   --bone: #DED9D1;
   --obsidian: #1A1A1B;
   --oxford: #2C3E50;
+  --emerald: #10b981;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -248,4 +249,31 @@ body::before {
 .auth-switch-link:hover {
   opacity: 0.7;
   text-decoration: underline;
+}
+
+.pulse-emerald {
+  animation: pulse-emerald 2s ease-in-out infinite;
+}
+
+.pulse-amber {
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+@keyframes pulse-emerald {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(235, 192, 109, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(235, 192, 109, 0); }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--bone);
+  border-radius: 2px;
 }

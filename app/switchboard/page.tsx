@@ -245,8 +245,16 @@ export default function SwitchboardPage() {
   return (
     <div className="min-h-screen bg-vellum">
       <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-8 py-4 border-b border-bone/40 bg-vellum/90 backdrop-blur-sm">
-        <div className="font-head text-lg tracking-wide text-obsidian">
-          Fractals · Airlock
+        <div className="flex items-center gap-6">
+          <div className="font-head text-lg tracking-wide text-obsidian">
+            Fractals · Airlock
+          </div>
+          <a
+            href="/portfolio"
+            className="font-data text-[10px] uppercase tracking-ultra text-emerald/80 hover:text-emerald border border-emerald/30 px-3 py-1 hover:bg-emerald/5"
+          >
+            Portfolio Query →
+          </a>
         </div>
         <button
           type="button"

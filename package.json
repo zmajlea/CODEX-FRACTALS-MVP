@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:push": "supabase db push",
     "db:apply": "node scripts/apply-migration-pg.mjs",
+    "db:query": "supabase db query --linked",
     "db:verify": "node scripts/verify-schema.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz",
     "supabase": "supabase",
