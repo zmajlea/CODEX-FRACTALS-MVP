@@ -55,32 +55,35 @@ function hubKey(obj: PortfolioTemporalObject): string {
   return obj.fileId ?? obj.recordId;
 }
 
-function temporalY(obj: PortfolioTemporalObject): number {
-  const dateStr = obj.parsedDate ?? obj.createdAt.slice(0, 10);
-  const t = new Date(`${dateStr}T00:00:00`).getTime();
-  if (!Number.isFinite(t)) return 0;
-  return -t / 86400000;
+function dayOfYear(dateStr: string): number {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (!Number.isFinite(d.getTime())) return 0;
+  const start = new Date(d.getFullYear(), 0, 0);
+  return Math.floor((d.getTime() - start.getTime()) / 86400000);
 }
 
-/** Build ForceGraph nodes (slate documents + orbiting objects) and tether links. */
+/** Build ForceGraph nodes (slate document hubs + orbiting objects). All coords local ~±300px. */
 export function buildNautilusGraphData(
   objects: PortfolioTemporalObject[]
 ): NautilusGraphData {
   const nodes: NautilusGraphNode[] = [];
   const links: NautilusGraphLink[] = [];
   const docByHub = new Map<string, string>();
+  const hubPositions = new Map<string, { fx: number; fy: number }>();
 
-  const hubKeys = [
-    ...new Set(objects.map((o) => hubKey(o))),
-  ];
+  const hubKeys = [...new Set(objects.map((o) => hubKey(o)))];
   const hubCount = Math.max(hubKeys.length, 1);
+  const hubRingRadius = Math.min(160, 70 + hubCount * 18);
 
   hubKeys.forEach((key, index) => {
     const sample = objects.find((o) => hubKey(o) === key)!;
-    const angle = (index / hubCount) * Math.PI * 2;
-    const radius = 220;
+    const angle = (index / hubCount) * Math.PI * 2 - Math.PI / 2;
+    const fx = Math.cos(angle) * hubRingRadius;
+    const fy = Math.sin(angle) * hubRingRadius;
     const docId = `doc:${key}`;
+
     docByHub.set(key, docId);
+    hubPositions.set(key, { fx, fy });
 
     nodes.push({
       id: docId,
@@ -93,8 +96,8 @@ export function buildNautilusGraphData(
       fileId: sample.fileId,
       vaultId: sample.vaultId,
       vaultName: sample.vaultName,
-      fx: Math.cos(angle) * radius,
-      fy: Math.sin(angle) * radius,
+      fx,
+      fy,
     });
   });
 
@@ -103,17 +106,24 @@ export function buildNautilusGraphData(
   for (const obj of objects) {
     const key = hubKey(obj);
     const docId = docByHub.get(key);
-    if (!docId) continue;
+    const hub = hubPositions.get(key);
+    if (!docId || !hub) continue;
 
-    const orbit = orbitCounters.get(key) ?? 0;
-    orbitCounters.set(key, orbit + 1);
+    const orbitIndex = orbitCounters.get(key) ?? 0;
+    orbitCounters.set(key, orbitIndex + 1);
+
+    const dayOffset = obj.parsedDate ? dayOfYear(obj.parsedDate) : orbitIndex * 24;
+    const angle =
+      (dayOffset / 365) * Math.PI * 2 + orbitIndex * 0.55 + orbitIndex * 0.15;
+    const orbitRadius = 48 + (orbitIndex % 4) * 16;
+
+    const fx = hub.fx + Math.cos(angle) * orbitRadius;
+    const fy = hub.fy + Math.sin(angle) * orbitRadius;
 
     nodes.push({
       id: obj.id,
       type: "object",
-      title: obj.isLocked
-        ? "Locked milestone"
-        : (obj.title ?? "Milestone"),
+      title: obj.isLocked ? "Locked milestone" : (obj.title ?? "Milestone"),
       category: obj.category,
       isLocked: obj.isLocked,
       isSealed: obj.isSealed,
@@ -122,8 +132,8 @@ export function buildNautilusGraphData(
       vaultId: obj.vaultId,
       vaultName: obj.vaultName,
       parsedDate: obj.parsedDate,
-      x: (orbit - 1) * 28,
-      y: temporalY(obj) + orbit * 12,
+      fx,
+      fy,
     });
 
     links.push({ source: docId, target: obj.id });

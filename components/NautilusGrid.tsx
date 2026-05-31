@@ -1,178 +1,344 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { PortfolioTemporalObject } from "@/lib/temporal/portfolio-fetch";
 import {
-  buildNautilusGraphData,
-  findDocumentNodePayload,
-  findObjectByNodeId,
-  getNautilusNodeColor,
-  type NautilusGraphNode,
-} from "@/lib/temporal/nautilus-graph-data";
-
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
-  ssr: false,
-});
+  getCartesian,
+  getDecimalYear,
+  mapPortfolioToNautilus,
+  type PulseState,
+} from "@/lib/temporal/nautilus-map";
 
 type NautilusGridProps = {
   objects: PortfolioTemporalObject[];
-  activeNodeId?: string | null;
-  onDocumentSelect: (payload: {
-    recordId: string;
-    fileId: string | null;
-    vaultId: string;
-    label: string;
-    vaultName: string;
-  }) => void;
-  onObjectSelect: (obj: PortfolioTemporalObject) => void;
+  activePulseId?: string | null;
+  onPulseClick: (id: string, coords: { x: number; y: number }) => void;
+  onHubClick?: (hubId: string, coords: { x: number; y: number }) => void;
+  isInspectorOpen?: boolean;
+  showGrid?: boolean;
+  invertScroll?: boolean;
   insetLeftClass?: string;
   insetRightClass?: string;
 };
 
-type GraphRef = {
-  centerAt: (x: number, y: number, ms?: number) => void;
-  zoom: (scale: number, ms?: number) => void;
-  zoomToFit: (ms?: number, padding?: number) => void;
+const PULSE_STYLES: Record<
+  PulseState,
+  { fill: string; halo: string; sealed?: boolean }
+> = {
+  emerald: { fill: "var(--emerald)", halo: "var(--emerald)", sealed: true },
+  amber: { fill: "var(--amber)", halo: "var(--amber)" },
+  cinnabar: { fill: "var(--cinnabar)", halo: "var(--cinnabar)" },
+  grey: { fill: "var(--bone)", halo: "var(--obsidian)" },
 };
 
 export default function NautilusGrid({
   objects,
-  activeNodeId,
-  onDocumentSelect,
-  onObjectSelect,
+  activePulseId,
+  onPulseClick,
+  onHubClick,
+  isInspectorOpen = false,
+  showGrid = true,
+  invertScroll = false,
   insetLeftClass = "left-80",
   insetRightClass = "right-0",
 }: NautilusGridProps) {
-  const graphRef = useRef<GraphRef | null>(null);
+  const { hubs, pulses, sealedPulseIds } = useMemo(
+    () => mapPortfolioToNautilus(objects),
+    [objects]
+  );
+
+  const [center, setCenter] = useState({ cx: 500, cy: 500 });
+  const oldestYear =
+    pulses.length > 0
+      ? Math.min(...pulses.map((p) => getDecimalYear(p.date)))
+      : new Date().getFullYear() - 1;
+
+  const [zCenterYear, setZCenterYear] = useState(oldestYear);
   const containerRef = useRef<HTMLDivElement>(null);
-  const zoomTimerRef = useRef<number | null>(null);
 
-  const graphData = useMemo(() => buildNautilusGraphData(objects), [objects]);
+  const DISTANCE_PER_YEAR = 120;
+  const FRAME_RADIUS = DISTANCE_PER_YEAR * 2;
 
   useEffect(() => {
-    return () => {
-      if (zoomTimerRef.current) window.clearTimeout(zoomTimerRef.current);
+    setZCenterYear(oldestYear);
+  }, [oldestYear]);
+
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setCenter({
+          cx: containerRef.current.clientWidth / 2,
+          cy: containerRef.current.clientHeight / 2,
+        });
+      }
     };
-  }, []);
+    window.addEventListener("resize", updateSize);
+    setTimeout(updateSize, 50);
+    return () => window.removeEventListener("resize", updateSize);
+  }, [insetLeftClass, insetRightClass]);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      graphRef.current?.zoomToFit(800, 80);
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [graphData]);
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setZCenterYear((prev) => {
+      const delta = invertScroll ? e.deltaY * -0.002 : e.deltaY * 0.002;
+      const limitZ = oldestYear - 50 / DISTANCE_PER_YEAR;
+      return Math.max(prev + delta, limitZ);
+    });
+  };
 
-  const zoomToNode = useCallback((node: NautilusGraphNode) => {
-    const x = node.x ?? node.fx ?? 0;
-    const y = node.y ?? node.fy ?? 0;
-    graphRef.current?.centerAt(x, y, 600);
-    graphRef.current?.zoom(2.4, 600);
-  }, []);
-
-  const handleNodeClick = useCallback(
-    (node: NautilusGraphNode) => {
-      zoomToNode(node);
-
-      if (zoomTimerRef.current) window.clearTimeout(zoomTimerRef.current);
-      zoomTimerRef.current = window.setTimeout(() => {
-        if (node.type === "document") {
-          const payload = findDocumentNodePayload(node);
-          if (payload) onDocumentSelect(payload);
-          return;
-        }
-        const obj = findObjectByNodeId(objects, node.id);
-        if (obj) onObjectSelect(obj);
-      }, 650);
-    },
-    [objects, onDocumentSelect, onObjectSelect, zoomToNode]
+  const visibleRingsCount = 8;
+  const startIntYear = Math.max(Math.floor(zCenterYear), Math.floor(oldestYear));
+  const rings = Array.from({ length: visibleRingsCount }).map(
+    (_, i) => startIntYear + i
   );
-
-  const drawNode = useCallback(
-    (node: NautilusGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
-      const color = getNautilusNodeColor(node);
-      const isDocument = node.type === "document";
-      const isActive = activeNodeId === node.id;
-      const radius = (isDocument ? 14 : 8) / globalScale;
-
-      if (isActive && !isDocument) {
-        ctx.beginPath();
-        ctx.arc(x, y, radius * 2.2, 0, 2 * Math.PI);
-        ctx.fillStyle = `${color}33`;
-        ctx.fill();
-      }
-
-      ctx.beginPath();
-      if (isDocument) {
-        const size = radius * 1.4;
-        ctx.rect(x - size, y - size, size * 2, size * 2);
-      } else {
-        ctx.arc(x, y, radius, 0, 2 * Math.PI);
-      }
-      ctx.fillStyle = color;
-      ctx.fill();
-
-      if (isDocument) {
-        ctx.strokeStyle = "#1A1A1B22";
-        ctx.lineWidth = 1 / globalScale;
-        ctx.stroke();
-      }
-
-      const label = node.title.length > 28 ? `${node.title.slice(0, 26)}…` : node.title;
-      const fontSize = Math.max((isDocument ? 11 : 9) / globalScale, 3);
-      ctx.font = `${fontSize}px JetBrains Mono, monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = "#1A1A1B";
-      ctx.fillText(label, x, y + radius + 4 / globalScale);
-    },
-    [activeNodeId]
-  );
+  const rootYearDisplay = Math.ceil(zCenterYear);
 
   return (
     <div
       ref={containerRef}
-      className={`fixed top-16 ${insetLeftClass} ${insetRightClass} bottom-0 z-10 bg-vellum transition-all duration-500`}
-      style={{
-        boxShadow: "inset 0 0 40px 10px rgba(255, 255, 255, 0.2)",
-      }}
+      onWheel={handleWheel}
+      className={
+        "fixed top-16 " +
+        insetLeftClass +
+        " " +
+        insetRightClass +
+        " bottom-0 z-10 transition-all duration-700 ease-in-out " +
+        (isInspectorOpen
+          ? "blur-[6px] opacity-30 grayscale-[20%]"
+          : "opacity-100 grayscale-0")
+      }
+      style={{ boxShadow: "inset 0 0 40px 10px rgba(255, 255, 255, 0.2)" }}
     >
       {objects.length === 0 ? (
         <div className="h-full flex items-center justify-center font-data text-sm text-obsidian/40 px-8 text-center">
-          Seal milestones from the Temporal Extraction Engine to populate the Nautilus.
+          Seal Date milestones from the Temporal Extraction Engine to populate the
+          Nautilus.
         </div>
       ) : (
-        <ForceGraph2D
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ref={graphRef as any}
-          graphData={graphData}
-          backgroundColor="rgba(252, 251, 249, 0)"
-          nodeRelSize={6}
-          linkColor={() => "#DED9D1"}
-          linkWidth={1.2}
-          linkDirectionalParticles={1}
-          linkDirectionalParticleWidth={2}
-          linkDirectionalParticleSpeed={0.004}
-          cooldownTicks={120}
-          d3AlphaDecay={0.02}
-          d3VelocityDecay={0.3}
-          onNodeClick={(node) => handleNodeClick(node as NautilusGraphNode)}
-          nodeCanvasObject={(node, ctx, globalScale) =>
-            drawNode(node as NautilusGraphNode, ctx, globalScale)
-          }
-          nodePointerAreaPaint={(node, color, ctx) => {
-            const n = node as NautilusGraphNode;
-            const x = n.x ?? 0;
-            const y = n.y ?? 0;
-            const r = n.type === "document" ? 18 : 14;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, 2 * Math.PI);
-            ctx.fill();
-          }}
-        />
+        <svg className="w-full h-full cursor-grab active:cursor-grabbing">
+          <defs>
+            <filter id="deboss-stamp" x="-20%" y="-20%" width="140%" height="140%">
+              <feOffset dx="1" dy="1" />
+              <feGaussianBlur stdDeviation="1" result="offset-blur" />
+              <feComposite
+                operator="out"
+                in="SourceGraphic"
+                in2="offset-blur"
+                result="inverse"
+              />
+              <feFlood
+                floodColor="rgba(26,26,27,0.15)"
+                floodOpacity="1"
+                result="color"
+              />
+              <feComposite operator="in" in="color" in2="inverse" result="shadow" />
+              <feComposite operator="over" in="shadow" in2="SourceGraphic" />
+            </filter>
+          </defs>
+
+          <g className="transition-all duration-[50ms]">
+            {rings.map((yearStr) => {
+              if (yearStr < Math.floor(oldestYear)) return null;
+              const r = (yearStr - zCenterYear) * DISTANCE_PER_YEAR;
+              if (r <= 0) return null;
+
+              const isFrameRing =
+                Math.abs(r - FRAME_RADIUS) < DISTANCE_PER_YEAR / 2;
+
+              return (
+                <circle
+                  key={`ring-${yearStr}`}
+                  cx={center.cx}
+                  cy={center.cy}
+                  r={r}
+                  fill="none"
+                  stroke={isFrameRing ? "var(--obsidian)" : "var(--bone)"}
+                  strokeWidth={isFrameRing ? "1" : "0.5"}
+                  opacity={isFrameRing ? "0.4" : "0.7"}
+                />
+              );
+            })}
+
+            <text
+              x={center.cx}
+              y={center.cy + 10}
+              textAnchor="middle"
+              className="font-head text-[32px] fill-obsidian tracking-wide opacity-60 font-bold pointer-events-none"
+            >
+              {rootYearDisplay}
+            </text>
+            <circle
+              cx={center.cx}
+              cy={center.cy}
+              r="3"
+              fill="var(--obsidian)"
+              opacity="0.3"
+            />
+
+            {showGrid &&
+              Array.from({ length: 12 }).map((_, i) => {
+                const angle = i * 30;
+                const startPos = getCartesian(center.cx, center.cy, 50, angle);
+                const endPos = getCartesian(
+                  center.cx,
+                  center.cy,
+                  visibleRingsCount * DISTANCE_PER_YEAR,
+                  angle
+                );
+                return (
+                  <line
+                    key={`axis-${i}`}
+                    x1={startPos.x}
+                    y1={startPos.y}
+                    x2={endPos.x}
+                    y2={endPos.y}
+                    stroke="var(--obsidian)"
+                    strokeWidth={0.5}
+                    className="opacity-10"
+                  />
+                );
+              })}
+          </g>
+
+          {/* Slate document hubs (inner ring only — origin stays clear for year HUD) */}
+          <g>
+            {hubs.filter((hub) => hub.r > 0).map((hub) => {
+              const pos = getCartesian(center.cx, center.cy, hub.r, hub.theta);
+              return (
+                <g
+                  key={`hub-${hub.id}`}
+                  className="cursor-pointer"
+                  onClick={() => onHubClick?.(hub.id, pos)}
+                >
+                  <rect
+                    x={pos.x - 12}
+                    y={pos.y - 12}
+                    width="24"
+                    height="24"
+                    fill="#3d5560"
+                    opacity="0.9"
+                    filter="url(#deboss-stamp)"
+                  />
+                  <rect
+                    x={pos.x - 14}
+                    y={pos.y - 14}
+                    width="28"
+                    height="28"
+                    fill="none"
+                    stroke="#3d5560"
+                    strokeWidth="0.5"
+                    opacity="0.35"
+                  />
+                  <text
+                    x={pos.x}
+                    y={pos.y + 26}
+                    textAnchor="middle"
+                    className="font-data text-[8px] fill-obsidian/60 uppercase tracking-widest pointer-events-none"
+                  >
+                    {hub.label.length > 22
+                      ? `${hub.label.slice(0, 20)}…`
+                      : hub.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+
+          {/* Orbiting date pulses */}
+          <g>
+            {pulses.map((pulse) => {
+              const Y = getDecimalYear(pulse.date);
+              const rawRadius = (Y - zCenterYear) * DISTANCE_PER_YEAR;
+              if (rawRadius <= 0) return null;
+
+              const pos = getCartesian(
+                center.cx,
+                center.cy,
+                rawRadius,
+                pulse.theta
+              );
+              const style = PULSE_STYLES[pulse.pulseState];
+              const isActive = activePulseId === pulse.id;
+              const isSealed =
+                pulse.pulseState === "emerald" ||
+                sealedPulseIds.includes(pulse.id);
+
+              return (
+                <g
+                  key={pulse.id}
+                  onClick={() => onPulseClick(pulse.id, pos)}
+                  className="cursor-pointer"
+                >
+                  {isActive && pulse.pulseState !== "grey" && (
+                    <>
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r="20"
+                        fill={style.halo}
+                        opacity="0.35"
+                        className="animate-pulse blur-[8px]"
+                      />
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r="10"
+                        fill={style.fill}
+                        opacity="0.7"
+                        className="animate-pulse blur-[3px]"
+                      />
+                    </>
+                  )}
+
+                  {!isActive && pulse.pulseState !== "grey" && (
+                    <>
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r="14"
+                        fill={style.halo}
+                        opacity="0.25"
+                        className="blur-[2px]"
+                      />
+                      {!isSealed && (
+                        <circle
+                          cx={pos.x}
+                          cy={pos.y}
+                          r="6"
+                          fill={style.fill}
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {pulse.pulseState === "grey" && (
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r="4"
+                      fill="var(--bone)"
+                      stroke="var(--obsidian)"
+                      strokeWidth="0.5"
+                      opacity="0.4"
+                    />
+                  )}
+
+                  {isSealed && !isActive && (
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r="6"
+                      fill="var(--vellum)"
+                      stroke="var(--emerald)"
+                      strokeWidth="1.5"
+                      filter="url(#deboss-stamp)"
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        </svg>
       )}
     </div>
   );

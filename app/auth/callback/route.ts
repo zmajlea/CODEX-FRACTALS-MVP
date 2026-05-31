@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { getSiteUrl } from "@/lib/site-url";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+  const siteUrl = getSiteUrl(origin);
   const code = searchParams.get("code");
   let next = searchParams.get("next") ?? "/switchboard";
 
@@ -36,11 +38,11 @@ export async function GET(request: Request) {
         );
       }
 
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${siteUrl}${next}`);
     }
   }
 
   return NextResponse.redirect(
-    `${origin}/login?error=${encodeURIComponent("Google sign-in failed. Try again.")}`
+    `${siteUrl}/login?error=${encodeURIComponent("Google sign-in failed. Try again.")}`
   );
 }

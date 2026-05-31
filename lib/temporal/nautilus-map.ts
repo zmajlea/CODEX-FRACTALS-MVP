@@ -16,6 +16,7 @@ export type NautilusPulse = {
 export type NautilusHub = {
   id: string;
   label: string;
+  /** Visual radius from center (0 = hub at origin) */
   r: number;
   theta: number;
   vaultName: string;
@@ -57,17 +58,18 @@ function dayOfYear(dateStr: string): number {
   const d = new Date(`${dateStr}T00:00:00`);
   if (!Number.isFinite(d.getTime())) return 0;
   const start = new Date(d.getFullYear(), 0, 0);
-  const diff = d.getTime() - start.getTime();
-  return Math.floor(diff / 86400000);
+  return Math.floor((d.getTime() - start.getTime()) / 86400000);
 }
 
 function pulseStateFor(obj: PortfolioTemporalObject): PulseState {
   if (obj.isLocked) return "grey";
+  const category = (obj.category ?? "").toLowerCase();
+  if (category === "warning") return "cinnabar";
   if (obj.isSealed) return "emerald";
   return "amber";
 }
 
-/** Map portfolio objects to document hubs (slate) and orbiting date pulses. */
+/** Map portfolio Date objects → slate hubs + orbiting pulses (radial math). */
 export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   hubs: NautilusHub[];
   pulses: NautilusPulse[];
@@ -81,23 +83,21 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   for (const obj of objects) {
     const key = hubKey(obj);
     const existing = hubMap.get(key);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      hubMap.set(key, { obj, count: 1 });
-    }
+    if (existing) existing.count += 1;
+    else hubMap.set(key, { obj, count: 1 });
   }
 
   const hubEntries = Array.from(hubMap.entries());
   const hubCount = Math.max(hubEntries.length, 1);
-  const HUB_RADIUS = 180;
+  /** Single document sits at the nautilus origin; multiple docs share an inner ring */
+  const hubRingRadius = hubCount === 1 ? 0 : 72;
 
   const hubs: NautilusHub[] = hubEntries.map(([id, { obj, count }], index) => {
-    const theta = (360 / hubCount) * index;
+    const theta = hubCount === 1 ? 0 : (360 / hubCount) * index;
     return {
       id,
       label: hubLabel(obj),
-      r: HUB_RADIUS,
+      r: hubRingRadius,
       theta,
       vaultName: obj.vaultName,
       pulseCount: count,
@@ -105,8 +105,6 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   });
 
   const hubThetaById = new Map(hubs.map((h) => [h.id, h.theta]));
-  const hubIndexById = new Map(hubs.map((h, i) => [h.id, i]));
-
   const orbitCounters = new Map<string, number>();
   const pulses: NautilusPulse[] = [];
   const sealedPulseIds: string[] = [];
@@ -118,9 +116,11 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
     orbitCounters.set(key, orbitIndex + 1);
 
     const dateStr = obj.parsedDate ?? obj.createdAt.slice(0, 10);
-    const dayOffset = obj.parsedDate ? (dayOfYear(obj.parsedDate) % 12) * 4 : 0;
-    const spread = (hubIndexById.get(key) ?? 0) * 3 + orbitIndex * 7;
-    const theta = (hubTheta + dayOffset + spread) % 360;
+    const dayAngle = obj.parsedDate
+      ? (dayOfYear(obj.parsedDate) / 365) * 360
+      : orbitIndex * 24;
+    const spread = orbitIndex * 8;
+    const theta = (hubTheta + dayAngle + spread) % 360;
 
     if (obj.isSealed) sealedPulseIds.push(obj.id);
 
@@ -137,4 +137,19 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   }
 
   return { hubs, pulses, sealedPulseIds };
+}
+
+export function hubIdToDocumentPayload(
+  objects: PortfolioTemporalObject[],
+  hubId: string
+) {
+  const sample = objects.find((o) => hubKey(o) === hubId);
+  if (!sample) return null;
+  return {
+    recordId: sample.recordId,
+    fileId: sample.fileId,
+    vaultId: sample.vaultId,
+    label: hubLabel(sample),
+    vaultName: sample.vaultName,
+  };
 }

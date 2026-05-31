@@ -10,10 +10,10 @@ import PortfolioTimeline from "@/components/PortfolioTimeline";
 import { downloadDecryptedFileBlob } from "@/lib/files/download-decrypted-file";
 import {
   fetchPortfolioDateObjects,
-  fetchPortfolioObjects,
   sortPortfolioChronologically,
   type PortfolioTemporalObject,
 } from "@/lib/temporal/portfolio-fetch";
+import { hubIdToDocumentPayload } from "@/lib/temporal/nautilus-map";
 import { createClient } from "@/utils/supabase/client";
 
 type DocumentInspectorState = {
@@ -28,12 +28,11 @@ export default function PortfolioPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
-  const [graphObjects, setGraphObjects] = useState<PortfolioTemporalObject[]>([]);
-  const [timelineObjects, setTimelineObjects] = useState<PortfolioTemporalObject[]>([]);
+  const [objects, setObjects] = useState<PortfolioTemporalObject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [activePulseId, setActivePulseId] = useState<string | null>(null);
   const [selectedObject, setSelectedObject] = useState<PortfolioTemporalObject | null>(
     null
   );
@@ -41,6 +40,8 @@ export default function PortfolioPage() {
     useState<DocumentInspectorState | null>(null);
   const [docPdfUrl, setDocPdfUrl] = useState<string | null>(null);
   const [docPdfLoading, setDocPdfLoading] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [invertScroll, setInvertScroll] = useState(false);
   const docPdfUrlRef = useRef<string | null>(null);
 
   const loadPortfolio = useCallback(async () => {
@@ -57,19 +58,10 @@ export default function PortfolioPage() {
     }
 
     try {
-      const [allObjects, dateObjects] = await Promise.all([
-        fetchPortfolioObjects(supabase),
-        fetchPortfolioDateObjects(supabase),
-      ]);
-      const sortedTimeline = sortPortfolioChronologically(dateObjects);
-      setGraphObjects(allObjects);
-      setTimelineObjects(sortedTimeline);
-      setActiveNodeId(
-        sortedTimeline.find((o) => !o.isLocked)?.id ??
-          allObjects.find((o) => !o.isLocked)?.id ??
-          sortedTimeline[0]?.id ??
-          null
-      );
+      const dateObjects = await fetchPortfolioDateObjects(supabase);
+      const sorted = sortPortfolioChronologically(dateObjects);
+      setObjects(sorted);
+      setActivePulseId(sorted.find((o) => !o.isLocked)?.id ?? sorted[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load portfolio");
     } finally {
@@ -140,38 +132,41 @@ export default function PortfolioPage() {
     (payload: DocumentInspectorState) => {
       setSelectedObject(null);
       setDocumentInspector(payload);
-      setActiveNodeId(`doc:${payload.fileId ?? payload.recordId}`);
     },
     []
   );
 
-  const handleDocumentSelect = useCallback(
-    (payload: {
-      recordId: string;
-      fileId: string | null;
-      vaultId: string;
-      label: string;
-      vaultName: string;
-    }) => {
+  const handleHubClick = useCallback(
+    (hubId: string) => {
+      const payload = hubIdToDocumentPayload(objects, hubId);
+      if (!payload) return;
       openDocumentInspector(payload);
     },
-    [openDocumentInspector]
+    [objects, openDocumentInspector]
   );
 
-  const handleObjectSelect = useCallback((obj: PortfolioTemporalObject) => {
-    setDocumentInspector(null);
-    setSelectedObject(obj);
-    setActiveNodeId(obj.id);
-  }, []);
-
-  const handleTimelineSelect = useCallback((id: string) => {
-    setActiveNodeId(id);
-    const obj = timelineObjects.find((o) => o.id === id);
-    if (obj) {
+  const handlePulseClick = useCallback(
+    (id: string) => {
+      const obj = objects.find((o) => o.id === id);
+      if (!obj) return;
       setDocumentInspector(null);
       setSelectedObject(obj);
-    }
-  }, [timelineObjects]);
+      setActivePulseId(id);
+    },
+    [objects]
+  );
+
+  const handleTimelineSelect = useCallback(
+    (id: string) => {
+      setActivePulseId(id);
+      const obj = objects.find((o) => o.id === id);
+      if (obj) {
+        setDocumentInspector(null);
+        setSelectedObject(obj);
+      }
+    },
+    [objects]
+  );
 
   const handleViewSource = useCallback(
     (obj: PortfolioTemporalObject) => {
@@ -195,6 +190,7 @@ export default function PortfolioPage() {
     setDocPdfUrl(null);
   };
 
+  const activeObject = objects.find((o) => o.id === activePulseId) ?? null;
   const inspectorOpen = Boolean(documentInspector);
 
   return (
@@ -213,6 +209,20 @@ export default function PortfolioPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowGrid((v) => !v)}
+            className="font-data text-[10px] uppercase tracking-ultra text-obsidian/50 hover:text-obsidian border border-bone/30 px-3 py-1.5"
+          >
+            {showGrid ? "[−] Grid" : "[+] Grid"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setInvertScroll((v) => !v)}
+            className="font-data text-[10px] uppercase tracking-ultra text-obsidian/50 hover:text-obsidian border border-bone/30 px-3 py-1.5"
+          >
+            Scroll {invertScroll ? "Past" : "Future"}
+          </button>
           <button
             type="button"
             onClick={loadPortfolio}
@@ -238,19 +248,36 @@ export default function PortfolioPage() {
       {!loading && (
         <>
           <PortfolioTimeline
-            objects={timelineObjects}
-            activeId={activeNodeId?.startsWith("doc:") ? null : activeNodeId}
+            objects={objects}
+            activeId={activePulseId}
             onSelect={handleTimelineSelect}
           />
 
           <NautilusGrid
-            objects={graphObjects}
-            activeNodeId={activeNodeId}
-            onDocumentSelect={handleDocumentSelect}
-            onObjectSelect={handleObjectSelect}
+            objects={objects}
+            activePulseId={activePulseId}
+            onPulseClick={(id) => handlePulseClick(id)}
+            onHubClick={(hubId) => handleHubClick(hubId)}
+            isInspectorOpen={inspectorOpen}
+            showGrid={showGrid}
+            invertScroll={invertScroll}
             insetLeftClass="left-80"
             insetRightClass={selectedObject ? "right-96" : "right-0"}
           />
+
+          {activeObject && !activeObject.isLocked && !selectedObject && (
+            <div className="fixed bottom-8 right-8 z-30 w-full max-w-md border border-bone/50 bg-vellum/90 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.08)] p-6">
+              <p className="font-data text-[10px] uppercase tracking-ultra text-obsidian/40 mb-2">
+                Active Pulse · {activeObject.vaultName}
+              </p>
+              <h3 className="font-head text-xl text-obsidian mb-1">
+                {activeObject.title}
+              </h3>
+              <p className="font-data text-sm text-emerald mb-3">
+                {activeObject.parsedDate ?? "No date"}
+              </p>
+            </div>
+          )}
 
           <PortfolioPulsePanel
             object={selectedObject}
