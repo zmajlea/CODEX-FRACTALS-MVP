@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   description: "Secure. Structured. Timeless. CodexOne / Fractals V4.",
 };
 
+/** Auth/data pages use Supabase client-side; skip static prerender at build time. */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{
