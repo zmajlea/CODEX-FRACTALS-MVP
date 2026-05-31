@@ -37,7 +37,7 @@ export default function VaultExtractPage() {
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [sealing, setSealing] = useState(false);
+  const [sealerInitials, setSealerInitials] = useState("FR");
 
   const [activeLensId, setActiveLensId] =
     useState<IntelligenceLensId>("compliance");
@@ -81,6 +81,33 @@ export default function VaultExtractPage() {
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  useEffect(() => {
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const meta = user.user_metadata as {
+        full_name?: string;
+        name?: string;
+      };
+      const name = meta.full_name ?? meta.name;
+      if (name?.trim()) {
+        const parts = name.trim().split(/\s+/);
+        setSealerInitials(
+          parts.length >= 2
+            ? `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase()
+            : name.slice(0, 2).toUpperCase()
+        );
+        return;
+      }
+      if (user.email) {
+        setSealerInitials(user.email.slice(0, 2).toUpperCase());
+      }
+    })();
+  }, [supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,21 +233,17 @@ export default function VaultExtractPage() {
   };
 
   const handleSealBatch = async () => {
-    if (!suggestions.length) return;
-    setSealing(true);
-    setError(null);
-    try {
-      const count = await sealTemporalBatch(supabase, suggestions);
-      setSuggestions([]);
-      setActiveSuggestionId(null);
-      setInspectorOpen(false);
-      setError(null);
-      alert(`Sealed ${count} object${count === 1 ? "" : "s"} to Postgres.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Seal batch failed");
-    } finally {
-      setSealing(false);
+    if (!suggestions.length) {
+      throw new Error("No objects to seal.");
     }
+    await sealTemporalBatch(supabase, suggestions);
+  };
+
+  const handleSealSuccess = () => {
+    setSuggestions([]);
+    setActiveSuggestionId(null);
+    setInspectorOpen(false);
+    setError(null);
   };
 
   return (
@@ -311,8 +334,9 @@ export default function VaultExtractPage() {
         onRemoveSuggestion={(id) =>
           setSuggestions((prev) => prev.filter((s) => s.id !== id))
         }
-        onSealBatch={() => void handleSealBatch()}
-        sealing={sealing}
+        onSealBatch={handleSealBatch}
+        onSealSuccess={handleSealSuccess}
+        sealerInitials={sealerInitials}
         onClose={() => setInspectorOpen(false)}
         activeLensId={activeLensId}
         onLensChange={setActiveLensId}

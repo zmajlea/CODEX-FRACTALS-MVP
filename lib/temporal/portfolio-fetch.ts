@@ -54,18 +54,7 @@ async function safeDecrypt(
   }
 }
 
-/**
- * Fetch Date-category temporal_objects across all vaults the user can access (RLS),
- * decrypt title/body client-side when a vault session key exists.
- * Rows without a session key remain locked (Grey Pulse).
- */
-export async function fetchPortfolioDateObjects(
-  supabase: SupabaseClient<Database>
-): Promise<PortfolioTemporalObject[]> {
-  const { data, error } = await supabase
-    .from("temporal_objects")
-    .select(
-      `
+const TEMPORAL_SELECT = `
       id,
       vault_id,
       record_id,
@@ -81,16 +70,12 @@ export async function fetchPortfolioDateObjects(
       vaults ( name ),
       records ( title_plain ),
       files ( file_name_ciphertext )
-    `
-    )
-    .ilike("category", "Date")
-    .order("parsed_date", { ascending: true, nullsFirst: false });
+    `;
 
-  if (error) throw new Error(error.message);
-
-  const rows = (data ?? []) as TemporalRow[];
+async function mapTemporalRows(
+  rows: TemporalRow[]
+): Promise<PortfolioTemporalObject[]> {
   const fileNameCache = new Map<string, string | null>();
-
   const results: PortfolioTemporalObject[] = [];
 
   for (const row of rows) {
@@ -146,6 +131,37 @@ export async function fetchPortfolioDateObjects(
   return results;
 }
 
+/** Fetch all temporal_objects for the interactive Nautilus graph. */
+export async function fetchPortfolioObjects(
+  supabase: SupabaseClient<Database>
+): Promise<PortfolioTemporalObject[]> {
+  const { data, error } = await supabase
+    .from("temporal_objects")
+    .select(TEMPORAL_SELECT)
+    .order("parsed_date", { ascending: true, nullsFirst: false });
+
+  if (error) throw new Error(error.message);
+  return mapTemporalRows((data ?? []) as TemporalRow[]);
+}
+
+/**
+ * Fetch Date-category temporal_objects across all vaults the user can access (RLS),
+ * decrypt title/body client-side when a vault session key exists.
+ * Rows without a session key remain locked (Grey Pulse).
+ */
+export async function fetchPortfolioDateObjects(
+  supabase: SupabaseClient<Database>
+): Promise<PortfolioTemporalObject[]> {
+  const { data, error } = await supabase
+    .from("temporal_objects")
+    .select(TEMPORAL_SELECT)
+    .ilike("category", "Date")
+    .order("parsed_date", { ascending: true, nullsFirst: false });
+
+  if (error) throw new Error(error.message);
+  return mapTemporalRows((data ?? []) as TemporalRow[]);
+}
+
 /** Chronological sort for decrypted timeline rows; locked rows sink to bottom. */
 export function sortPortfolioChronologically(
   objects: PortfolioTemporalObject[]
@@ -157,3 +173,4 @@ export function sortPortfolioChronologically(
     return da.localeCompare(db);
   });
 }
+

@@ -277,3 +277,33 @@ body::before {
   background: var(--bone);
   border-radius: 2px;
 }
+
+@keyframes hanko-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.4) rotate(-12deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-4deg);
+  }
+}
+
+.hanko-stamp {
+  animation: hanko-stamp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes slide-up-panel {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.seal-panel-enter {
+  animation: slide-up-panel 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
