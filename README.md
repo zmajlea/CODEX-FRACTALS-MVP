@@ -56,8 +56,10 @@ Run migration: `supabase/migrations/20260530160000_temporal_objects_queryable.sq
 1. [Google Cloud Console](https://console.cloud.google.com/) → OAuth client (Web) → redirect URI:
    `https://tswdwmtrirdhtwqmsasz.supabase.co/auth/v1/callback`
 2. [Supabase → Auth → Providers → Google](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/providers) — paste Client ID + Secret
-3. [Supabase → Auth → URL Configuration](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/url-configuration) — add redirect URL:
-   `http://localhost:14000/auth/callback`
+3. [Supabase → Auth → URL Configuration](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/url-configuration):
+   - **Site URL:** `https://codex-fractals-mvp.vercel.app`
+   - **Redirect URLs:** `https://codex-fractals-mvp.vercel.app/**` and `http://localhost:14000/auth/callback`
+4. **Vercel → Environment Variables:** set `NEXT_PUBLIC_SITE_URL=https://codex-fractals-mvp.vercel.app` for Production (or remove it — the app uses the live request origin for OAuth). Do **not** leave `http://localhost:14000` on Production.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
