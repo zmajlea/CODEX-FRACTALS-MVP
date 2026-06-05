@@ -84,7 +84,7 @@ export default function IngestPage() {
       </button>
       <h1 className="font-head text-2xl text-obsidian mb-2">Ingestion Pipeline</h1>
       <p className="font-data text-xs text-obsidian/50 mb-8">
-        PDFs only · {vaultName}
+        PDF · CSV · MD · TXT · HTML · XLSX · DOCX · {vaultName}
       </p>
 
       <div className="flex gap-4 mb-8">

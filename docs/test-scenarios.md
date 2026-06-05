@@ -1,4 +1,6 @@
-# Fractals MVP — Test Scenarios (Journeys 1–3)
+# Fractals MVP — Quick Test Scenarios (Journeys 1–3)
+
+Condensed smoke tests for the core truthmaking loop. **Full Release 1 plan (Journeys 1–10 + S1–S12):** [test-scenarios-release1.md](./test-scenarios-release1.md)
 
 Manual + Cursor browser MCP smoke tests for Release 1 truthmaking flows.
 
@@ -150,13 +152,49 @@ Fix failures and re-test until Journey 1 steps 1–7 pass or document blockers.
 
 ---
 
-## Browser test log (2026-06-05)
+## EXAKOM BUSINESS DEV (Journey 2 — multi-format)
+
+Seed vault with CRM/leads files from the EXAKOM mailing folder:
+
+```powershell
+cd c:\CODEX_FACTALS\CODEX-FRACTALS-MVP
+npm run test:seed:exakom          # upload + Gemini extract + seal
+npm run test:seed:exakom:upload   # upload only (no API calls)
+```
+
+| Field | Value |
+|-------|-------|
+| Vault name | `EXAKOM BUSINESS DEV` |
+| Vault ID | `6fac0c0b-b853-49a9-916f-578e88b88a3e` (stable after first run) |
+| Vault key | `ExakomBusinessDev!2026` |
+| Source folder | `C:\Users\leander\Documents\Claude\Projects\Mailing EXAKOM` |
+| Formats | PDF, CSV, MD, TXT, HTML, XLSX, DOCX |
+
+1. Login → Switchboard → unlock **EXAKOM BUSINESS DEV** with key above.
+2. **Record Home** (`/vault/<id>`) — Nautilus should show hubs per file + sealed pulses.
+3. **Ingest** — multi-select upload for any supported format.
+4. **Extract** — use **CRM & Leads** lens → Run extraction → Review & Seal.
+
+Re-run seed to process files that failed on Gemini rate limits (skips files that already have pulses).
+
+---
+
+## Browser test log (2026-06-05 — latest full run)
 
 | Journey | Status | Notes |
 |---------|--------|-------|
-| 1 — Query → Seal → Recall | **PASS** | Seal Renewal Date; recall Effective Date (Anchored); Enter-in-query fix verified |
-| 2 — Ingest → Extract | **PARTIAL** | Ingest UI + scan modes OK; extract empty-state OK; upload/Gemini blocked (no test PDF; Gemini 503 earlier) |
-| 3 — Results Mode | **PASS** | 2 vaults unlocked; timeline shows 3 Date pulses; Inspector sequestered to owning record; `/portfolio` → `?results=1` |
+| 1 — Query → Seal → Recall | **PASS** | Seal Renewal; recall Effective (Anchored) |
+| 2 — Ingest → Extract | **PARTIAL** | Ingest UI OK; extract empty (no PDF) |
+| 3 — Results Mode | **PASS** | 3 pulses; sequestered Inspector; portfolio redirect |
+| 4 — Governance | **PARTIAL** | Invite UI on Settings; lifecycle not wired |
+| 5 — Revisioning | **PARTIAL** | History tab empty state only |
+| 6 — Inbox | **PASS** | Panel + empty unread state |
+| 7 — Profile | **PARTIAL** | Identity + audit toggle; authorities shell |
+| 8 — Record Settings | **PASS** | Key posture + members + invite |
+| 9 — Signature | **—** | Not tested (shell) |
+| 10 — Alerts | **—** | Not tested |
+
+Full details: [test-scenarios-release1.md](./test-scenarios-release1.md#browser-test-log)
 
 **Dev server:** `npm run dev:14000` (or `npx next dev -p 14000`)
 

@@ -14,22 +14,27 @@
     "db:verify": "node scripts/verify-schema.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz",
     "test:seed": "node scripts/seed-journey-test.mjs",
+    "test:seed:exakom": "node scripts/seed-exakom-vault.mjs",
+    "test:seed:exakom:upload": "node scripts/seed-exakom-vault.mjs --upload-only",
     "supabase": "supabase",
     "supabase:login": "supabase login",
     "auth:config:push": "supabase config push --yes"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
-    "@supabase/ssr": "^0.8.0",
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "date-fns": "^4.4.0",
     "firebase": "^11.0.0",
     "lucide-react": "^1.17.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.6",
+    "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^4.10.38",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-force-graph-2d": "^1.29.1"
+    "react-force-graph-2d": "^1.29.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",

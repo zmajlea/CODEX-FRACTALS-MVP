@@ -217,9 +217,12 @@ export default function SwitchboardPage() {
 
   const createVaultWithKey = async (name: string, key: string) => {
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) throw new Error("Session expired. Please sign in again.");
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error("Session expired. Please sign in again.");
+    }
     await ensureUserProfile(supabase);
     const { data: vault, error: insertError } = await supabase.rpc(
       "create_vault",

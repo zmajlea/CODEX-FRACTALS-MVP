@@ -2,6 +2,11 @@
 
 import { useCallback, useRef, useState } from "react";
 import { uploadEncryptedFile } from "@/lib/files/upload-encrypted-file";
+import {
+  ACCEPT_FILE_TYPES,
+  isSupportedUpload,
+  shouldSkipFileName,
+} from "@/lib/files/supported-formats";
 import { createClient } from "@/utils/supabase/client";
 import { getVaultSessionKey } from "@/lib/vault-session";
 
@@ -19,7 +24,7 @@ export default function VaultFileUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastFile, setLastFile] = useState<string | null>(null);
+  const [lastCount, setLastCount] = useState(0);
   const supabase = createClient();
 
   const handleFiles = useCallback(
@@ -32,19 +37,36 @@ export default function VaultFileUpload({
         return;
       }
 
+      const candidates = Array.from(files).filter(
+        (f) => !shouldSkipFileName(f.name)
+      );
+      const unsupported = candidates.filter((f) => !isSupportedUpload(f));
+      if (unsupported.length > 0) {
+        setError(
+          `Unsupported: ${unsupported.map((f) => f.name).join(", ")}. Use PDF, CSV, MD, TXT, HTML, XLSX, or DOCX.`
+        );
+        return;
+      }
+      if (candidates.length === 0) {
+        setError("No supported files selected.");
+        return;
+      }
+
       setUploading(true);
       setError(null);
 
       try {
-        for (const file of Array.from(files)) {
+        let uploaded = 0;
+        for (const file of candidates) {
           const result = await uploadEncryptedFile(supabase, {
             vaultId,
             recordId,
             file,
           });
-          setLastFile(result.fileId);
+          uploaded += 1;
           onUploaded?.(result.fileId);
         }
+        setLastCount(uploaded);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Upload failed");
       } finally {
@@ -69,8 +91,8 @@ export default function VaultFileUpload({
       </div>
 
       <p className="font-data text-xs text-obsidian/50 mb-4 leading-relaxed">
-        Files are encrypted in your browser before upload. Supabase only stores
-        ciphertext.
+        PDF, CSV, MD, TXT, HTML, XLSX, DOCX — encrypted in your browser before
+        upload. Supabase only stores ciphertext.
       </p>
 
       <label
@@ -84,21 +106,25 @@ export default function VaultFileUpload({
         <input
           ref={inputRef}
           type="file"
+          multiple
+          accept={ACCEPT_FILE_TYPES}
           className="sr-only"
           disabled={uploading || locked}
           onChange={(e) => handleFiles(e.target.files)}
         />
         <span className="font-data text-[10px] uppercase tracking-ultra text-obsidian/60">
-          {uploading ? "Encrypting & uploading…" : "Drop file or click to browse"}
+          {uploading
+            ? "Encrypting & uploading…"
+            : "Drop files or click to browse (multi-select)"}
         </span>
       </label>
 
       {error && (
         <p className="mt-3 font-data text-xs text-cinnabar">{error}</p>
       )}
-      {lastFile && !error && (
+      {lastCount > 0 && !error && (
         <p className="mt-3 font-data text-[10px] uppercase tracking-wider text-emerald">
-          Uploaded · {lastFile.slice(0, 8)}…
+          Uploaded {lastCount} file{lastCount === 1 ? "" : "s"}
         </p>
       )}
     </div>

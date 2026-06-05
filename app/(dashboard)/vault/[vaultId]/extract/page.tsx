@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import TriageInspectorOverlay from "@/components/TriageInspectorOverlay";
 import { extractTextFromFile } from "@/lib/file-text-extraction";
+import { loadDecryptedFileNames } from "@/lib/files/decrypt-file-name";
 import { downloadDecryptedFileBlob } from "@/lib/files/download-decrypted-file";
+import {
+  isExtractable,
+  resolveFileFormat,
+} from "@/lib/files/supported-formats";
 import {
   getLensPrompt,
   type IntelligenceLensId,
@@ -19,6 +24,8 @@ import type { VaultFileRow } from "@/lib/types";
 import { getVaultSessionKey } from "@/lib/vault-session";
 import { createClient } from "@/utils/supabase/client";
 
+const PREVIEW_CHAR_LIMIT = 120_000;
+
 export default function VaultExtractPage() {
   const params = useParams<{ vaultId: string }>();
   const vaultId = params.vaultId;
@@ -26,21 +33,24 @@ export default function VaultExtractPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [files, setFiles] = useState<VaultFileRow[]>([]);
+  const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-  const pdfUrlRef = useRef<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<"pdf" | "text">("pdf");
+  const [textPreview, setTextPreview] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [sealerInitials, setSealerInitials] = useState("FR");
 
   const [activeLensId, setActiveLensId] =
-    useState<IntelligenceLensId>("compliance");
+    useState<IntelligenceLensId>("commercial");
   const [customPrompt, setCustomPrompt] = useState("");
 
   const [suggestions, setSuggestions] = useState<TriageSuggestion[]>([]);
@@ -49,6 +59,16 @@ export default function VaultExtractPage() {
   );
 
   const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
+  const selectedFileName =
+    (selectedFileId && fileNames[selectedFileId]) ||
+    selectedFile?.id.slice(0, 8) ||
+    "";
+  const selectedFormat = selectedFile
+    ? resolveFileFormat(selectedFileName, selectedFile.mime_type)
+    : null;
+  const canExtract = selectedFile
+    ? isExtractable(selectedFileName, selectedFile.mime_type)
+    : false;
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -73,8 +93,10 @@ export default function VaultExtractPage() {
       return;
     }
 
-    setFiles((data ?? []) as VaultFileRow[]);
-    setSelectedFileId((prev) => prev ?? data?.[0]?.id ?? null);
+    const rows = (data ?? []) as VaultFileRow[];
+    setFiles(rows);
+    setFileNames(await loadDecryptedFileNames(supabase, vaultId, rows));
+    setSelectedFileId((prev) => prev ?? rows[0]?.id ?? null);
     setLoading(false);
   }, [supabase, vaultId, router]);
 
@@ -112,17 +134,18 @@ export default function VaultExtractPage() {
   useEffect(() => {
     let cancelled = false;
 
-    if (pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current);
-      pdfUrlRef.current = null;
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
     }
-    setPdfUrl(null);
-    setPdfError(null);
+    setPreviewUrl(null);
+    setTextPreview(null);
+    setPreviewError(null);
 
     if (!selectedFile) return;
 
     const run = async () => {
-      setPdfLoading(true);
+      setPreviewLoading(true);
       try {
         const blob = await downloadDecryptedFileBlob(supabase, {
           vaultId,
@@ -130,34 +153,50 @@ export default function VaultExtractPage() {
           encrypted: selectedFile.encrypted,
           mimeType: selectedFile.mime_type,
         });
-        const url = URL.createObjectURL(blob);
-        if (cancelled) {
-          URL.revokeObjectURL(url);
-          return;
+        const format = resolveFileFormat(
+          selectedFileName,
+          selectedFile.mime_type
+        );
+        const mode = format?.previewMode ?? "text";
+        if (cancelled) return;
+
+        if (mode === "pdf") {
+          const url = URL.createObjectURL(blob);
+          previewUrlRef.current = url;
+          setPreviewMode("pdf");
+          setPreviewUrl(url);
+        } else {
+          const text = await extractTextFromFile(blob, selectedFileName);
+          setPreviewMode("text");
+          setTextPreview(
+            text.length > PREVIEW_CHAR_LIMIT
+              ? `${text.slice(0, PREVIEW_CHAR_LIMIT)}\n\n… [truncated for preview]`
+              : text
+          );
         }
-        pdfUrlRef.current = url;
-        setPdfUrl(url);
       } catch (e) {
         if (!cancelled) {
-          setPdfError(e instanceof Error ? e.message : "Failed to decrypt PDF");
+          setPreviewError(
+            e instanceof Error ? e.message : "Failed to decrypt file"
+          );
         }
       } finally {
-        if (!cancelled) setPdfLoading(false);
+        if (!cancelled) setPreviewLoading(false);
       }
     };
 
     void run();
     return () => {
       cancelled = true;
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current);
-        pdfUrlRef.current = null;
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
       }
     };
-  }, [selectedFile, supabase, vaultId]);
+  }, [selectedFile, selectedFileName, supabase, vaultId]);
 
   const handleRunExtraction = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !canExtract) return;
     setExtracting(true);
     setError(null);
 
@@ -168,16 +207,19 @@ export default function VaultExtractPage() {
         encrypted: selectedFile.encrypted,
         mimeType: selectedFile.mime_type,
       });
-      const text = await extractTextFromFile(blob, "document.pdf");
+      const text = await extractTextFromFile(blob, selectedFileName);
       if (!text.trim()) {
-        throw new Error("No text extracted from PDF.");
+        throw new Error(`No text extracted from ${selectedFileName}.`);
       }
 
       const res = await fetch("/api/gemini-extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text,
+          text:
+            text.length > 200_000
+              ? `${text.slice(0, 200_000)}\n\n[Document truncated for extraction]`
+              : text,
           lensId: activeLensId,
           context:
             activeLensId === "custom"
@@ -193,13 +235,16 @@ export default function VaultExtractPage() {
 
       const now = Date.now();
       const next: TriageSuggestion[] = (data.suggestions ?? []).map(
-        (s: {
-          title: string;
-          exactQuote: string;
-          category: string;
-          explanation: string;
-          parsedDate?: string | null;
-        }, index: number) => {
+        (
+          s: {
+            title: string;
+            exactQuote: string;
+            category: string;
+            explanation: string;
+            parsedDate?: string | null;
+          },
+          index: number
+        ) => {
           const parsedDate =
             inferParsedDate(
               s.category,
@@ -244,6 +289,7 @@ export default function VaultExtractPage() {
     setActiveSuggestionId(null);
     setInspectorOpen(false);
     setError(null);
+    router.push(`/vault/${vaultId}`);
   };
 
   return (
@@ -251,16 +297,19 @@ export default function VaultExtractPage() {
       <header className="border-b border-bone px-8 py-4 flex items-center justify-between">
         <div>
           <Link
-            href="/switchboard"
+            href={`/vault/${vaultId}`}
             className="font-data text-[10px] uppercase tracking-ultra text-obsidian/50 hover:text-obsidian"
           >
-            ← Switchboard
+            ← Record Home
           </Link>
           <h1 className="font-head text-2xl text-obsidian mt-2">
             Temporal Extraction Engine
           </h1>
         </div>
-        <span className="w-2 h-2 rounded-full bg-emerald pulse-emerald" title="Vault unlocked" />
+        <span
+          className="w-2 h-2 rounded-full bg-emerald pulse-emerald"
+          title="Vault unlocked"
+        />
       </header>
 
       <main className="max-w-5xl mx-auto px-8 py-10 space-y-6">
@@ -273,9 +322,17 @@ export default function VaultExtractPage() {
         {loading ? (
           <p className="font-data text-sm text-obsidian/40">Loading files…</p>
         ) : files.length === 0 ? (
-          <p className="font-data text-sm text-obsidian/50">
-            No encrypted files in this vault. Upload a PDF from the Switchboard first.
-          </p>
+          <div className="space-y-3">
+            <p className="font-data text-sm text-obsidian/50">
+              No encrypted files in this vault yet.
+            </p>
+            <Link
+              href={`/vault/${vaultId}/ingest`}
+              className="font-data text-[10px] uppercase tracking-ultra border border-bone px-4 py-2 inline-block"
+            >
+              Open Ingestion →
+            </Link>
+          </div>
         ) : (
           <>
             <div>
@@ -287,22 +344,39 @@ export default function VaultExtractPage() {
                 onChange={(e) => setSelectedFileId(e.target.value)}
                 className="mt-2 w-full border border-bone bg-vellum px-3 py-2 font-data text-sm"
               >
-                {files.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.id.slice(0, 8)}… · record {f.record_id.slice(0, 8)}…
-                  </option>
-                ))}
+                {files.map((f) => {
+                  const name = fileNames[f.id] ?? f.id.slice(0, 8);
+                  const fmt = resolveFileFormat(name, f.mime_type);
+                  return (
+                    <option key={f.id} value={f.id}>
+                      {name}
+                      {fmt ? ` · ${fmt.label}` : " · unsupported"}
+                    </option>
+                  );
+                })}
               </select>
+              {selectedFormat && (
+                <p className="mt-2 font-data text-[10px] uppercase tracking-wider text-obsidian/40">
+                  Format: {selectedFormat.label} · preview:{" "}
+                  {selectedFormat.previewMode}
+                </p>
+              )}
             </div>
 
             <button
               type="button"
               onClick={() => void handleRunExtraction()}
-              disabled={extracting || !selectedFile}
+              disabled={extracting || !selectedFile || !canExtract}
               className="font-data text-[10px] uppercase tracking-ultra bg-oxford text-vellum px-6 py-3 disabled:opacity-40"
             >
               {extracting ? "Running Gemini…" : "Run extraction"}
             </button>
+            {!canExtract && selectedFile && (
+              <p className="font-data text-xs text-obsidian/50">
+                This file type cannot be extracted. Upload a supported format
+                from Ingestion.
+              </p>
+            )}
 
             {suggestions.length > 0 && (
               <button
@@ -319,10 +393,12 @@ export default function VaultExtractPage() {
 
       <TriageInspectorOverlay
         isOpen={inspectorOpen}
-        pdfUrl={pdfUrl}
-        pdfLoading={pdfLoading}
-        pdfError={pdfError}
-        fileName={selectedFile?.id}
+        pdfUrl={previewUrl}
+        pdfLoading={previewLoading}
+        pdfError={previewError}
+        previewMode={previewMode}
+        textPreview={textPreview}
+        fileName={selectedFileName}
         suggestions={suggestions}
         activeSuggestionId={activeSuggestionId}
         onSelectSuggestion={setActiveSuggestionId}

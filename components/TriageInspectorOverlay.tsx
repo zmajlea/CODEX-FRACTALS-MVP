@@ -15,6 +15,8 @@ type TriageInspectorOverlayProps = {
   pdfUrl: string | null;
   pdfLoading?: boolean;
   pdfError?: string | null;
+  previewMode?: "pdf" | "text";
+  textPreview?: string | null;
   fileName?: string;
   suggestions: TriageSuggestion[];
   activeSuggestionId: string | null;
@@ -41,6 +43,8 @@ export default function TriageInspectorOverlay({
   pdfUrl,
   pdfLoading,
   pdfError,
+  previewMode = "pdf",
+  textPreview,
   fileName,
   suggestions,
   activeSuggestionId,
@@ -209,20 +213,25 @@ export default function TriageInspectorOverlay({
                 E2E decrypted in browser
               </p>
             </div>
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-hidden">
               {pdfLoading && (
                 <div className="h-full flex items-center justify-center font-data text-sm text-obsidian/50">
-                  Decrypting PDF…
+                  Decrypting source…
                 </div>
               )}
-              {!pdfLoading && pdfUrl && (
+              {!pdfLoading && previewMode === "pdf" && pdfUrl && (
                 <iframe
                   src={`${pdfUrl}#toolbar=1`}
                   title="Decrypted PDF"
                   className="w-full h-full border-0"
                 />
               )}
-              {!pdfLoading && !pdfUrl && (
+              {!pdfLoading && previewMode === "text" && textPreview && (
+                <pre className="h-full overflow-auto p-4 font-data text-xs text-obsidian/80 whitespace-pre-wrap break-words">
+                  {textPreview}
+                </pre>
+              )}
+              {!pdfLoading && !pdfUrl && !textPreview && (
                 <div className="h-full flex items-center justify-center font-data text-sm text-obsidian/50 px-6 text-center">
                   {pdfError ?? "Select a file to preview."}
                 </div>

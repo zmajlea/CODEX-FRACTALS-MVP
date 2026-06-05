@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
+import AuthSessionSync from "@/components/AuthSessionSync";
 import CodexRails from "@/components/CodexRails";
 import NoiseOverlay from "@/components/NoiseOverlay";
 import SecurityDashboard from "@/components/SecurityDashboard";
@@ -39,6 +40,7 @@ function DashboardShellInner({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-vellum relative">
+      <AuthSessionSync />
       <NoiseOverlay />
       <CodexRails
         activeRecord={

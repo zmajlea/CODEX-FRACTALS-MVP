@@ -2,6 +2,7 @@ export type IntelligenceLensId =
   | "compliance"
   | "architecture"
   | "risk"
+  | "commercial"
   | "custom";
 
 export type IntelligenceLens = {
@@ -33,6 +34,13 @@ export const INTELLIGENCE_LENSES: IntelligenceLens[] = [
     label: "Legal & ITAR Shield",
     prompt:
       "Identify all regulatory classifications (e.g., ITAR/EAR), penalty clauses, termination conditions, and financial liabilities. Flag them as WARNING objects.",
+  },
+  {
+    id: "commercial",
+    icon: "📈",
+    label: "CRM & Leads",
+    prompt:
+      "Extract companies, contacts, leads, follow-up actions, deal stages, pricing references, market segments (fotovoltaico, papeleras, smart building), and commercial deadlines. Prefer Entity objects for companies/contacts and Date objects for follow-ups and milestones.",
   },
   {
     id: "custom",

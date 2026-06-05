@@ -49,6 +49,8 @@ Open [http://localhost:14000](http://localhost:14000) — redirects to `/switchb
 | `/profile` | S11 Profile Settings |
 | `/portfolio` | Redirects to `/switchboard?results=1` |
 
+**Test plans:** [docs/test-scenarios.md](docs/test-scenarios.md) (quick) · [docs/test-scenarios-release1.md](docs/test-scenarios-release1.md) (Journeys 1–10)
+
 ### Phase 2 — Airlock & Switchboard
 
 - `/login`, `/signup` — Supabase Auth (email + **Continue with Google**)
