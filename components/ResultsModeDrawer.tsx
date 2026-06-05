@@ -14,6 +14,7 @@ import { createClient } from "@/utils/supabase/client";
 type ResultsModeDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
+  vaultsLoading?: boolean;
   eligibleVaultIds: Set<string>;
   scopeVaultIds: Set<string>;
   onToggleScope: (vaultId: string) => void;
@@ -23,6 +24,7 @@ type ResultsModeDrawerProps = {
 export default function ResultsModeDrawer({
   isOpen,
   onClose,
+  vaultsLoading = false,
   eligibleVaultIds,
   scopeVaultIds,
   onToggleScope,
@@ -114,7 +116,7 @@ export default function ResultsModeDrawer({
           </div>
         </div>
 
-        {loading ? (
+        {loading || vaultsLoading ? (
           <p className="p-6 font-data text-xs text-obsidian/40 text-center">
             Loading…
           </p>

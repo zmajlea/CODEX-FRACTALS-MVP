@@ -27,6 +27,10 @@ Creates (or reuses) a dedicated test account and vault:
 | Vault key | `Journey1VaultKey!` |
 | Sealed pulse | title **Effective Date** (recall test) |
 | Unsealed pulse | title **Renewal Date** (seal test) |
+| Vault 2 name | `Journey3 Second Record` |
+| Vault 2 ID | `9c726bd9-c3a3-4fd7-b84a-2c8f29df6994` |
+| Vault 2 key | `Journey3VaultKey!` |
+| Vault 2 pulse | **Closing Date** (Results Mode / Journey 3) |
 
 ### 1. Auth
 
@@ -143,6 +147,18 @@ Browser-test Journey 1 on http://localhost:14000 using docs/test-scenarios.md.
 If blocked at login or vault key, report what's needed.
 Fix failures and re-test until Journey 1 steps 1–7 pass or document blockers.
 ```
+
+---
+
+## Browser test log (2026-06-05)
+
+| Journey | Status | Notes |
+|---------|--------|-------|
+| 1 — Query → Seal → Recall | **PASS** | Seal Renewal Date; recall Effective Date (Anchored); Enter-in-query fix verified |
+| 2 — Ingest → Extract | **PARTIAL** | Ingest UI + scan modes OK; extract empty-state OK; upload/Gemini blocked (no test PDF; Gemini 503 earlier) |
+| 3 — Results Mode | **PASS** | 2 vaults unlocked; timeline shows 3 Date pulses; Inspector sequestered to owning record; `/portfolio` → `?results=1` |
+
+**Dev server:** `npm run dev:14000` (or `npx next dev -p 14000`)
 
 ---
 

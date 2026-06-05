@@ -338,6 +338,7 @@ export default function SwitchboardPage() {
       <ResultsModeDrawer
         isOpen={resultsMode}
         onClose={() => setResultsMode(false)}
+        vaultsLoading={loading}
         eligibleVaultIds={unlockedIds}
         scopeVaultIds={scopeVaultIds}
         onToggleScope={toggleScopeVault}
