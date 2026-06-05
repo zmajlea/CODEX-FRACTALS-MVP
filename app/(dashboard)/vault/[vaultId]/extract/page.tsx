@@ -254,7 +254,7 @@ export default function VaultExtractPage() {
             href="/switchboard"
             className="font-data text-[10px] uppercase tracking-ultra text-obsidian/50 hover:text-obsidian"
           >
-            ← Switchboard
+            ΓåÉ Switchboard
           </Link>
           <h1 className="font-head text-2xl text-obsidian mt-2">
             Temporal Extraction Engine
@@ -271,7 +271,7 @@ export default function VaultExtractPage() {
         )}
 
         {loading ? (
-          <p className="font-data text-sm text-obsidian/40">Loading files…</p>
+          <p className="font-data text-sm text-obsidian/40">Loading filesΓÇª</p>
         ) : files.length === 0 ? (
           <p className="font-data text-sm text-obsidian/50">
             No encrypted files in this vault. Upload a PDF from the Switchboard first.
@@ -289,7 +289,7 @@ export default function VaultExtractPage() {
               >
                 {files.map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.id.slice(0, 8)}… · record {f.record_id.slice(0, 8)}…
+                    {f.id.slice(0, 8)}ΓÇª ┬╖ record {f.record_id.slice(0, 8)}ΓÇª
                   </option>
                 ))}
               </select>
@@ -301,7 +301,7 @@ export default function VaultExtractPage() {
               disabled={extracting || !selectedFile}
               className="font-data text-[10px] uppercase tracking-ultra bg-oxford text-vellum px-6 py-3 disabled:opacity-40"
             >
-              {extracting ? "Running Gemini…" : "Run extraction"}
+              {extracting ? "Running GeminiΓÇª" : "Run extraction"}
             </button>
 
             {suggestions.length > 0 && (

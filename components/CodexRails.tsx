@@ -5,9 +5,25 @@ type CodexRailsProps = {
   activeRecord: { name: string; id: string } | null;
   onSwitchRecord: () => void;
   onOpenSecurity: () => void;
+  onOpenInbox?: () => void;
+  onOpenIngestion?: () => void;
+  onOpenProfile?: () => void;
+  onOpenRecordSettings?: () => void;
+  onSignOut?: () => void;
+  inboxUnreadCount?: number;
 };
 
-export default function CodexRails({ activeRecord, onSwitchRecord, onOpenSecurity }: CodexRailsProps) {
+export default function CodexRails({
+  activeRecord,
+  onSwitchRecord,
+  onOpenSecurity,
+  onOpenInbox,
+  onOpenIngestion,
+  onOpenProfile,
+  onOpenRecordSettings,
+  onSignOut,
+  inboxUnreadCount = 0,
+}: CodexRailsProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   
@@ -33,7 +49,29 @@ export default function CodexRails({ activeRecord, onSwitchRecord, onOpenSecurit
             <div className="w-1.5 h-1.5 rounded-full bg-[#E67E50]"></div>
             {activeRecord ? activeRecord.name : 'Record'}
           </button>
-          <button className="text-sm font-data uppercase tracking-widest hover:opacity-70 transition-opacity">Settings</button>
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="text-sm font-data uppercase tracking-widest hover:opacity-70 transition-opacity"
+          >
+            Profile
+          </button>
+          {activeRecord && (
+            <button
+              type="button"
+              onClick={onOpenRecordSettings}
+              className="text-sm font-data uppercase tracking-widest hover:opacity-70 transition-opacity"
+            >
+              Record Settings
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="font-data text-[10px] uppercase tracking-ultra text-obsidian/50 hover:text-obsidian transition-opacity"
+          >
+            Sign out
+          </button>
         </div>
       </header>
 
@@ -60,9 +98,27 @@ export default function CodexRails({ activeRecord, onSwitchRecord, onOpenSecurit
           <span className={"font-data text-xs uppercase tracking-widest whitespace-nowrap transition-opacity duration-300 " + (isExpanded ? "opacity-100" : "opacity-0")}>Audit Log</span>
         </button>
         
-        <button className="flex items-center gap-4 hover:opacity-70 transition-opacity w-full overflow-hidden" title="Ingestion Pipeline">
+        <button
+          type="button"
+          onClick={onOpenIngestion}
+          className="flex items-center gap-4 hover:opacity-70 transition-opacity w-full overflow-hidden"
+          title="Ingestion Pipeline"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-oxford min-w-[20px]"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           <span className={"font-data text-xs uppercase tracking-widest whitespace-nowrap transition-opacity duration-300 " + (isExpanded ? "opacity-100" : "opacity-0")}>Ingestion Pipeline</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenInbox}
+          className="flex items-center gap-4 hover:opacity-70 transition-opacity w-full overflow-hidden relative"
+          title="Inbox"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-oxford min-w-[20px]"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/></svg>
+          {inboxUnreadCount > 0 && (
+            <span className="absolute left-3 top-0 w-2 h-2 rounded-full bg-cinnabar" />
+          )}
+          <span className={"font-data text-xs uppercase tracking-widest whitespace-nowrap transition-opacity duration-300 " + (isExpanded ? "opacity-100" : "opacity-0")}>Inbox</span>
         </button>
 
         {/* PIN TOGGLE AT BOTTOM */}

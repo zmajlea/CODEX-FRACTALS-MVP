@@ -1,8 +1,7 @@
 "use client";
 
 import { clearVaultSessionKeys } from "@/lib/vault-session";
-import { getSiteUrl } from "@/lib/site-url";
-import { createClient } from "@/utils/supabase/client";
+import { getBrowserOrigin } from "@/lib/request-origin";
 
 export function clearAuthSessionStorage() {
   if (typeof window === "undefined") return;
@@ -16,28 +15,11 @@ export function clearAuthSessionStorage() {
   }
 }
 
-export async function signInWithGoogle(nextPath = "/switchboard") {
+/** Full-page navigation — server builds redirectTo from Vercel forwarded headers. */
+export function startGoogleSignIn(nextPath = "/switchboard") {
   clearAuthSessionStorage();
 
-  const supabase = createClient();
-  const origin =
-    typeof window !== "undefined"
-      ? getSiteUrl(window.location.origin)
-      : getSiteUrl();
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo,
-      queryParams: {
-        access_type: "offline",
-        prompt: "consent",
-      },
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  const origin = getBrowserOrigin();
+  const next = encodeURIComponent(nextPath);
+  window.location.assign(`${origin}/api/auth/google?next=${next}`);
 }

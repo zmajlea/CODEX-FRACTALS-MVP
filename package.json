@@ -13,7 +13,8 @@
     "db:verify": "node scripts/verify-schema.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz",
     "supabase": "supabase",
-    "supabase:login": "supabase login"
+    "supabase:login": "supabase login",
+    "auth:config:push": "supabase config push --yes"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

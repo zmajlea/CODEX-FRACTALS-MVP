@@ -35,7 +35,19 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — redirects to `/switchboard` when signed in.
+Open [http://localhost:14000](http://localhost:14000) — redirects to `/switchboard` when signed in.
+
+### Release 1 routes (`app/(dashboard)/`)
+
+| Route | Surface |
+|-------|---------|
+| `/switchboard` | S1 Gateway + Results Mode drawer |
+| `/vault/[vaultId]` | S3 Record Home (dual readouts) |
+| `/vault/[vaultId]/ingest` | S3A Ingestion Pipeline |
+| `/vault/[vaultId]/extract` | Temporal Extraction Engine |
+| `/vault/[vaultId]/settings` | S10 Record Settings |
+| `/profile` | S11 Profile Settings |
+| `/portfolio` | Redirects to `/switchboard?results=1` |
 
 ### Phase 2 — Airlock & Switchboard
 
@@ -56,10 +68,13 @@ Run migration: `supabase/migrations/20260530160000_temporal_objects_queryable.sq
 1. [Google Cloud Console](https://console.cloud.google.com/) → OAuth client (Web) → redirect URI:
    `https://tswdwmtrirdhtwqmsasz.supabase.co/auth/v1/callback`
 2. [Supabase → Auth → Providers → Google](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/providers) — paste Client ID + Secret
-3. [Supabase → Auth → URL Configuration](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/url-configuration):
-   - **Site URL:** `https://codex-fractals-mvp.vercel.app`
-   - **Redirect URLs:** `https://codex-fractals-mvp.vercel.app/**` and `http://localhost:14000/auth/callback`
-4. **Vercel → Environment Variables:** set `NEXT_PUBLIC_SITE_URL=https://codex-fractals-mvp.vercel.app` for Production (or remove it — the app uses the live request origin for OAuth). Do **not** leave `http://localhost:14000` on Production.
+3. **Auth URL config (CLI)** — from repo root after `supabase login` + link:
+   ```bash
+   npm run auth:config:push
+   ```
+   This reads `supabase/config.toml` (`[auth]` site_url + redirect URLs) and pushes to project `tswdwmtrirdhtwqmsasz`. Or use the [dashboard URL Configuration](https://supabase.com/dashboard/project/tswdwmtrirdhtwqmsasz/auth/url-configuration) instead.
+4. **Vercel → Environment Variables (Production):** remove `NEXT_PUBLIC_SITE_URL` or set it to `https://codex-fractals-mvp.vercel.app`. Never use `http://localhost:14000` in Production.
+5. Redeploy after changing env vars. Google sign-in uses `/api/auth/google` on the same host you opened (Vercel forwarded headers).
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

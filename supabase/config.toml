@@ -14,3 +14,23 @@ max_rows = 1000
 port = 54322
 shadow_port = 54320
 major_version = 17
+
+# Remote Auth config — push with: npm run auth:config:push
+[auth]
+site_url = "https://codex-fractals-mvp.vercel.app"
+additional_redirect_urls = [
+  "https://codex-fractals-mvp.vercel.app/**",
+  "https://codex-fractals-mvp.vercel.app/auth/callback",
+  "http://localhost:14000/**",
+  "http://localhost:14000/auth/callback",
+]
+
+# Preserve remote settings (config push applies the whole [auth] tree)
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

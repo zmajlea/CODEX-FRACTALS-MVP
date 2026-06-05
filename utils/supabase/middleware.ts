@@ -6,8 +6,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const AUTH_ROUTES = ["/login", "/signup"];
-const PUBLIC_AUTH_PATHS = ["/auth/callback"];
-const PROTECTED_PREFIXES = ["/switchboard", "/vault", "/portfolio"];
+const PUBLIC_AUTH_PATHS = ["/auth/callback", "/api/auth/google"];
+const PROTECTED_PREFIXES = ["/switchboard", "/vault", "/portfolio", "/profile"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

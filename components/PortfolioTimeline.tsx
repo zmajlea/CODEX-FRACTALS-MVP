@@ -6,6 +6,8 @@ type PortfolioTimelineProps = {
   objects: PortfolioTemporalObject[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  embedded?: boolean;
+  showNowMarker?: boolean;
 };
 
 function formatDisplayDate(dateStr: string | null): string {
@@ -23,12 +25,21 @@ export default function PortfolioTimeline({
   objects,
   activeId,
   onSelect,
+  embedded = false,
+  showNowMarker = false,
 }: PortfolioTimelineProps) {
   const decrypted = objects.filter((o) => !o.isLocked);
   const lockedCount = objects.length - decrypted.length;
 
+  const shellClass = embedded
+    ? "flex flex-col flex-1 min-h-0"
+    : "fixed top-16 left-0 bottom-0 w-80 z-20 border-r border-bone/40 bg-vellum/95 backdrop-blur-sm flex flex-col";
+
+  const nowIso = new Date().toISOString().slice(0, 10);
+
   return (
-    <aside className="fixed top-16 left-0 bottom-0 w-80 z-20 border-r border-bone/40 bg-vellum/95 backdrop-blur-sm flex flex-col">
+    <aside className={shellClass}>
+      {!embedded && (
       <div className="px-6 py-5 border-b border-bone/40">
         <p className="font-data text-[10px] uppercase tracking-ultra text-obsidian/40 mb-1">
           Portfolio Query
@@ -42,6 +53,7 @@ export default function PortfolioTimeline({
           {lockedCount > 0 ? ` · ${lockedCount} locked (grey)` : ""}
         </p>
       </div>
+      )}
 
       <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-6">
         {objects.length === 0 && (
@@ -52,6 +64,14 @@ export default function PortfolioTimeline({
         )}
 
         <ol className="relative border-l border-bone/60 ml-3">
+          {showNowMarker && (
+            <li className="relative pl-8 pb-6">
+              <span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-cinnabar border border-cinnabar" />
+              <div className="font-data text-[10px] uppercase tracking-ultra text-cinnabar font-bold">
+                Now · {nowIso}
+              </div>
+            </li>
+          )}
           {objects.map((obj, index) => {
             const isActive = activeId === obj.id;
             const isLocked = obj.isLocked;
@@ -98,14 +118,12 @@ export default function PortfolioTimeline({
                     </>
                   ) : (
                     <>
-                      <p className="font-head text-base text-obsidian leading-snug">
+                      <p className="font-head text-base text-obsidian leading-snug truncate">
                         {obj.title ?? "Untitled milestone"}
                       </p>
-                      {obj.body && (
-                        <p className="font-data text-[11px] text-obsidian/55 mt-1 truncate">
-                          {obj.body}
-                        </p>
-                      )}
+                      <p className="font-data text-[9px] uppercase tracking-widest text-obsidian/40 mt-1">
+                        {obj.category ?? "Date"}
+                      </p>
                     </>
                   )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithGoogle } from "@/lib/auth/oauth";
+import { startGoogleSignIn } from "@/lib/auth/oauth";
 
 type GoogleSignInButtonProps = {
   nextPath?: string;
@@ -17,11 +17,11 @@ export default function GoogleSignInButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleClick = async () => {
+  const handleClick = () => {
     setError(null);
     setLoading(true);
     try {
-      await signInWithGoogle(nextPath);
+      startGoogleSignIn(nextPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed");
       setLoading(false);

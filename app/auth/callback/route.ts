@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSiteUrl } from "@/lib/site-url";
+import { getRequestOrigin } from "@/lib/request-origin";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const siteUrl = getSiteUrl(origin);
+  const { searchParams } = new URL(request.url);
+  const siteUrl = getRequestOrigin(request);
   const code = searchParams.get("code");
   let next = searchParams.get("next") ?? "/switchboard";
 
