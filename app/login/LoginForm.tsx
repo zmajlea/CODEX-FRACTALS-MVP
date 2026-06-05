@@ -11,9 +11,13 @@ export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/switchboard";
-  const callbackError = searchParams.get("error");
 
   const [hashError, setHashError] = useState<string | null>(null);
+  const [callbackError, setCallbackError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCallbackError(searchParams.get("error"));
+  }, [searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
@@ -27,11 +31,13 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(callbackError);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (hashError && !callbackError) {
+    if (callbackError) {
+      setError(callbackError);
+    } else if (hashError) {
       setError(hashError);
     }
   }, [hashError, callbackError]);

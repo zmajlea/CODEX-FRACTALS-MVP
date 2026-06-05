@@ -115,6 +115,15 @@ export default function RecordHomePage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === "Enter" && focusedId && !inspectorOpen) {
         setInspectorOpen(true);
       }

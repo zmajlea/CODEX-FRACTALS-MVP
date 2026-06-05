@@ -12,6 +12,7 @@
     "db:query": "supabase db query --linked",
     "db:verify": "node scripts/verify-schema.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz",
+    "test:seed": "node scripts/seed-journey-test.mjs",
     "supabase": "supabase",
     "supabase:login": "supabase login",
     "auth:config:push": "supabase config push --yes"
