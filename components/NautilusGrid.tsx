@@ -42,10 +42,10 @@ export default function NautilusGrid({
   insetLeftClass = "left-80",
   insetRightClass = "right-0",
 }: NautilusGridProps) {
-  const { hubs, pulses, sealedPulseIds } = useMemo(
-    () => mapPortfolioToNautilus(objects),
-    [objects]
-  );
+  const { hubs, pulses, sealedPulseIds, totalPulseCount, displayedPulseCount } =
+    useMemo(() => mapPortfolioToNautilus(objects), [objects]);
+
+  const isSampled = totalPulseCount > displayedPulseCount;
 
   const [center, setCenter] = useState({ cx: 500, cy: 500 });
   const oldestYear =
@@ -115,6 +115,12 @@ export default function NautilusGrid({
           Nautilus.
         </div>
       ) : (
+        <>
+        {isSampled && (
+          <p className="absolute top-3 right-4 z-20 font-data text-[9px] uppercase tracking-ultra text-obsidian/40 bg-vellum/90 px-2 py-1 border border-bone/60">
+            Nautilus · {displayedPulseCount} of {totalPulseCount} pulses
+          </p>
+        )}
         <svg className="w-full h-full cursor-grab active:cursor-grabbing">
           <defs>
             <filter id="deboss-stamp" x="-20%" y="-20%" width="140%" height="140%">
@@ -339,6 +345,7 @@ export default function NautilusGrid({
             })}
           </g>
         </svg>
+        </>
       )}
     </div>
   );

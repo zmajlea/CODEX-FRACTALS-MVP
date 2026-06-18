@@ -5,11 +5,12 @@
  *   node scripts/seed-exakom-vault.mjs
  *   node scripts/seed-exakom-vault.mjs --upload-only
  *   node scripts/seed-exakom-vault.mjs --source "C:\path\to\Mailing EXAKOM"
+ *   node scripts/seed-exakom-vault.mjs --file "C:\path\to\extra.csv"
  */
 import { createClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { readFileSync, readdirSync, statSync } from "fs";
-import { join, resolve, dirname } from "path";
+import { basename, join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { loadEnvLocal } from "./load-env.mjs";
 import {
@@ -37,26 +38,59 @@ const KEY_VALIDATION_PREFIX = "CODEXONE_KEY_VALIDATION";
 
 const COMMERCIAL_LENS = `Extract companies, contacts, leads, follow-up actions, deal stages, pricing references, market segments (fotovoltaico, papeleras, smart building), and commercial deadlines. Prefer Entity objects for companies/contacts and Date objects for follow-ups and milestones.`;
 
+const EVENT_TYPES = [
+  "Signing", "Filing Due", "Reporting Due", "Renewal", "Amendment",
+  "Expiration", "Payment Due", "Commitment", "Decision", "Resolution",
+];
+
 const SYSTEM_PROMPT = `You are an expert commercial intelligence AI for EXAKOM business development.
 Extract specific milestones, risks, obligations, entities, and dates from CRM documents, lead lists, and commercial reports.
+
+LABEL RULES (CRITICAL):
+- Do NOT use document filenames or generic document titles as labels.
+- Each suggestion MUST include "eventType" and "qualifier" instead of a single title.
+- "eventType" MUST be exactly one of: ${EVENT_TYPES.join(", ")}.
+- "qualifier" is a short actionable fragment from the clause.
 
 CRITICAL RULE FOR DATES:
 If the category is "Date", format "body" as strict ISO-8601 YYYY-MM-DD.
 For non-Date categories, body MUST be an exact substring copied verbatim from the document.
 
 Return strict JSON:
-{ "suggestions": [{ "title": string, "category": "Date" | "Warning" | "Obligation" | "Entity", "body": string, "explanation": string }] }
+{ "suggestions": [{ "eventType": string, "qualifier": string, "category": "Date" | "Warning" | "Obligation" | "Entity", "body": string, "explanation": string }] }
 Prefer high-signal items (max ~15 per document).`;
 
 function parseArgs() {
   const args = process.argv.slice(2);
   const uploadOnly = args.includes("--upload-only");
   let source = DEFAULT_SOURCE;
-  const sourceIdx = args.indexOf("--source");
-  if (sourceIdx !== -1 && args[sourceIdx + 1]) {
-    source = args[sourceIdx + 1];
+  const extraFiles = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--source" && args[i + 1]) {
+      source = args[i + 1];
+      i += 1;
+    } else if (args[i] === "--file" && args[i + 1]) {
+      extraFiles.push(resolve(args[i + 1]));
+      i += 1;
+    }
   }
-  return { uploadOnly, source: resolve(source) };
+  return { uploadOnly, source: resolve(source), extraFiles };
+}
+
+function resolveFileEntries(source, extraFiles) {
+  if (extraFiles.length > 0) {
+    return extraFiles.map((filePath) => {
+      const fileName = basename(filePath);
+      if (shouldSkipFileName(fileName) || !getFormatForFileName(fileName)) {
+        throw new Error(`Unsupported or skipped file: ${filePath}`);
+      }
+      return { fileName, filePath };
+    });
+  }
+  return listSourceFiles(source).map((fileName) => ({
+    fileName,
+    filePath: join(source, fileName),
+  }));
 }
 
 async function encryptStringWithPassword(plaintext, password) {
@@ -331,16 +365,21 @@ async function sealSuggestions(supabase, userId, vaultId, recordId, fileId, vaul
   let saved = 0;
   for (const s of suggestions) {
     const body = (s.body ?? s.exactQuote ?? "").trim();
-    if (!s.title || !body || !s.explanation) continue;
+    const eventType = (s.eventType ?? "Decision").trim();
+    const qualifier = (s.qualifier ?? s.title ?? "").trim();
+    if (!qualifier || !body || !s.explanation) continue;
+    const composedTitle = `${eventType} - ${qualifier}`;
     const category = s.category ?? "Other";
-    const parsedDate = inferParsedDate(category, s.title, body, s.parsedDate);
+    const parsedDate = inferParsedDate(category, composedTitle, body, s.parsedDate);
     const row = {
       vault_id: vaultId,
       record_id: recordId,
       file_id: fileId,
       created_by: userId,
       kind: categoryToKind(category),
-      title_ciphertext: await encryptStringWithPassword(s.title.trim(), vaultKey),
+      title_ciphertext: await encryptStringWithPassword(composedTitle, vaultKey),
+      qualifier_ciphertext: await encryptStringWithPassword(qualifier, vaultKey),
+      event_type: eventType,
       body_ciphertext: await encryptStringWithPassword(body, vaultKey),
       explanation_ciphertext: await encryptStringWithPassword(s.explanation.trim(), vaultKey),
       category,
@@ -351,14 +390,14 @@ async function sealSuggestions(supabase, userId, vaultId, recordId, fileId, vaul
       verified_by: userId,
     };
     const { error } = await supabase.from("temporal_objects").insert(row);
-    if (error) throw new Error(`${s.title}: ${error.message}`);
+    if (error) throw new Error(`${composedTitle}: ${error.message}`);
     saved += 1;
   }
   return saved;
 }
 
 async function main() {
-  const { uploadOnly, source } = parseArgs();
+  const { uploadOnly, source, extraFiles } = parseArgs();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -372,12 +411,16 @@ async function main() {
     process.exit(1);
   }
 
-  const sourceFiles = listSourceFiles(source);
-  if (sourceFiles.length === 0) {
-    console.error("No supported files in", source);
+  const fileEntries = resolveFileEntries(source, extraFiles);
+  if (fileEntries.length === 0) {
+    console.error("No supported files to process");
     process.exit(1);
   }
-  console.log(`Source: ${source} (${sourceFiles.length} files)`);
+  if (extraFiles.length > 0) {
+    console.log(`Adding ${fileEntries.length} file(s) to ${VAULT_NAME}`);
+  } else {
+    console.log(`Source: ${source} (${fileEntries.length} files)`);
+  }
 
   const supabase = createClient(url, anon);
   const { data: auth, error: signInError } = await supabase.auth.signInWithPassword({
@@ -396,10 +439,10 @@ async function main() {
   const existingNames = await listExistingFileNames(supabase, vaultId, VAULT_KEY);
 
   const uploaded = [];
-  for (const fileName of sourceFiles) {
+  for (const { fileName, filePath } of fileEntries) {
     if (existingNames.has(fileName)) {
       console.log("  Skip (exists):", fileName);
-      uploaded.push({ fileName, fileId: existingNames.get(fileName) });
+      uploaded.push({ fileName, fileId: existingNames.get(fileName), filePath });
       continue;
     }
     const fileId = await uploadFile(
@@ -408,10 +451,10 @@ async function main() {
       vaultId,
       recordId,
       VAULT_KEY,
-      join(source, fileName),
+      filePath,
       fileName
     );
-    uploaded.push({ fileName, fileId });
+    uploaded.push({ fileName, fileId, filePath });
   }
 
   if (uploadOnly) {
@@ -422,14 +465,14 @@ async function main() {
   const genAI = new GoogleGenerativeAI(geminiKey);
   let totalSealed = 0;
 
-  for (const { fileName, fileId } of uploaded) {
+  for (const { fileName, fileId, filePath } of uploaded) {
     if (await fileHasPulses(supabase, fileId)) {
       console.log("  Skip extract (has pulses):", fileName);
       continue;
     }
     console.log("  Extracting:", fileName);
     try {
-      const text = await extractTextFromPath(join(source, fileName), fileName);
+      const text = await extractTextFromPath(filePath, fileName);
       const rawSuggestions = await runGeminiExtract(genAI, text, fileName);
       const saved = await sealSuggestions(
         supabase,

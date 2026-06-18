@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { mapInBatches } from "@/lib/async/map-in-batches";
 import { decryptStringWithPassword } from "@/lib/encryption";
 import { getVaultSessionKey } from "@/lib/vault-session";
 
@@ -25,20 +26,20 @@ export async function loadDecryptedFileNames(
   const sessionKey = getVaultSessionKey(vaultId);
   if (!sessionKey) return {};
 
-  const names: Record<string, string> = {};
-  for (const file of files) {
+  const entries = await mapInBatches(files, 50, async (file) => {
     if (!file.file_name_ciphertext) {
-      names[file.id] = file.id.slice(0, 8);
-      continue;
+      return [file.id, file.id.slice(0, 8)] as const;
     }
     try {
-      names[file.id] = await decryptStringWithPassword(
+      const name = await decryptStringWithPassword(
         file.file_name_ciphertext,
         sessionKey
       );
+      return [file.id, name] as const;
     } catch {
-      names[file.id] = file.id.slice(0, 8);
+      return [file.id, file.id.slice(0, 8)] as const;
     }
-  }
-  return names;
+  });
+
+  return Object.fromEntries(entries);
 }

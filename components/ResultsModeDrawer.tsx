@@ -140,8 +140,10 @@ export default function ResultsModeDrawer({
             id: selected.id,
             date: selected.parsedDate ?? "",
             sourceDoc: selected.fileLabel ?? selected.vaultName,
-            clauseRaw: selected.title ?? "",
+            clauseRaw: (selected.composedLabel || selected.title) ?? "",
             clauseContextFull: selected.body ?? "",
+            eventType: selected.eventType ?? "",
+            qualifier: selected.qualifier ?? "",
           }}
           recordName={selected.vaultName}
           recordId={selected.recordId}

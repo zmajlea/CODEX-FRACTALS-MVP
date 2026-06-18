@@ -1,6 +1,7 @@
 "use client";
 
 import type { PortfolioTemporalObject } from "@/lib/temporal/portfolio-fetch";
+import { composeLabel } from "@/lib/temporal/event-types";
 
 type PortfolioTimelineProps = {
   objects: PortfolioTemporalObject[];
@@ -19,6 +20,13 @@ function formatDisplayDate(dateStr: string | null): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function displayLabel(obj: PortfolioTemporalObject): string {
+  if (obj.eventType && obj.qualifier) {
+    return composeLabel(obj.eventType, obj.qualifier);
+  }
+  return obj.composedLabel || obj.title || "Untitled milestone";
 }
 
 export default function PortfolioTimeline({
@@ -40,19 +48,19 @@ export default function PortfolioTimeline({
   return (
     <aside className={shellClass}>
       {!embedded && (
-      <div className="px-6 py-5 border-b border-bone/40">
-        <p className="font-data text-[10px] uppercase tracking-ultra text-obsidian/40 mb-1">
-          Portfolio Query
-        </p>
-        <h2 className="font-head text-xl text-obsidian tracking-wide">
-          Date Timeline
-        </h2>
-        <p className="font-data text-[10px] text-obsidian/50 mt-2 leading-relaxed">
-          {decrypted.length} decrypted milestone
-          {decrypted.length === 1 ? "" : "s"} across your vaults
-          {lockedCount > 0 ? ` · ${lockedCount} locked (grey)` : ""}
-        </p>
-      </div>
+        <div className="px-6 py-5 border-b border-bone/40">
+          <p className="font-data text-[10px] uppercase tracking-ultra text-obsidian/40 mb-1">
+            Portfolio Query
+          </p>
+          <h2 className="font-head text-xl text-obsidian tracking-wide">
+            Date Timeline
+          </h2>
+          <p className="font-data text-[10px] text-obsidian/50 mt-2 leading-relaxed">
+            {decrypted.length} decrypted milestone
+            {decrypted.length === 1 ? "" : "s"} across your vaults
+            {lockedCount > 0 ? ` · ${lockedCount} locked (grey)` : ""}
+          </p>
+        </div>
       )}
 
       <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-6">
@@ -75,6 +83,7 @@ export default function PortfolioTimeline({
           {objects.map((obj, index) => {
             const isActive = activeId === obj.id;
             const isLocked = obj.isLocked;
+            const isSealed = obj.isSealed;
 
             return (
               <li key={obj.id} className="relative pl-8 pb-10 last:pb-0">
@@ -83,9 +92,9 @@ export default function PortfolioTimeline({
                     "absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full border " +
                     (isLocked
                       ? "bg-bone/60 border-bone"
-                      : obj.isSealed
-                        ? "bg-emerald/20 border-emerald pulse-emerald"
-                        : "bg-amber/30 border-amber pulse-amber")
+                      : isSealed
+                        ? "bg-bone border-bone"
+                        : "bg-amber border-amber pulse-amber")
                   }
                   aria-hidden
                 />
@@ -96,7 +105,7 @@ export default function PortfolioTimeline({
                   className={
                     "w-full text-left transition-all duration-300 rounded-premium border px-4 py-3 " +
                     (isActive
-                      ? "border-emerald/40 bg-emerald/5 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.08)]"
+                      ? "border-cinnabar bg-cinnabar/5 shadow-[inset_0_0_0_1px_rgba(230,126,80,0.12)]"
                       : "border-bone/30 bg-vellum hover:border-bone/60 hover:bg-bone/5")
                   }
                 >
@@ -119,10 +128,10 @@ export default function PortfolioTimeline({
                   ) : (
                     <>
                       <p className="font-head text-base text-obsidian leading-snug truncate">
-                        {obj.title ?? "Untitled milestone"}
+                        {displayLabel(obj)}
                       </p>
                       <p className="font-data text-[9px] uppercase tracking-widest text-obsidian/40 mt-1">
-                        {obj.category ?? "Date"}
+                        {obj.eventType || obj.category || "Date"}
                       </p>
                     </>
                   )}

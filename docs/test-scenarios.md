@@ -160,7 +160,10 @@ Seed vault with CRM/leads files from the EXAKOM mailing folder:
 cd c:\CODEX_FACTALS\CODEX-FRACTALS-MVP
 npm run test:seed:exakom          # upload + Gemini extract + seal
 npm run test:seed:exakom:upload   # upload only (no API calls)
+node scripts/seed-exakom-vault.mjs --file "..\testdocs\test_acciones_log_2021_2026.csv"
 ```
+
+Extra fixture: `testdocs/test_acciones_log_2021_2026.csv` (synthetic EXAKOM CRM actions 2021–2026).
 
 | Field | Value |
 |-------|-------|

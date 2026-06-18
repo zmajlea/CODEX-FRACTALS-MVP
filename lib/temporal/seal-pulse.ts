@@ -2,12 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { encryptStringWithPassword } from "@/lib/encryption";
 import { getVaultSessionKey } from "@/lib/vault-session";
+import { composeLabel } from "@/lib/temporal/event-types";
 
 export type SealPulseInput = {
   pulseId: string;
   vaultId: string;
   recordId: string;
-  title: string;
+  eventType: string;
+  qualifier: string;
   body: string;
   explanation?: string;
   category?: string;
@@ -28,8 +30,13 @@ export async function sealPulse(
   } = await supabase.auth.getUser();
 
   const sealedAt = new Date().toISOString();
+  const composedTitle = composeLabel(input.eventType, input.qualifier);
   const title_ciphertext = await encryptStringWithPassword(
-    input.title,
+    composedTitle,
+    sessionKey
+  );
+  const qualifier_ciphertext = await encryptStringWithPassword(
+    input.qualifier,
     sessionKey
   );
   const body_ciphertext = await encryptStringWithPassword(
@@ -44,6 +51,8 @@ export async function sealPulse(
     .from("temporal_objects")
     .update({
       title_ciphertext,
+      qualifier_ciphertext,
+      event_type: input.eventType,
       body_ciphertext,
       explanation_ciphertext,
       category: input.category ?? null,

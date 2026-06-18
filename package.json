@@ -16,6 +16,7 @@
     "test:seed": "node scripts/seed-journey-test.mjs",
     "test:seed:exakom": "node scripts/seed-exakom-vault.mjs",
     "test:seed:exakom:upload": "node scripts/seed-exakom-vault.mjs --upload-only",
+    "test:seed:exakom:file": "node scripts/seed-exakom-vault.mjs --file",
     "supabase": "supabase",
     "supabase:login": "supabase login",
     "auth:config:push": "supabase config push --yes"

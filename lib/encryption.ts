@@ -74,5 +74,9 @@ export async function setVaultEncryptionKeyTest(
   }
 }
 
-export { encryptStringWithPassword, decryptStringWithPassword } from "./encryption-core";
+export {
+  encryptStringWithPassword,
+  decryptStringWithPassword,
+  clearDerivedKeyCache,
+} from "./encryption-core";
 export { encryptFileBlob, decryptFileBlob } from "./encryption-core";

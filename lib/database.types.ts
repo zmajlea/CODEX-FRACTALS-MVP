@@ -289,6 +289,8 @@ export interface Database {
           explanation_ciphertext: string | null;
           category: string | null;
           parsed_date: string | null;
+          event_type: string | null;
+          qualifier_ciphertext: string | null;
           lens_id: string | null;
           page_number: number | null;
           start_offset: number | null;
@@ -312,6 +314,8 @@ export interface Database {
           explanation_ciphertext?: string | null;
           category?: string | null;
           parsed_date?: string | null;
+          event_type?: string | null;
+          qualifier_ciphertext?: string | null;
           lens_id?: string | null;
           page_number?: number | null;
           start_offset?: number | null;
@@ -335,6 +339,8 @@ export interface Database {
           explanation_ciphertext?: string | null;
           category?: string | null;
           parsed_date?: string | null;
+          event_type?: string | null;
+          qualifier_ciphertext?: string | null;
           lens_id?: string | null;
           page_number?: number | null;
           start_offset?: number | null;

@@ -7,6 +7,10 @@ import {
   type IntelligenceLensId,
 } from "@/lib/intelligence-lenses";
 import type { TriageSuggestion } from "@/lib/temporal/seal-batch";
+import PulseLabelFields, {
+  isPulseLabelValid,
+} from "@/components/PulseLabelFields";
+import { composeLabel } from "@/lib/temporal/event-types";
 
 type SealPhase = "idle" | "review" | "signing" | "success";
 
@@ -24,7 +28,16 @@ type TriageInspectorOverlayProps = {
   onUpdateSuggestion: (
     id: string,
     patch: Partial<
-      Pick<TriageSuggestion, "title" | "body" | "category" | "explanation" | "parsedDate">
+      Pick<
+        TriageSuggestion,
+        | "eventType"
+        | "qualifier"
+        | "title"
+        | "body"
+        | "category"
+        | "explanation"
+        | "parsedDate"
+      >
     >
   ) => void;
   onRemoveSuggestion: (id: string) => void;
@@ -65,6 +78,10 @@ export default function TriageInspectorOverlay({
 
   const active =
     suggestions.find((s) => s.id === activeSuggestionId) ?? suggestions[0] ?? null;
+
+  const allLabelsValid =
+    suggestions.length > 0 &&
+    suggestions.every((s) => isPulseLabelValid(s.eventType, s.qualifier));
 
   useEffect(() => {
     if (!isOpen) {
@@ -145,6 +162,7 @@ export default function TriageInspectorOverlay({
               onClick={handleReviewAndSeal}
               disabled={
                 suggestions.length === 0 ||
+                !allLabelsValid ||
                 isSigning ||
                 sealPhase === "success" ||
                 showReviewPanel
@@ -267,10 +285,10 @@ export default function TriageInspectorOverlay({
                         ].join(" ")}
                       >
                         <div className="font-head text-sm text-obsidian truncate">
-                          {s.title}
+                          {s.title || composeLabel(s.eventType, s.qualifier)}
                         </div>
                         <div className="font-data text-[10px] text-obsidian/50 uppercase mt-1">
-                          {s.category}
+                          {s.eventType || s.category}
                           {s.parsedDate ? ` · ${s.parsedDate}` : ""}
                         </div>
                       </button>
@@ -282,18 +300,22 @@ export default function TriageInspectorOverlay({
               <div className="flex-1 overflow-y-auto p-6">
                 {active ? (
                   <div className="space-y-5">
-                    <div>
-                      <label className="font-data text-[10px] uppercase tracking-ultra text-oxford">
-                        Title
-                      </label>
-                      <input
-                        value={active.title}
-                        onChange={(e) =>
-                          onUpdateSuggestion(active.id, { title: e.target.value })
-                        }
-                        className="mt-1 w-full border-b border-bone bg-transparent py-2 font-head text-lg outline-none focus:border-oxford"
-                      />
-                    </div>
+                    <PulseLabelFields
+                      eventType={active.eventType}
+                      qualifier={active.qualifier}
+                      onEventTypeChange={(eventType) =>
+                        onUpdateSuggestion(active.id, {
+                          eventType,
+                          title: composeLabel(eventType, active.qualifier),
+                        })
+                      }
+                      onQualifierChange={(qualifier) =>
+                        onUpdateSuggestion(active.id, {
+                          qualifier,
+                          title: composeLabel(active.eventType, qualifier),
+                        })
+                      }
+                    />
                     <div>
                       <label className="font-data text-[10px] uppercase tracking-ultra text-oxford">
                         Anchor date
@@ -411,7 +433,7 @@ export default function TriageInspectorOverlay({
                 <button
                   type="button"
                   onClick={() => void handleConfirmSeal()}
-                  disabled={isSigning}
+                  disabled={isSigning || !allLabelsValid}
                   className="font-data text-[10px] uppercase tracking-ultra bg-cinnabar text-vellum px-5 py-2.5 hover:bg-cinnabar/90 disabled:opacity-50 flex items-center gap-2"
                 >
                   {isSigning ? (

@@ -7,12 +7,16 @@ import {
   inferParsedDate,
 } from "@/lib/temporal/parse-date";
 import type { IntelligenceLensId } from "@/lib/intelligence-lenses";
+import { composeLabel } from "@/lib/temporal/event-types";
 
 export type TriageSuggestion = {
   id: string;
   fileId: string;
   recordId: string;
   vaultId: string;
+  eventType: string;
+  qualifier: string;
+  /** Derived composed label for display; persisted as title_ciphertext on seal. */
   title: string;
   body: string;
   category: string;
@@ -39,8 +43,9 @@ export async function sealTemporalBatch(
 
   let saved = 0;
   for (const s of suggestions) {
+    const composedTitle = composeLabel(s.eventType, s.qualifier);
     const parsedDate =
-      inferParsedDate(s.category, s.title, s.body, s.parsedDate) ?? null;
+      inferParsedDate(s.category, composedTitle, s.body, s.parsedDate) ?? null;
 
     const row = {
       vault_id: s.vaultId,
@@ -48,7 +53,12 @@ export async function sealTemporalBatch(
       file_id: s.fileId,
       created_by: user?.id ?? null,
       kind: categoryToKind(s.category),
-      title_ciphertext: await encryptStringWithPassword(s.title, sessionKey),
+      title_ciphertext: await encryptStringWithPassword(composedTitle, sessionKey),
+      qualifier_ciphertext: await encryptStringWithPassword(
+        s.qualifier,
+        sessionKey
+      ),
+      event_type: s.eventType,
       body_ciphertext: await encryptStringWithPassword(s.body, sessionKey),
       explanation_ciphertext: await encryptStringWithPassword(
         s.explanation,

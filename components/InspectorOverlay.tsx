@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from "react";
+import PulseLabelFields, {
+  isPulseLabelValid,
+} from "@/components/PulseLabelFields";
 
 type EvidenceMode = "clean" | "original" | "history";
 
@@ -13,7 +16,10 @@ type InspectorProps = {
     sourceDoc: string;
     clauseRaw: string;
     clauseContextFull: string;
+    eventType?: string;
+    qualifier?: string;
   };
+  onLabelChange?: (patch: { eventType: string; qualifier: string }) => void;
   recordName?: string;
   recordId?: string;
   isAlreadySealed?: boolean;
@@ -31,6 +37,7 @@ export default function InspectorOverlay({
   onClose,
   onSeal,
   pulseData,
+  onLabelChange,
   recordName,
   recordId,
   isAlreadySealed,
@@ -58,10 +65,15 @@ export default function InspectorOverlay({
 
   if (!isOpen) return null;
 
+  const eventType = pulseData?.eventType ?? "";
+  const qualifier = pulseData?.qualifier ?? "";
+  const labelValid = isPulseLabelValid(eventType, qualifier);
+
   const canSeal =
     !readOnly &&
     !isAlreadySealed &&
     !isSealed &&
+    labelValid &&
     (hasEvidence ? Boolean(pdfUrl) : true);
 
   const handleSealClick = async () => {
@@ -226,12 +238,26 @@ export default function InspectorOverlay({
                   </div>
                 </div>
                 <div>
-                  <label className="font-data text-xs text-oxford uppercase tracking-widest font-bold">
-                    Title
-                  </label>
-                  <div className="font-data text-sm mt-2 border-b border-dashed border-bone pb-1">
-                    {pulseData?.clauseRaw || "—"}
-                  </div>
+                  {readOnly || isAlreadySealed ? (
+                    <PulseLabelFields
+                      eventType={eventType}
+                      qualifier={qualifier}
+                      onEventTypeChange={() => {}}
+                      onQualifierChange={() => {}}
+                      readOnly
+                    />
+                  ) : (
+                    <PulseLabelFields
+                      eventType={eventType}
+                      qualifier={qualifier}
+                      onEventTypeChange={(value) =>
+                        onLabelChange?.({ eventType: value, qualifier })
+                      }
+                      onQualifierChange={(value) =>
+                        onLabelChange?.({ eventType, qualifier: value })
+                      }
+                    />
+                  )}
                 </div>
                 <p className="font-data text-[10px] text-obsidian/40 uppercase tracking-widest">
                   Provenance: {pulseData?.sourceDoc} · {recordName}
@@ -266,7 +292,7 @@ export default function InspectorOverlay({
                     ? "Sealing…"
                     : isAlreadySealed || isSealed
                       ? "Anchored"
-                      : "Seal Pulse"}
+                      : "Seal Record"}
                 </button>
                 {(isSealed || isAlreadySealed) && (
                   <p className="mt-4 font-data text-[10px] text-oxford uppercase text-center">

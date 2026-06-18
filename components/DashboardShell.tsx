@@ -8,6 +8,7 @@ import NoiseOverlay from "@/components/NoiseOverlay";
 import SecurityDashboard from "@/components/SecurityDashboard";
 import InboxPanel from "@/components/InboxPanel";
 import { clearAuthSessionStorage } from "@/lib/auth/oauth";
+import { clearDerivedKeyCache } from "@/lib/encryption";
 import { useActiveVault } from "@/lib/context/active-vault";
 import { useOverlayStack } from "@/lib/context/overlay-stack";
 import { createClient } from "@/utils/supabase/client";
@@ -25,6 +26,7 @@ function DashboardShellInner({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     clearAuthSessionStorage();
+    clearDerivedKeyCache();
     setActiveVault(null);
     await supabase.auth.signOut();
     router.push("/login");

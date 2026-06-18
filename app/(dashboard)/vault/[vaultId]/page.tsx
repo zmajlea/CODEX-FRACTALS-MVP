@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import NautilusGrid from "@/components/NautilusGrid";
+import PortfolioTimeline from "@/components/PortfolioTimeline";
 import RecordLedger from "@/components/RecordLedger";
 import QueryInterface from "@/components/QueryInterface";
 import InspectorOverlay from "@/components/InspectorOverlay";
@@ -14,10 +14,14 @@ import FullScanQueue, { type FullScanRow } from "@/components/FullScanQueue";
 import { useActiveVault } from "@/lib/context/active-vault";
 import { useFocus } from "@/lib/context/focus";
 import { useOverlayStack } from "@/lib/context/overlay-stack";
-import { fetchVaultTemporalObjects } from "@/lib/temporal/record-fetch";
-import { runRecordQuery, type QueryRunState } from "@/lib/temporal/record-query";
+import {
+  fetchVaultTemporalObjectsProgressive,
+  hydrateTemporalObjectDetails,
+} from "@/lib/temporal/record-fetch";
+import { applyVaultQueryView } from "@/lib/temporal/record-query";
 import { sealPulse } from "@/lib/temporal/seal-pulse";
 import type { PortfolioTemporalObject } from "@/lib/temporal/portfolio-fetch";
+import { composeLabel } from "@/lib/temporal/event-types";
 import { downloadDecryptedFileBlob } from "@/lib/files/download-decrypted-file";
 import {
   getVaultSessionKey,
@@ -47,15 +51,20 @@ export default function RecordHomePage() {
 
   const [vaultName, setVaultName] = useState("Record");
   const [objects, setObjects] = useState<PortfolioTemporalObject[]>([]);
-  const [displayObjects, setDisplayObjects] = useState<PortfolioTemporalObject[]>(
-    []
-  );
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState<{
+    loaded: number;
+    total: number;
+  } | null>(null);
+  const [inspectorPulse, setInspectorPulse] =
+    useState<PortfolioTemporalObject | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [pendingVault, setPendingVault] = useState<VaultSummary | null>(null);
-  const [queryState, setQueryState] = useState<QueryRunState>({ status: "idle" });
-  const [pulseCoords, setPulseCoords] = useState<{ x: number; y: number } | null>(
-    null
-  );
+  const [filterQuery, setFilterQuery] = useState("");
+  const [labelDraft, setLabelDraft] = useState<{
+    eventType: string;
+    qualifier: string;
+  }>({ eventType: "", qualifier: "" });
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -63,7 +72,15 @@ export default function RecordHomePage() {
   const [fullScanRows, setFullScanRows] = useState<FullScanRow[]>([]);
   const pdfRef = useRef<string | null>(null);
 
-  const selected = displayObjects.find((o) => o.id === focusedId) ?? null;
+  const displayObjects = useMemo(
+    () => applyVaultQueryView(objects, filterQuery),
+    [objects, filterQuery]
+  );
+
+  const selected =
+    displayObjects.find((o) => o.id === focusedId) ??
+    objects.find((o) => o.id === focusedId) ??
+    null;
 
   const loadVault = useCallback(async () => {
     const { data: vault } = await supabase
@@ -88,13 +105,39 @@ export default function RecordHomePage() {
       }
     }
     startHandshake();
-    const objs = await fetchVaultTemporalObjects(supabase, vaultId, vault?.name ?? "Record");
-    setObjects(objs);
-    setDisplayObjects(objs);
+    setObjects([]);
+    setLoadProgress(null);
+
+    let firstBatch = true;
+    let accumulatedIds: string[] = [];
+    const objs = await fetchVaultTemporalObjectsProgressive(
+      supabase,
+      vaultId,
+      vault?.name ?? "Record",
+      (batch, progress) => {
+        setObjects((prev) => [...prev, ...batch]);
+        accumulatedIds = [...accumulatedIds, ...batch.map((o) => o.id)];
+        setLoadProgress({ loaded: progress.loaded, total: progress.total });
+        if (firstBatch) {
+          firstBatch = false;
+          setOrderedIds(accumulatedIds);
+          setFocusedId(
+            batch.find((o) => o.isSealed)?.id ?? batch[0]?.id ?? null
+          );
+          setLoading(false);
+          completeHandshake();
+        } else {
+          setOrderedIds(accumulatedIds);
+        }
+      }
+    );
+
+    if (objs.length === 0) {
+      setLoading(false);
+      completeHandshake();
+    }
     setOrderedIds(objs.map((o) => o.id));
-    setFocusedId(objs.find((o) => o.isSealed)?.id ?? objs[0]?.id ?? null);
-    setLoading(false);
-    completeHandshake();
+    setLoadProgress(null);
   }, [
     supabase,
     vaultId,
@@ -114,6 +157,10 @@ export default function RecordHomePage() {
   }, [loadVault, registerKeyboard]);
 
   useEffect(() => {
+    setOrderedIds(displayObjects.map((o) => o.id));
+  }, [displayObjects, setOrderedIds]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target;
       if (
@@ -131,6 +178,38 @@ export default function RecordHomePage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [focusedId, inspectorOpen]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setLabelDraft({
+      eventType: selected.eventType ?? "",
+      qualifier: selected.qualifier ?? "",
+    });
+  }, [selected?.id, selected?.eventType, selected?.qualifier]);
+
+  useEffect(() => {
+    if (!inspectorOpen || !selected) {
+      setInspectorPulse(null);
+      return;
+    }
+    if (selected.detailsLoaded) {
+      setInspectorPulse(selected);
+      return;
+    }
+    let cancelled = false;
+    setDetailsLoading(true);
+    void hydrateTemporalObjectDetails(selected).then((hydrated) => {
+      if (cancelled) return;
+      setInspectorPulse(hydrated);
+      setDetailsLoading(false);
+      const merge = (list: PortfolioTemporalObject[]) =>
+        list.map((o) => (o.id === hydrated.id ? hydrated : o));
+      setObjects(merge);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [inspectorOpen, selected?.id, selected?.detailsLoaded]);
 
   useEffect(() => {
     if (!selected?.fileId || !inspectorOpen) {
@@ -170,33 +249,40 @@ export default function RecordHomePage() {
       .finally(() => setPdfLoading(false));
   }, [selected, inspectorOpen, supabase, vaultId]);
 
-  const handleQuery = async (query: string) => {
-    setQueryState({ status: "running" });
-    setQueryState({ status: "identifying" });
-    const result = await runRecordQuery(supabase, vaultId, vaultName, query);
-    setQueryState(result);
-    if (result.status === "completed") {
-      const merged = [
-        ...objects.filter((o) => o.isSealed),
-        ...result.candidates.filter((c) => !c.isSealed),
-      ];
-      setDisplayObjects(merged);
-      setOrderedIds(merged.map((o) => o.id));
-      if (result.candidates[0]) setFocusedId(result.candidates[0].id);
-    }
+  const patchSelectedLabel = (patch: { eventType: string; qualifier: string }) => {
+    setLabelDraft(patch);
+    if (!selected) return;
+    const composedLabel = composeLabel(patch.eventType, patch.qualifier);
+    const merge = (list: PortfolioTemporalObject[]) =>
+      list.map((o) =>
+        o.id === selected.id
+          ? {
+              ...o,
+              eventType: patch.eventType,
+              qualifier: patch.qualifier,
+              composedLabel,
+              title: composedLabel,
+            }
+          : o
+      );
+    setObjects(merge);
   };
 
   const handleSeal = async () => {
     if (!selected || selected.isLocked) return;
+    const pulse = selected.detailsLoaded
+      ? selected
+      : await hydrateTemporalObjectDetails(selected);
     await sealPulse(supabase, {
-      pulseId: selected.id,
+      pulseId: pulse.id,
       vaultId,
-      recordId: selected.recordId,
-      title: selected.title ?? "Untitled",
-      body: selected.body ?? "",
-      explanation: selected.explanation ?? undefined,
-      category: selected.category ?? undefined,
-      parsedDate: selected.parsedDate,
+      recordId: pulse.recordId,
+      eventType: labelDraft.eventType,
+      qualifier: labelDraft.qualifier,
+      body: pulse.body ?? "",
+      explanation: pulse.explanation ?? undefined,
+      category: pulse.category ?? undefined,
+      parsedDate: pulse.parsedDate,
     });
     await loadVault();
     setInspectorOpen(false);
@@ -236,7 +322,13 @@ export default function RecordHomePage() {
         <div>
           <h1 className="font-head text-xl text-obsidian">{vaultName}</h1>
           <p className="font-data text-[10px] uppercase tracking-ultra text-obsidian/40">
-            Record Home · {displayObjects.filter((o) => o.isSealed).length} sealed
+            Record Home · {objects.filter((o) => o.isSealed).length} sealed
+            {loadProgress
+              ? ` · decrypting ${loadProgress.loaded}/${loadProgress.total}`
+              : ""}
+            {filterQuery.trim()
+              ? ` · ${displayObjects.length} filtered`
+              : ""}
           </p>
         </div>
         <button
@@ -249,17 +341,12 @@ export default function RecordHomePage() {
       </div>
 
       <div className="flex min-h-[520px]">
-        <div className="flex-1 relative min-h-[480px]">
-          <NautilusGrid
+        <div className="flex-1 relative min-h-[480px] overflow-hidden">
+          <PortfolioTimeline
             objects={displayObjects}
-            activePulseId={focusedId}
-            onPulseClick={(id, coords) => {
-              setFocusedId(id);
-              setPulseCoords(coords);
-            }}
-            isInspectorOpen={inspectorOpen || isInspectorOpen}
-            insetLeftClass="left-16"
-            insetRightClass="right-[min(380px,38vw)]"
+            activeId={focusedId}
+            onSelect={setFocusedId}
+            embedded
           />
         </div>
         <div className="w-[min(380px,38vw)] border-l border-bone bg-vellum/95 p-4 overflow-y-auto">
@@ -286,27 +373,31 @@ export default function RecordHomePage() {
       </div>
 
       <QueryInterface
-        onSubmit={handleQuery}
-        isProcessing={
-          queryState.status === "running" || queryState.status === "identifying"
-        }
+        value={filterQuery}
+        onChange={setFilterQuery}
+        resultCount={filterQuery.trim() ? displayObjects.length : undefined}
       />
 
       {selected && (
         <InspectorOverlay
           isOpen={inspectorOpen}
-          pulseCoords={pulseCoords}
+          pulseCoords={null}
           onClose={() => {
             setInspectorOpen(false);
             closeOverlay();
           }}
           onSeal={handleSeal}
+          onLabelChange={patchSelectedLabel}
           pulseData={{
             id: selected.id,
             date: selected.parsedDate ?? "",
             sourceDoc: selected.fileLabel ?? vaultName,
-            clauseRaw: selected.title ?? "",
-            clauseContextFull: selected.body ?? "",
+            clauseRaw: selected.composedLabel || selected.title || "",
+            clauseContextFull: detailsLoading
+              ? "Decrypting evidence…"
+              : (inspectorPulse?.body ?? selected.body ?? ""),
+            eventType: labelDraft.eventType,
+            qualifier: labelDraft.qualifier,
           }}
           recordName={vaultName}
           recordId={selected.recordId}

@@ -1,56 +1,47 @@
 "use client";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/database.types";
 import type { PortfolioTemporalObject } from "@/lib/temporal/portfolio-fetch";
-import { fetchVaultTemporalObjects } from "@/lib/temporal/record-fetch";
 
-export type QueryRunState =
-  | { status: "idle" }
-  | { status: "running" }
-  | { status: "identifying" }
-  | { status: "completed"; count: number; candidates: PortfolioTemporalObject[] }
-  | { status: "failed"; message: string };
+function haystack(obj: PortfolioTemporalObject): string {
+  return [
+    obj.eventType,
+    obj.qualifier,
+    obj.composedLabel,
+    obj.title,
+    obj.parsedDate,
+    obj.category,
+    obj.body,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
-export async function runRecordQuery(
-  supabase: SupabaseClient<Database>,
-  vaultId: string,
-  vaultName: string,
+/**
+ * Sealed-only local filter — each whitespace token must appear in eventType,
+ * qualifier, date, or related fields.
+ */
+export function filterSealedPulses(
+  objects: PortfolioTemporalObject[],
   query: string
-): Promise<QueryRunState> {
+): PortfolioTemporalObject[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return { status: "idle" };
+  if (!normalized) return objects;
 
-  try {
-    const all = await fetchVaultTemporalObjects(supabase, vaultId, vaultName);
-    const sealedMatch = all.find(
-      (o) =>
-        o.isSealed &&
-        !o.isLocked &&
-        (o.title?.toLowerCase().includes(normalized) ||
-          o.parsedDate?.includes(normalized) ||
-          o.category?.toLowerCase().includes(normalized))
-    );
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const sealed = objects.filter((o) => o.isSealed && !o.isLocked);
 
-    if (sealedMatch) {
-      return { status: "completed", count: 1, candidates: [sealedMatch] };
-    }
+  return sealed.filter((obj) => {
+    const text = haystack(obj);
+    return tokens.every((token) => text.includes(token));
+  });
+}
 
-    const candidates = all.filter(
-      (o) =>
-        !o.isSealed &&
-        !o.isLocked &&
-        (o.title?.toLowerCase().includes(normalized) ||
-          o.body?.toLowerCase().includes(normalized) ||
-          o.category?.toLowerCase().includes(normalized) ||
-          o.parsedDate?.includes(normalized))
-    );
-
-    return { status: "completed", count: candidates.length, candidates };
-  } catch (err) {
-    return {
-      status: "failed",
-      message: err instanceof Error ? err.message : "Query failed",
-    };
-  }
+export function applyVaultQueryView(
+  objects: PortfolioTemporalObject[],
+  query: string
+): PortfolioTemporalObject[] {
+  const normalized = query.trim();
+  if (!normalized) return objects;
+  return filterSealedPulses(objects, normalized);
 }

@@ -9,6 +9,47 @@ const PBKDF2_ITERATIONS = 250000;
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 
+/** In-memory cache: password+salt → derived AES-GCM CryptoKey (avoids repeat PBKDF2). */
+const derivedKeyCache = new Map<string, Promise<CryptoKey>>();
+
+/** Cache PBKDF2 password import key per session password. */
+const passwordImportKeyCache = new Map<string, Promise<CryptoKey>>();
+
+function saltCacheKey(password: string, salt: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < salt.length; i++) {
+    hex += salt[i].toString(16).padStart(2, "0");
+  }
+  return `${password}\0${hex}`;
+}
+
+/** Clear cached derived keys (e.g. on sign-out). */
+export function clearDerivedKeyCache(): void {
+  derivedKeyCache.clear();
+  passwordImportKeyCache.clear();
+}
+
+async function getPasswordImportKey(password: string): Promise<CryptoKey> {
+  let pending = passwordImportKeyCache.get(password);
+  if (!pending) {
+    const encoder = new TextEncoder();
+    pending = crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits", "deriveKey"]
+    );
+    passwordImportKeyCache.set(password, pending);
+    void pending.catch(() => {
+      if (passwordImportKeyCache.get(password) === pending) {
+        passwordImportKeyCache.delete(password);
+      }
+    });
+  }
+  return pending;
+}
+
 /**
  * Derive encryption key from password using PBKDF2
  */
@@ -16,14 +57,7 @@ async function deriveKey(
   password: string,
   salt: Uint8Array
 ): Promise<CryptoKey> {
-  const encoder = new TextEncoder();
-  const passwordKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits", "deriveKey"]
-  );
+  const passwordKey = await getPasswordImportKey(password);
 
   return crypto.subtle.deriveKey(
     {
@@ -37,6 +71,24 @@ async function deriveKey(
     false,
     ["encrypt", "decrypt"]
   );
+}
+
+async function getOrDeriveKey(
+  password: string,
+  salt: Uint8Array
+): Promise<CryptoKey> {
+  const cacheKey = saltCacheKey(password, salt);
+  let pending = derivedKeyCache.get(cacheKey);
+  if (!pending) {
+    pending = deriveKey(password, salt);
+    derivedKeyCache.set(cacheKey, pending);
+    void pending.catch(() => {
+      if (derivedKeyCache.get(cacheKey) === pending) {
+        derivedKeyCache.delete(cacheKey);
+      }
+    });
+  }
+  return pending;
 }
 
 /**
@@ -53,10 +105,8 @@ export async function encryptStringWithPassword(
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
-  // Derive key
-  const key = await deriveKey(password, salt);
+  const key = await getOrDeriveKey(password, salt);
 
-  // Encrypt
   const encrypted = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
@@ -66,7 +116,6 @@ export async function encryptStringWithPassword(
     data
   );
 
-  // Combine: salt (16) + iv (12) + ciphertext
   const combined = new Uint8Array(
     SALT_LENGTH + IV_LENGTH + encrypted.byteLength
   );
@@ -74,7 +123,6 @@ export async function encryptStringWithPassword(
   combined.set(iv, SALT_LENGTH);
   combined.set(new Uint8Array(encrypted), SALT_LENGTH + IV_LENGTH);
 
-  // Convert to base64
   return btoa(String.fromCharCode(...combined));
 }
 
@@ -96,11 +144,9 @@ export async function decryptStringWithPassword(
   const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
   const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
 
-  // Derive key
-  const key = await deriveKey(password, salt);
+  const key = await getOrDeriveKey(password, salt);
 
   try {
-    // Decrypt
     const decrypted = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
@@ -136,10 +182,8 @@ export async function encryptFileBlob(
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
-  // Derive key
-  const key = await deriveKey(password, salt);
+  const key = await getOrDeriveKey(password, salt);
 
-  // Encrypt
   const encrypted = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
@@ -149,7 +193,6 @@ export async function encryptFileBlob(
     data
   );
 
-  // Combine: salt (16) + iv (12) + ciphertext
   const combined = new Uint8Array(
     SALT_LENGTH + IV_LENGTH + encrypted.byteLength
   );
@@ -157,7 +200,6 @@ export async function encryptFileBlob(
   combined.set(iv, SALT_LENGTH);
   combined.set(new Uint8Array(encrypted), SALT_LENGTH + IV_LENGTH);
 
-  // Return as blob
   return new Blob([combined], { type: "application/octet-stream" });
 }
 
@@ -177,10 +219,8 @@ export async function decryptFileBlob(
   const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
   const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
 
-  // Derive key
-  const key = await deriveKey(password, salt);
+  const key = await getOrDeriveKey(password, salt);
 
-  // Decrypt
   const decrypted = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",

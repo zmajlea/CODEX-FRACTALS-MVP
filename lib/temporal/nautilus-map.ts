@@ -69,11 +69,29 @@ function pulseStateFor(obj: PortfolioTemporalObject): PulseState {
   return "amber";
 }
 
+/** Max individual pulse dots rendered (ledger still shows all). */
+export const NAUTILUS_PULSE_CAP = 200;
+
+function sampleForNautilusPulses(
+  objects: PortfolioTemporalObject[],
+  cap: number
+): PortfolioTemporalObject[] {
+  if (objects.length <= cap) return objects;
+  const step = objects.length / cap;
+  const sampled: PortfolioTemporalObject[] = [];
+  for (let i = 0; i < cap; i++) {
+    sampled.push(objects[Math.floor(i * step)]);
+  }
+  return sampled;
+}
+
 /** Map portfolio Date objects → slate hubs + orbiting pulses (radial math). */
 export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   hubs: NautilusHub[];
   pulses: NautilusPulse[];
   sealedPulseIds: string[];
+  totalPulseCount: number;
+  displayedPulseCount: number;
 } {
   const hubMap = new Map<
     string,
@@ -109,7 +127,9 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
   const pulses: NautilusPulse[] = [];
   const sealedPulseIds: string[] = [];
 
-  for (const obj of objects) {
+  const pulseObjects = sampleForNautilusPulses(objects, NAUTILUS_PULSE_CAP);
+
+  for (const obj of pulseObjects) {
     const key = hubKey(obj);
     const hubTheta = hubThetaById.get(key) ?? 0;
     const orbitIndex = orbitCounters.get(key) ?? 0;
@@ -136,7 +156,13 @@ export function mapPortfolioToNautilus(objects: PortfolioTemporalObject[]): {
     });
   }
 
-  return { hubs, pulses, sealedPulseIds };
+  return {
+    hubs,
+    pulses,
+    sealedPulseIds,
+    totalPulseCount: objects.length,
+    displayedPulseCount: pulseObjects.length,
+  };
 }
 
 export function hubIdToDocumentPayload(

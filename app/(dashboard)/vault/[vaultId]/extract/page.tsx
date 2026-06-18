@@ -16,6 +16,7 @@ import {
   type IntelligenceLensId,
 } from "@/lib/intelligence-lenses";
 import { inferParsedDate } from "@/lib/temporal/parse-date";
+import { composeLabel } from "@/lib/temporal/event-types";
 import {
   sealTemporalBatch,
   type TriageSuggestion,
@@ -237,7 +238,8 @@ export default function VaultExtractPage() {
       const next: TriageSuggestion[] = (data.suggestions ?? []).map(
         (
           s: {
-            title: string;
+            eventType: string;
+            qualifier: string;
             exactQuote: string;
             category: string;
             explanation: string;
@@ -245,10 +247,11 @@ export default function VaultExtractPage() {
           },
           index: number
         ) => {
+          const composedTitle = composeLabel(s.eventType, s.qualifier);
           const parsedDate =
             inferParsedDate(
               s.category,
-              s.title,
+              composedTitle,
               s.exactQuote,
               s.parsedDate
             ) ?? "";
@@ -257,7 +260,9 @@ export default function VaultExtractPage() {
             fileId: selectedFile.id,
             recordId: selectedFile.record_id,
             vaultId,
-            title: s.title,
+            eventType: s.eventType,
+            qualifier: s.qualifier,
+            title: composedTitle,
             body: s.exactQuote,
             category: s.category,
             explanation: s.explanation,
