@@ -9,6 +9,26 @@ const AUTH_ROUTES = ["/login", "/signup"];
 const PUBLIC_AUTH_PATHS = ["/auth/callback", "/api/auth/google"];
 const PROTECTED_PREFIXES = ["/switchboard", "/vault", "/portfolio", "/profile"];
 
+const RESERVED_ROOT_SEGMENTS = new Set([
+  "login",
+  "signup",
+  "switchboard",
+  "vault",
+  "portfolio",
+  "profile",
+  "auth",
+  "api",
+  "_next",
+]);
+
+function isTenantProtectedPath(pathname: string): boolean {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length < 2) return false;
+  if (RESERVED_ROOT_SEGMENTS.has(parts[0]!.toLowerCase())) return false;
+  const sub = parts[1]!.toLowerCase();
+  return sub === "admin" || sub === "wizard";
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -43,7 +63,7 @@ export async function updateSession(request: NextRequest) {
   );
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix)
-  );
+  ) || isTenantProtectedPath(pathname);
 
   if (isOAuthCallback) {
     return supabaseResponse;

@@ -1,0 +1,225 @@
+/* Financial Firefighter V1 — continuity chrome (Digital Vellum) */
+
+.ff-shell {
+  background: var(--vellum);
+  color: var(--obsidian);
+}
+
+.ff-main {
+  min-height: calc(100vh - 4.5rem);
+}
+
+.ff-topbar-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  background: var(--cinnabar);
+  color: #fff;
+  font-family: Georgia, "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.ff-nav-link {
+  color: var(--codex-muted);
+  text-decoration: none;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+}
+
+.ff-nav-link:hover {
+  color: var(--obsidian);
+  background: var(--bone);
+}
+
+.ff-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ff-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ff-btn-primary {
+  background: var(--cinnabar);
+  color: #fff;
+}
+
+.ff-btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.ff-btn-ghost {
+  background: transparent;
+  border-color: var(--bone);
+  color: var(--obsidian);
+}
+
+.ff-btn-ghost:hover:not(:disabled) {
+  background: var(--bone);
+}
+
+.ff-btn-danger {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.ff-card {
+  background: #fff;
+  border: 1px solid var(--bone);
+  border-radius: var(--codex-radius-lg);
+  padding: 1.25rem 1.5rem;
+}
+
+.ff-credits-banner {
+  background: linear-gradient(135deg, var(--cinnabar) 0%, #c45a32 100%);
+  color: #fff;
+  border-radius: var(--codex-radius-lg);
+  padding: 1.5rem 2rem;
+}
+
+.ff-wizard-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .ff-wizard-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ff-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ff-rail-item {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--codex-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ff-rail-item.active {
+  background: var(--bone);
+  color: var(--obsidian);
+  font-weight: 500;
+}
+
+.ff-rail-item.done::after {
+  content: " ✓";
+  color: var(--emerald);
+}
+
+.ff-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.ff-field label {
+  font-size: 0.8rem;
+  color: var(--codex-muted);
+}
+
+.ff-field input,
+.ff-field textarea {
+  border: 1px solid var(--bone);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.ff-field textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+/* Seal animation — port of FF_v1 #sealfx */
+.ff-seal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 26, 27, 0.35);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.ff-seal-stamp {
+  animation: ff-seal-pop 1.2s ease-out forwards;
+  transform: scale(1.8);
+  opacity: 0;
+}
+
+@keyframes ff-seal-pop {
+  0% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.95;
+  }
+}
+
+.ff-seal-svg {
+  width: 120px;
+  height: 135px;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.2));
+}
+
+.ff-status-pill {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.ff-status-unstarted {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.ff-status-in_progress {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.ff-status-sealed {
+  background: #d1fae5;
+  color: #047857;
+}
