@@ -1,32 +1,77 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
+import {
+  ffRouteGuardRedirect,
+  isGlobalAdminPath,
+  isTenantProtectedSurface,
+  parseFfLoginRoute,
+  parseTenantPath,
+  type FfLoginRoute,
+} from "@/lib/ff/routing";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const AUTH_ROUTES = ["/login", "/signup"];
 const PUBLIC_AUTH_PATHS = ["/auth/callback", "/api/auth/google"];
-const PROTECTED_PREFIXES = ["/switchboard", "/vault", "/portfolio", "/profile"];
+const LEGACY_PROTECTED_PREFIXES = [
+  "/switchboard",
+  "/vault",
+  "/portfolio",
+  "/profile",
+];
 
-const RESERVED_ROOT_SEGMENTS = new Set([
-  "login",
-  "signup",
-  "switchboard",
-  "vault",
-  "portfolio",
-  "profile",
-  "auth",
-  "api",
-  "_next",
-]);
+async function fetchFfLoginRoute(
+  supabase: ReturnType<typeof createServerClient<Database>>
+): Promise<FfLoginRoute> {
+  try {
+    const { data, error } = await supabase.rpc("get_ff_login_route");
+    if (error) {
+      console.error("[ff] get_ff_login_route failed:", error.message);
+      return { route: "/switchboard", role: "none" };
+    }
+    return parseFfLoginRoute(data);
+  } catch (err) {
+    console.error("[ff] get_ff_login_route network error:", err);
+    return { route: "/switchboard", role: "none" };
+  }
+}
 
 function isTenantProtectedPath(pathname: string): boolean {
-  const parts = pathname.split("/").filter(Boolean);
-  if (parts.length < 2) return false;
-  if (RESERVED_ROOT_SEGMENTS.has(parts[0]!.toLowerCase())) return false;
-  const sub = parts[1]!.toLowerCase();
-  return sub === "admin" || sub === "wizard";
+  const tenantPath = parseTenantPath(pathname);
+  if (!tenantPath) return false;
+  return isTenantProtectedSurface(tenantPath.surface);
+}
+
+function isProtectedPath(pathname: string): boolean {
+  return (
+    LEGACY_PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    isGlobalAdminPath(pathname) ||
+    isTenantProtectedPath(pathname)
+  );
+}
+
+function resolveSafeNext(
+  next: string | null,
+  loginRoute: FfLoginRoute
+): string {
+  if (!next || !next.startsWith("/")) {
+    return loginRoute.route;
+  }
+
+  const qIndex = next.indexOf("?");
+  const pathOnly = qIndex === -1 ? next : next.slice(0, qIndex);
+  const query = qIndex === -1 ? "" : next.slice(qIndex);
+
+  if (AUTH_ROUTES.some((route) => pathOnly.startsWith(route))) {
+    return loginRoute.route;
+  }
+
+  const guard = ffRouteGuardRedirect(pathOnly, loginRoute);
+  if (guard) return guard;
+
+  return `${pathOnly}${query}`;
 }
 
 export async function updateSession(request: NextRequest) {
@@ -61,9 +106,7 @@ export async function updateSession(request: NextRequest) {
   const isOAuthCallback = PUBLIC_AUTH_PATHS.some((route) =>
     pathname.startsWith(route)
   );
-  const isProtected = PROTECTED_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix)
-  ) || isTenantProtectedPath(pathname);
+  const isProtected = isProtectedPath(pathname);
 
   if (isOAuthCallback) {
     return supabaseResponse;
@@ -80,21 +123,38 @@ export async function updateSession(request: NextRequest) {
     }
   } catch (err) {
     console.error("[auth] session refresh network error:", err);
-    // Fall through: protected routes redirect below when hasSession is false.
   }
 
   if (!hasSession && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
-  if (hasSession && (isAuthRoute || pathname === "/")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/switchboard";
-    url.search = "";
-    return NextResponse.redirect(url);
+  if (hasSession) {
+    const loginRoute = await fetchFfLoginRoute(supabase);
+
+    if (isAuthRoute || pathname === "/") {
+      const url = request.nextUrl.clone();
+      const next = request.nextUrl.searchParams.get("next");
+      const target = isAuthRoute && next ? resolveSafeNext(next, loginRoute) : loginRoute.route;
+      const qIndex = target.indexOf("?");
+      url.pathname = qIndex === -1 ? target : target.slice(0, qIndex);
+      url.search = qIndex === -1 ? "" : target.slice(qIndex);
+      return NextResponse.redirect(url);
+    }
+
+    const guard = ffRouteGuardRedirect(pathname, loginRoute);
+    if (guard) {
+      const url = request.nextUrl.clone();
+      const qIndex = guard.indexOf("?");
+      url.pathname = qIndex === -1 ? guard : guard.slice(0, qIndex);
+      url.search = qIndex === -1 ? "" : guard.slice(qIndex);
+      if (url.pathname !== pathname || url.search !== request.nextUrl.search) {
+        return NextResponse.redirect(url);
+      }
+    }
   }
 
   return supabaseResponse;
