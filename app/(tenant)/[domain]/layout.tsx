@@ -20,12 +20,12 @@ export default async function TenantLayout({ children, params }: Props) {
   const accent = tenant.brand_color_hex ?? "#E67E50";
 
   return (
-    <div className="ff-shell min-h-screen" data-ff-tenant={tenant.subdomain}>
-      <style>{`:root { --cinnabar: ${accent}; --brand: ${accent}; }`}</style>
+    <div className="ff-shell min-h-screen" data-ff-tenant={tenant.domain_slug}>
+      <style>{`:root { --cinnabar: ${accent}; --brand: ${accent}; --cinnabar-deep: ${accent}; }`}</style>
       <FfTopbar
         name={tenant.name}
         logoUrl={tenant.logo_url}
-        domain={tenant.subdomain}
+        domain={tenant.domain_slug}
       />
       <main className="ff-main">{children}</main>
     </div>

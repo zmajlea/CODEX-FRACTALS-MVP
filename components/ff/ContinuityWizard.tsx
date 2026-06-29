@@ -64,7 +64,7 @@ export function ContinuityWizard({ domain }: Props) {
 
       const { data: vault } = await supabase
         .from("vaults")
-        .select("id, name, ff_status")
+        .select("id, name, ff_status, tenant_id")
         .eq("id", invite.vault_id)
         .maybeSingle();
 
@@ -83,6 +83,17 @@ export function ContinuityWizard({ domain }: Props) {
         },
         { onConflict: "vault_id,user_id" }
       );
+
+      if (vault.tenant_id) {
+        await supabase.from("user_roles").upsert(
+          {
+            user_id: user.id,
+            role: "client",
+            tenant_id: vault.tenant_id,
+          },
+          { onConflict: "user_id,tenant_id" }
+        );
+      }
 
       if (invite.status === "pending") {
         await supabase
@@ -144,15 +155,15 @@ export function ContinuityWizard({ domain }: Props) {
         } else {
           const { data: membership } = await supabase
             .from("vault_members")
-            .select("vault_id, vaults(id, name, ff_status, tenant_id, tenants(subdomain))")
+            .select("vault_id, vaults(id, name, ff_status, tenant_id, tenants(domain_slug))")
             .eq("user_id", user.id)
             .limit(20);
 
           const match = (membership ?? []).find((m) => {
             const vault = m.vaults as {
-              tenants?: { subdomain: string } | null;
+              tenants?: { domain_slug: string } | null;
             } | null;
-            return vault?.tenants?.subdomain === domain;
+            return vault?.tenants?.domain_slug === domain;
           });
 
           if (match?.vault_id) {

@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   const { data: vault } = await supabase
     .from("vaults")
-    .select("id, name, tenant_id, tenants(name, subdomain)")
+    .select("id, name, tenant_id, tenants(name, domain_slug)")
     .eq("id", vaultId)
     .maybeSingle();
 
@@ -53,10 +53,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: advErr.message }, { status: 403 });
   }
 
-  const tenant = vault.tenants as { name: string; subdomain: string } | null;
+  const tenant = vault.tenants as { name: string; domain_slug: string } | null;
   const firmName = tenant?.name ?? "Financial Firefighter partner firm";
   const origin = getSiteUrl(request.headers.get("origin") ?? undefined);
-  const portalUrl = `${origin}/${tenant?.subdomain ?? domain}/wizard`;
+  const portalUrl = `${origin}/${tenant?.domain_slug ?? domain}/wizard`;
 
   const deliveries = await Promise.all(
     (advisors ?? []).map((a) =>

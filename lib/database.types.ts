@@ -757,30 +757,30 @@ export type Database = {
           available_credits: number
           brand_color_hex: string | null
           created_at: string
+          domain_slug: string
           id: string
           logo_url: string | null
           name: string
-          subdomain: string
           updated_at: string
         }
         Insert: {
           available_credits?: number
           brand_color_hex?: string | null
           created_at?: string
+          domain_slug: string
           id?: string
           logo_url?: string | null
           name: string
-          subdomain: string
           updated_at?: string
         }
         Update: {
           available_credits?: number
           brand_color_hex?: string | null
           created_at?: string
+          domain_slug?: string
           id?: string
           logo_url?: string | null
           name?: string
-          subdomain?: string
           updated_at?: string
         }
         Relationships: []
@@ -823,6 +823,45 @@ export type Database = {
             columns: ["vault_id"]
             isOneToOne: false
             referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["ff_commercial_role"]
+          tenant_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["ff_commercial_role"]
+          tenant_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["ff_commercial_role"]
+          tenant_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1022,7 +1061,49 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_distributor: {
+        Args: { p_tenant_id: string; p_user_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["ff_commercial_role"]
+          tenant_id: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_roles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      claim_bootstrap_global_admin: { Args: never; Returns: boolean }
       claim_demo_tenant_admin: { Args: never; Returns: boolean }
+      create_distributor_tenant: {
+        Args: {
+          p_brand_color_hex?: string
+          p_domain_slug: string
+          p_initial_credits?: number
+          p_logo_url?: string
+          p_name: string
+        }
+        Returns: {
+          available_credits: number
+          brand_color_hex: string | null
+          created_at: string
+          domain_slug: string
+          id: string
+          logo_url: string | null
+          name: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_vault: {
         Args: { p_name: string }
         Returns: {
@@ -1043,6 +1124,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_ff_login_route: { Args: never; Returns: Json }
+      is_distributor: { Args: { p_tenant_id: string }; Returns: boolean }
+      is_ff_client: { Args: { p_tenant_id: string }; Returns: boolean }
+      is_global_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { p_tenant_id: string }; Returns: boolean }
       is_vault_admin: { Args: { p_vault_id: string }; Returns: boolean }
       is_vault_member: { Args: { p_vault_id: string }; Returns: boolean }
@@ -1057,6 +1142,7 @@ export type Database = {
       storage_vault_id: { Args: { object_name: string }; Returns: string }
     }
     Enums: {
+      ff_commercial_role: "global_admin" | "distributor" | "client"
       ff_status: "unstarted" | "in_progress" | "sealed"
       ingestion_file_status:
         | "uploading"
@@ -1212,6 +1298,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ff_commercial_role: ["global_admin", "distributor", "client"],
       ff_status: ["unstarted", "in_progress", "sealed"],
       ingestion_file_status: [
         "uploading",
@@ -1249,4 +1336,5 @@ export const Constants = {
 
 export type TemporalObjectKind = Database["public"]["Enums"]["temporal_object_kind"];
 export type FfStatus = Database["public"]["Enums"]["ff_status"];
+export type FfCommercialRole = Database["public"]["Enums"]["ff_commercial_role"];
 export type UserRole = Database["public"]["Enums"]["user_role"];
