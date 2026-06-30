@@ -25,6 +25,12 @@ const TABLES = [
   "records",
   "files",
   "temporal_objects",
+  "tenants",
+  "user_roles",
+  "modules",
+  "client_module_access",
+  "billing_rules",
+  "platform_audit_events",
 ];
 
 async function tableExists(table) {

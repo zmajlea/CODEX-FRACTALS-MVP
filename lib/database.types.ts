@@ -72,37 +72,255 @@ export type Database = {
           },
         ]
       }
+      billing_rules: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          credit_cost: number
+          currency: string
+          distributor_tenant_id: string | null
+          id: string
+          module_id: string | null
+          payer: string
+          scope: string
+          stripe_price_id: string | null
+          unit_price_cents: number | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          credit_cost?: number
+          currency?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          module_id?: string | null
+          payer: string
+          scope: string
+          stripe_price_id?: string | null
+          unit_price_cents?: number | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          credit_cost?: number
+          currency?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          module_id?: string | null
+          payer?: string
+          scope?: string
+          stripe_price_id?: string | null
+          unit_price_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_rules_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_rules_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_module_access: {
+        Row: {
+          billing_rule_id: string | null
+          client_user_id: string
+          distributor_tenant_id: string
+          granted_at: string
+          granted_by: string | null
+          id: string
+          module_id: string
+          status: string
+          vault_id: string | null
+        }
+        Insert: {
+          billing_rule_id?: string | null
+          client_user_id: string
+          distributor_tenant_id: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          module_id: string
+          status?: string
+          vault_id?: string | null
+        }
+        Update: {
+          billing_rule_id?: string | null
+          client_user_id?: string
+          distributor_tenant_id?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          module_id?: string
+          status?: string
+          vault_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_module_access_billing_rule_id_fkey"
+            columns: ["billing_rule_id"]
+            isOneToOne: false
+            referencedRelation: "billing_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_module_access_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_module_access_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_module_access_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_module_access_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_module_access_vault_id_fkey"
+            columns: ["vault_id"]
+            isOneToOne: false
+            referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_transactions: {
         Row: {
           action: string
           amount: number
           created_at: string
+          created_by: string | null
+          delta: number | null
           id: string
           metadata: Json
+          reason: string | null
+          ref_grant_id: string | null
           tenant_id: string
         }
         Insert: {
           action: string
           amount: number
           created_at?: string
+          created_by?: string | null
+          delta?: number | null
           id?: string
           metadata?: Json
+          reason?: string | null
+          ref_grant_id?: string | null
           tenant_id: string
         }
         Update: {
           action?: string
           amount?: number
           created_at?: string
+          created_by?: string | null
+          delta?: number | null
           id?: string
           metadata?: Json
+          reason?: string | null
+          ref_grant_id?: string | null
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "credit_transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_transactions_ref_grant_id_fkey"
+            columns: ["ref_grant_id"]
+            isOneToOne: false
+            referencedRelation: "client_module_access"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "credit_transactions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distributor_modules: {
+        Row: {
+          allowed: boolean
+          created_at: string
+          distributor_tenant_id: string
+          granted_by: string | null
+          module_id: string
+        }
+        Insert: {
+          allowed?: boolean
+          created_at?: string
+          distributor_tenant_id: string
+          granted_by?: string | null
+          module_id: string
+        }
+        Update: {
+          allowed?: boolean
+          created_at?: string
+          distributor_tenant_id?: string
+          granted_by?: string | null
+          module_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributor_modules_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distributor_modules_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distributor_modules_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
             referencedColumns: ["id"]
           },
         ]
@@ -430,6 +648,80 @@ export type Database = {
           },
         ]
       }
+      modules: {
+        Row: {
+          created_at: string
+          default_billing_mode: string
+          id: string
+          name: string
+          route_base: string
+          slug: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_billing_mode?: string
+          id?: string
+          name: string
+          route_base: string
+          slug: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_billing_mode?: string
+          id?: string
+          name?: string
+          route_base?: string
+          slug?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_audit_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_tier: string | null
+          created_at: string
+          id: string
+          payload: Json
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_tier?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_tier?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_audit_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       record_activity_events: {
         Row: {
           actor_id: string | null
@@ -544,6 +836,86 @@ export type Database = {
             columns: ["vault_id"]
             isOneToOne: false
             referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stripe_customers: {
+        Row: {
+          created_at: string
+          id: string
+          stripe_customer_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          stripe_customer_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          stripe_customer_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_customers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stripe_subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          module_id: string
+          status: string
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          module_id: string
+          status?: string
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          module_id?: string
+          status?: string
+          stripe_customer_id?: string
+          stripe_subscription_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_subscriptions_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stripe_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -756,9 +1128,13 @@ export type Database = {
         Row: {
           available_credits: number
           brand_color_hex: string | null
+          branding: Json
           created_at: string
+          credit_balance: number
           domain_slug: string
           id: string
+          is_house: boolean
+          kind: string
           logo_url: string | null
           name: string
           updated_at: string
@@ -766,9 +1142,13 @@ export type Database = {
         Insert: {
           available_credits?: number
           brand_color_hex?: string | null
+          branding?: Json
           created_at?: string
+          credit_balance?: number
           domain_slug: string
           id?: string
+          is_house?: boolean
+          kind?: string
           logo_url?: string | null
           name: string
           updated_at?: string
@@ -776,9 +1156,13 @@ export type Database = {
         Update: {
           available_credits?: number
           brand_color_hex?: string | null
+          branding?: Json
           created_at?: string
+          credit_balance?: number
           domain_slug?: string
           id?: string
+          is_house?: boolean
+          kind?: string
           logo_url?: string | null
           name?: string
           updated_at?: string
@@ -830,6 +1214,7 @@ export type Database = {
       user_roles: {
         Row: {
           created_at: string
+          granted_by: string | null
           id: string
           role: Database["public"]["Enums"]["ff_commercial_role"]
           tenant_id: string | null
@@ -837,6 +1222,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          granted_by?: string | null
           id?: string
           role: Database["public"]["Enums"]["ff_commercial_role"]
           tenant_id?: string | null
@@ -844,12 +1230,20 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          granted_by?: string | null
           id?: string
           role?: Database["public"]["Enums"]["ff_commercial_role"]
           tenant_id?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_roles_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1065,6 +1459,7 @@ export type Database = {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: {
           created_at: string
+          granted_by: string | null
           id: string
           role: Database["public"]["Enums"]["ff_commercial_role"]
           tenant_id: string | null
@@ -1090,9 +1485,13 @@ export type Database = {
         Returns: {
           available_credits: number
           brand_color_hex: string | null
+          branding: Json
           created_at: string
+          credit_balance: number
           domain_slug: string
           id: string
+          is_house: boolean
+          kind: string
           logo_url: string | null
           name: string
           updated_at: string
@@ -1124,6 +1523,8 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      elevate_codexone_global_admin: { Args: never; Returns: boolean }
+      ff_generate_invite_token: { Args: never; Returns: string }
       get_ff_login_route: { Args: never; Returns: Json }
       is_distributor: { Args: { p_tenant_id: string }; Returns: boolean }
       is_ff_client: { Args: { p_tenant_id: string }; Returns: boolean }
@@ -1131,15 +1532,33 @@ export type Database = {
       is_tenant_admin: { Args: { p_tenant_id: string }; Returns: boolean }
       is_vault_admin: { Args: { p_vault_id: string }; Returns: boolean }
       is_vault_member: { Args: { p_vault_id: string }; Returns: boolean }
-      provision_client_seat: {
-        Args: {
-          p_client_email: string
-          p_client_name: string
-          p_tenant_id: string
-        }
-        Returns: Json
+      provision_client_seat:
+        | {
+            Args: {
+              p_client_email: string
+              p_client_name: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_client_email: string
+              p_client_name: string
+              p_module_slug?: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
+      resolve_billing_rule_id: {
+        Args: { p_distributor_tenant_id?: string; p_module_id: string }
+        Returns: string
       }
       storage_vault_id: { Args: { object_name: string }; Returns: string }
+      sync_tenant_credit_balance: {
+        Args: { p_tenant_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       ff_commercial_role: "global_admin" | "distributor" | "client"

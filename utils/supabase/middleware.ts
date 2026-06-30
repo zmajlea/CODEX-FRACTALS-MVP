@@ -3,11 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 import {
   ffRouteGuardRedirect,
+  isClientPath,
+  isDistributorPath,
   isGlobalAdminPath,
-  isTenantProtectedSurface,
+  isPlatformProtectedPath,
   parseFfLoginRoute,
-  parseTenantPath,
-  type FfLoginRoute,
 } from "@/lib/ff/routing";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,46 +15,26 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const AUTH_ROUTES = ["/login", "/signup"];
 const PUBLIC_AUTH_PATHS = ["/auth/callback", "/api/auth/google"];
-const LEGACY_PROTECTED_PREFIXES = [
-  "/switchboard",
-  "/vault",
-  "/portfolio",
-  "/profile",
-];
 
 async function fetchFfLoginRoute(
   supabase: ReturnType<typeof createServerClient<Database>>
-): Promise<FfLoginRoute> {
+) {
   try {
     const { data, error } = await supabase.rpc("get_ff_login_route");
     if (error) {
       console.error("[ff] get_ff_login_route failed:", error.message);
-      return { route: "/switchboard", role: "none" };
+      return { route: "/login", role: "none" as const };
     }
     return parseFfLoginRoute(data);
   } catch (err) {
     console.error("[ff] get_ff_login_route network error:", err);
-    return { route: "/switchboard", role: "none" };
+    return { route: "/login", role: "none" as const };
   }
-}
-
-function isTenantProtectedPath(pathname: string): boolean {
-  const tenantPath = parseTenantPath(pathname);
-  if (!tenantPath) return false;
-  return isTenantProtectedSurface(tenantPath.surface);
-}
-
-function isProtectedPath(pathname: string): boolean {
-  return (
-    LEGACY_PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
-    isGlobalAdminPath(pathname) ||
-    isTenantProtectedPath(pathname)
-  );
 }
 
 function resolveSafeNext(
   next: string | null,
-  loginRoute: FfLoginRoute
+  loginRoute: ReturnType<typeof parseFfLoginRoute>
 ): string {
   if (!next || !next.startsWith("/")) {
     return loginRoute.route;
@@ -106,7 +86,7 @@ export async function updateSession(request: NextRequest) {
   const isOAuthCallback = PUBLIC_AUTH_PATHS.some((route) =>
     pathname.startsWith(route)
   );
-  const isProtected = isProtectedPath(pathname);
+  const isProtected = isPlatformProtectedPath(pathname);
 
   if (isOAuthCallback) {
     return supabaseResponse;
@@ -138,7 +118,8 @@ export async function updateSession(request: NextRequest) {
     if (isAuthRoute || pathname === "/") {
       const url = request.nextUrl.clone();
       const next = request.nextUrl.searchParams.get("next");
-      const target = isAuthRoute && next ? resolveSafeNext(next, loginRoute) : loginRoute.route;
+      const target =
+        isAuthRoute && next ? resolveSafeNext(next, loginRoute) : loginRoute.route;
       const qIndex = target.indexOf("?");
       url.pathname = qIndex === -1 ? target : target.slice(0, qIndex);
       url.search = qIndex === -1 ? "" : target.slice(qIndex);

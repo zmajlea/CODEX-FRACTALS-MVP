@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { clearAuthSessionStorage } from "@/lib/auth/oauth";
+import { afterAuthBootstrap } from "@/lib/auth/rbac";
+import { parseFfLoginRoute } from "@/lib/ff/routing";
 import { createClient } from "@/utils/supabase/client";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/switchboard";
+  const next = searchParams.get("next");
 
   const [hashError, setHashError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
@@ -61,7 +63,21 @@ export default function LoginForm() {
         return;
       }
 
-      router.push(next);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        await afterAuthBootstrap(supabase, user);
+      }
+
+      let target = next;
+      if (!target || target === "/switchboard") {
+        const { data: routeData } = await supabase.rpc("get_ff_login_route");
+        target = parseFfLoginRoute(routeData).route;
+      }
+
+      router.push(target);
       router.refresh();
     } catch {
       setError("Login failed. Please try again.");
@@ -84,7 +100,7 @@ export default function LoginForm() {
 
         {error && <div className="auth-alert auth-alert-error">{error}</div>}
 
-        <GoogleSignInButton nextPath={next} disabled={loading} />
+        <GoogleSignInButton nextPath={next ?? undefined} disabled={loading} />
 
         <div className="auth-divider">
           <span />

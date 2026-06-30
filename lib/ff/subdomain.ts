@@ -17,6 +17,8 @@ const RESERVED_ROOT_SEGMENTS = new Set([
   "auth",
   "api",
   "admin",
+  "distributor",
+  "client",
   "_next",
   "favicon.ico",
 ]);

@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { getRequestOrigin } from "@/lib/request-origin";
+import { afterAuthBootstrap, resolveLoginPath } from "@/lib/auth/rbac";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const siteUrl = getRequestOrigin(request);
   const code = searchParams.get("code");
-  let next = searchParams.get("next") ?? "/switchboard";
+  let next = searchParams.get("next") ?? null;
 
-  if (!next.startsWith("/") || next.startsWith("//")) {
-    next = "/switchboard";
+  if (next && (!next.startsWith("/") || next.startsWith("//"))) {
+    next = null;
   }
 
   if (code) {
@@ -22,23 +23,11 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
-        const displayName =
-          (user.user_metadata?.full_name as string | undefined) ??
-          (user.user_metadata?.name as string | undefined) ??
-          null;
-
-        await supabase.from("users").upsert(
-          {
-            id: user.id,
-            email: user.email ?? "",
-            display_name: displayName,
-            avatar_url: (user.user_metadata?.avatar_url as string | undefined) ?? null,
-          },
-          { onConflict: "id" }
-        );
+        await afterAuthBootstrap(supabase, user);
       }
 
-      return NextResponse.redirect(`${siteUrl}${next}`);
+      const target = next ?? (await resolveLoginPath(supabase));
+      return NextResponse.redirect(`${siteUrl}${target}`);
     }
   }
 

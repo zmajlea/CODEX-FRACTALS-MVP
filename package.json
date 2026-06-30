@@ -12,6 +12,7 @@
     "db:apply": "node scripts/apply-migration-pg.mjs",
     "db:query": "supabase db query --linked",
     "db:verify": "node scripts/verify-schema.mjs",
+    "test:platform": "node scripts/seed-platform-rls.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz",
     "test:seed": "node scripts/seed-journey-test.mjs",
     "test:seed:exakom": "node scripts/seed-exakom-vault.mjs",
