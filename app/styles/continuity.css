@@ -16,7 +16,7 @@
 }
 
 /* ===== FF1 — Fiduciary Ledger (light cool stone · oxblood · parchment · restrained) ===== */
-[data-brand="ff1"]{
+[data-brand="bcn1"]{
   --canvas:#D7D9DD; --canvas-2:#CCCFD4; --rail:#EAE8E2; --rail-ink:#565A61;
   --paper:#F3F1EC; --paper-2:#FAF9F5; --paper-edge:#E8E4DC;
   --ink:#23252A; --slate:#555A61; --mute:#8C9097; --line:#E4DDCD; --on-canvas:#2A2C31;
@@ -25,7 +25,7 @@
   --paper-shadow:0 6px 22px rgba(40,40,46,.13); --grain:0;
 }
 /* ===== FF2 — Engine House (deep cool slate · bold ember · parchment floats · dramatic) ===== */
-[data-brand="ff2"]{
+[data-brand="bcn2"]{
   --canvas:#3B3F46; --canvas-2:#33363C; --rail:#2D3036; --rail-ink:#C2C6CC;
   --paper:#EFECE3; --paper-2:#F6F4ED; --paper-edge:#E3DED2;
   --ink:#23262B; --slate:#5A5F66; --mute:#8A8F96; --line:#E2D7C0; --on-canvas:#E8E4DC;
@@ -37,7 +37,7 @@
    Ana's favorite: the grey one, warmed + crisper. Warm grey canvas for strong figure/ground;
    bone-ivory paper (NOT yellowing); warm near-black ink (not as heavy as pure black);
    cleaner edges + lighter grain bring the dark skin's crispness into the grey. */
-[data-brand="ff3"]{
+[data-brand="bcn3"]{
   --canvas:#C5C0B6; --canvas-2:#B8B3A8; --rail:#E8E3D9; --rail-ink:#564E43;
   --paper:#FBF8F2; --paper-2:#FFFFFF; --paper-edge:#DBD3C4;
   --ink:#262019; --slate:#564E43; --mute:#8B8374; --line:#D7CEBD; --on-canvas:#2C261E;
@@ -46,7 +46,7 @@
   --paper-shadow:0 6px 20px rgba(58,46,30,.13); --grain:.035;
 }
 /* ===== FF4 — Firehouse (black · bright fire-red · silver · condensed Oswald · Randall's PDF, elevated) ===== */
-[data-brand="ff4"]{
+[data-brand="bcn4"]{
   --canvas:#1A1816; --canvas-2:#121110; --rail:#0D0C0B; --rail-ink:#D8D2CB;
   --paper:#FFFFFF; --paper-2:#FBF7F0; --paper-edge:#E6DED2;
   --ink:#1A1A1A; --slate:#4A4540; --mute:#8A857C; --line:#E6DED2; --on-canvas:#F4EFE7;
@@ -134,6 +134,7 @@
   background:var(--rail); border-bottom:1px solid var(--line); position:relative; z-index:2; }
 .topbar .wm{ display:flex; align-items:center; gap:9px; }
 .topbar .wm .crest{ width:22px; height:25px; margin:0; }
+.topbar .wm img.crest{ object-fit:contain; }
 .topbar .wm .wm-name{ font-family:var(--font-display); font-weight:600; font-size:14px; letter-spacing:.02em; color:var(--on-canvas); white-space:nowrap; }
 .topbar .wm.fr .wm-name{ font-size:13px; letter-spacing:.24em; }
 .topbar .recpill{ display:inline-flex; align-items:center; gap:8px; background:color-mix(in srgb,var(--on-canvas) 4%, transparent);
@@ -326,6 +327,11 @@
 /* caption: high contrast on any brand's overlay (Randall: "needs a bit more contrast per treatment") */
 .sealfx .cap{ position:absolute; bottom:28%; left:0; right:0; text-align:center; color:#fff; font-family:var(--font-display); font-style:italic; font-weight:500; font-size:21px; letter-spacing:.01em; opacity:0; text-shadow:0 2px 14px rgba(0,0,0,.65), 0 0 2px rgba(0,0,0,.5); }
 .sealfx.play .cap{ animation:cap .6s ease .55s forwards; } @keyframes cap{ to{ opacity:1; } }
+
+/* Dialog sheets portaled in .sealfx (outside #app) — carry [data-brand] so .panel tokens resolve */
+.sealfx .modal-sheet{ position:relative; z-index:1; }
+.sealfx .modal-sheet .panel{ background:var(--paper); border:1px solid var(--paper-edge); box-shadow:var(--paper-shadow); }
+.sealfx .modal-sheet .sealbar{ background:var(--paper); border:1px solid var(--paper-edge); }
 
 /* brand toggle */
 .brandtoggle{ position:fixed; bottom:18px; right:18px; z-index:70; display:flex; gap:3px; background:#1b1816; border-radius:999px; padding:5px; box-shadow:0 8px 24px rgba(0,0,0,.34); }
@@ -601,12 +607,12 @@ textarea.letter:focus{ border-color:var(--brand); }
    ============================================================ */
 
 /* P1 — dark-brand rail active item legibility (ff2 / ff4) */
-[data-brand="ff2"] .rail .ritem,[data-brand="ff4"] .rail .ritem{ color:color-mix(in srgb,var(--rail-ink) 92%, #fff); }
-[data-brand="ff2"] .rail .ritem.on,[data-brand="ff4"] .rail .ritem.on{
+[data-brand="bcn2"] .rail .ritem,[data-brand="bcn4"] .rail .ritem{ color:color-mix(in srgb,var(--rail-ink) 92%, #fff); }
+[data-brand="bcn2"] .rail .ritem.on,[data-brand="bcn4"] .rail .ritem.on{
   background:color-mix(in srgb,var(--on-canvas) 15%, transparent); color:#fff;
   border-left-color:var(--brand-2); border-left-width:3px; padding-left:13px; }
-[data-brand="ff2"] .rail .ritem.on svg,[data-brand="ff4"] .rail .ritem.on svg{ color:#fff; }
-[data-brand="ff4"] .rail .ritem.on{ box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 30%, transparent); }
+[data-brand="bcn2"] .rail .ritem.on svg,[data-brand="bcn4"] .rail .ritem.on svg{ color:#fff; }
+[data-brand="bcn4"] .rail .ritem.on{ box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 30%, transparent); }
 
 /* P1/P2 — hub card groups (single grid, full-width separators) */
 .cards3.grouped .cg-head{ grid-column:1 / -1; display:flex; align-items:baseline; gap:12px; margin:12px 0 -2px; padding-bottom:8px; border-bottom:1px solid color-mix(in srgb,var(--on-canvas) 12%, transparent); }
@@ -886,7 +892,7 @@ textarea.letter:focus{ border-color:var(--brand); }
 .modswitch-item.on{ color:var(--on-canvas); font-weight:500; }
 .ms-dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 0 1px rgba(0,0,0,.1); }
 .ms-here{ margin-left:auto; color:var(--brand); font-size:14px; line-height:1; }
-[data-brand="ff2"] .modswitch-item,[data-brand="ff4"] .modswitch-item{ color:color-mix(in srgb,var(--rail-ink) 90%, #fff); }
+[data-brand="bcn2"] .modswitch-item,[data-brand="bcn4"] .modswitch-item{ color:color-mix(in srgb,var(--rail-ink) 90%, #fff); }
 
 /* ============================================================
    SUMMIT — mocked ingestion + ROI / value panel.
@@ -978,7 +984,7 @@ textarea.letter{ font-size:16px; line-height:1.7; min-height:230px; background:v
 .bc-orn{ color:var(--foil); font-size:9px; line-height:1; }
 .sec-sub{ max-width:760px; margin:0 0 22px; font-size:13.5px; color:var(--slate); line-height:1.55; }
 /* on dark canvases nudge the quote toward the brand-bright for warmth */
-[data-brand="ff2"] .bc-quote,[data-brand="ff4"] .bc-quote{ color:color-mix(in srgb,var(--brand) 82%, #d8654e); }
+[data-brand="bcn2"] .bc-quote,[data-brand="bcn4"] .bc-quote{ color:color-mix(in srgb,var(--brand) 82%, #d8654e); }
 [data-brand="summit"] .bc-quote{ color:var(--brand); }
 @media (max-width:600px){ .bookcallout{ padding:16px 16px; } .bc-quote{ font-size:16.5px; } }
 
@@ -1280,7 +1286,7 @@ svg.spark .sp-dot{ fill:var(--foil); }
 
 /* ============================================================
    THREE-BRAND PLACEMENT — rail-footer lockup (Summit-branding-placement-SPEC).
-   product=topbar (loudest) → "A Financial Firefighter solution" (Treasury only)
+   product=topbar (loudest) → "A Business Continuity Navigator solution" (Treasury only)
    → "powered by Fractals" (always, every module). Quiet, foil-toned, bottom-anchored.
    ============================================================ */
 .railbrand{ flex:0 0 auto; display:flex; flex-direction:column; gap:5px; margin-top:6px; padding:9px 8px 11px;
@@ -1293,3 +1299,95 @@ svg.spark .sp-dot{ fill:var(--foil); }
 /* collapsed rail → icon-only, centered, stacked (FF shield above the Fractals diamond on Treasury) */
 .app:not(.rail-pinned) .app-rail:not(:hover) .railbrand{ padding:9px 0 11px; gap:9px; }
 .app:not(.rail-pinned) .app-rail:not(:hover) .rb-line{ justify-content:center; gap:0; }
+
+/* Operator branding wizard — scoped mini shell preview */
+.branding-preview-wrap{
+  border:1px solid var(--bone);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:var(--canvas, #f5f3ef);
+  margin-top:10px;
+}
+.branding-preview-scope{
+  pointer-events:none;
+  min-height:220px;
+}
+.branding-preview-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 14px;
+  border-bottom:1px solid var(--line, var(--bone));
+  background:var(--paper);
+}
+.branding-preview-main{
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  max-width:320px;
+}
+.branding-preview-actions{ display:flex; gap:8px; }
+.branding-wizard-steps{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:12px 0 16px;
+}
+.branding-wizard-steps .seg{ min-width:0; flex:1 1 auto; text-align:center; }
+.color-override-row{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:10px;
+  align-items:center;
+  margin-bottom:10px;
+}
+.color-override-row input[type="color"]{
+  width:42px;
+  height:34px;
+  padding:2px;
+  border:1px solid var(--bone);
+  border-radius:4px;
+  cursor:pointer;
+  background:var(--paper);
+}
+.color-override-row input[type="text"]{
+  font-family:var(--font-mono);
+  font-size:12px;
+}
+
+/* --- record export / print (client-side PDF via window.print) --- */
+.export-print-body{ margin-top:18px; display:none; }
+.export-section-block{ margin-bottom:16px; padding-top:12px; border-top:1px solid var(--paper-edge); }
+.export-section-block h3{ font-family:var(--font-display); font-size:15px; margin:0 0 6px; color:var(--ink); }
+.export-section-block p{ font-size:13px; line-height:1.55; color:var(--slate); margin:0; white-space:pre-wrap; }
+.export-cta{ margin-top:18px; display:flex; gap:12px; align-items:center; }
+.export-foot{ font-size:12px; color:var(--mute); margin-top:14px; line-height:1.45; }
+.ex-row{ display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 55%, transparent); font-size:13px; }
+.ex-row .ex-name{ color:var(--ink); font-weight:500; }
+.ex-row .ex-state{ font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); }
+@media print{
+  body *{ visibility:hidden; }
+  #record-export-print-root, #record-export-print-root *{ visibility:visible; }
+  #record-export-print-root{
+    position:absolute; left:0; top:0; width:100%;
+    box-shadow:none; border:none; padding:0;
+  }
+  .export-print-body{ display:block !important; }
+  .record-export-dialog .crumb, .record-export-dialog .export-cta, .record-export-dialog .export-foot, .record-export-dialog .panel-note, .record-export-dialog .sec-head{ display:none !important; }
+  .sealfx{ position:static; background:#fff; display:block !important; }
+  .modal-sheet{ max-height:none !important; overflow:visible !important; }
+}
+
+/* --- Treasury module (read-only client dashboard) --- */
+.treasury-totals{ display:flex; flex-wrap:wrap; gap:14px; margin-bottom:8px; }
+.treasury-total-card{
+  background:var(--paper); border:1px solid var(--paper-edge); border-radius:var(--radius);
+  padding:16px 20px; min-width:180px; box-shadow:var(--paper-shadow);
+}
+.treasury-total-label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin-bottom:4px; }
+.treasury-total-value{ font-family:var(--font-display); font-size:22px; font-weight:600; color:var(--ink); }
+.treasury-institution{ padding:20px 22px; }
+.treasury-tx-list{ padding:0; overflow:hidden; }
+.tabular-nums{ font-variant-numeric:tabular-nums; }

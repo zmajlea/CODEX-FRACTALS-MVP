@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { sendTransactionalEmail } from "@/lib/ff/email";
+import { sendTransactionalEmail } from "@/lib/bcn/email";
 import { getSiteUrl } from "@/lib/site-url";
 
 type Body = {
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   }
 
   const tenant = vault.tenants as { name: string; domain_slug: string } | null;
-  const firmName = tenant?.name ?? "Financial Firefighter partner firm";
+  const firmName = tenant?.name ?? "Business Continuity Navigator partner firm";
   const origin = getSiteUrl(request.headers.get("origin") ?? undefined);
   const portalUrl = `${origin}/${tenant?.domain_slug ?? domain}/wizard`;
 

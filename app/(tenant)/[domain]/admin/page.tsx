@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { getTenantByDomain } from "@/lib/ff/tenant";
-import { ffRouteGuardRedirect, parseFfLoginRoute } from "@/lib/ff/routing";
-import { AdminDashboard } from "@/components/ff/AdminDashboard";
+import { getTenantByDomain } from "@/lib/bcn/tenant";
+import { ffRouteGuardRedirect, parseBcnLoginRoute } from "@/lib/bcn/routing";
+import { AdminDashboard } from "@/components/bcn/AdminDashboard";
 
 type Props = {
   params: Promise<{ domain: string }>;
@@ -25,7 +25,7 @@ export default async function TenantAdminPage({ params }: Props) {
   const { data: routeData } = await supabase.rpc("get_ff_login_route");
   const guard = ffRouteGuardRedirect(
     `/${domain}/admin`,
-    parseFfLoginRoute(routeData)
+    parseBcnLoginRoute(routeData)
   );
   if (guard) {
     redirect(guard);

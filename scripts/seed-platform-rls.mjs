@@ -14,7 +14,7 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 const TABLES = [
   "modules",
-  "distributor_modules",
+  "operator_modules",
   "client_module_access",
   "billing_rules",
   "platform_audit_events",

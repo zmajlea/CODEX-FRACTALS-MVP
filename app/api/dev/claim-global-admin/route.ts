@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { claimBootstrapGlobalAdmin } from "@/lib/ff/dev-admin";
+import { claimBootstrapGlobalAdmin } from "@/lib/bcn/dev-admin";
 
 /**
  * Dev-only: claim the first global_admin slot.

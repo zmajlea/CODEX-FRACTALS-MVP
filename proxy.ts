@@ -3,7 +3,7 @@ import { updateSession } from "@/utils/supabase/middleware";
 import {
   extractTenantSubdomain,
   isReservedRootSegment,
-} from "@/lib/ff/subdomain";
+} from "@/lib/bcn/subdomain";
 
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? "";

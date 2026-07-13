@@ -2,21 +2,61 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 import {
+  CLIENT_LOGIN,
+  PORTAL_LOGIN,
+} from "@/lib/auth/login-flow";
+import {
   ffRouteGuardRedirect,
   isClientPath,
   isDistributorPath,
   isGlobalAdminPath,
   isPlatformProtectedPath,
-  parseFfLoginRoute,
-} from "@/lib/ff/routing";
+  parseBcnLoginRoute,
+} from "@/lib/bcn/routing";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-const AUTH_ROUTES = ["/login", "/signup"];
+const AUTH_ROUTES = [
+  "/login",
+  "/signup",
+  "/portal/login",
+  "/client/login",
+  "/client/signup",
+];
 const PUBLIC_AUTH_PATHS = ["/auth/callback", "/api/auth/google"];
 
-async function fetchFfLoginRoute(
+function authRouteHome(
+  pathname: string,
+  loginRoute: ReturnType<typeof parseBcnLoginRoute>
+): string | null {
+  if (pathname === "/login" || pathname === "/signup") {
+    if (loginRoute.role === "global_admin") return "/admin";
+    if (loginRoute.role === "operator") return "/operator";
+    if (loginRoute.role === "client") return loginRoute.route;
+    return null;
+  }
+
+  if (pathname.startsWith("/portal/login")) {
+    if (loginRoute.role === "global_admin") return "/admin";
+    if (loginRoute.role === "operator") return "/operator";
+    return null;
+  }
+
+  if (pathname.startsWith("/client/login") || pathname.startsWith("/client/signup")) {
+    if (loginRoute.role === "client") return loginRoute.route;
+    // Stay on client auth pages — form shows Operator vs client messaging
+    return null;
+  }
+
+  return loginRoute.route;
+}
+
+function hasInviteParam(request: NextRequest): boolean {
+  return Boolean(request.nextUrl.searchParams.get("invite"));
+}
+
+async function fetchBcnLoginRoute(
   supabase: ReturnType<typeof createServerClient<Database>>
 ) {
   try {
@@ -25,7 +65,7 @@ async function fetchFfLoginRoute(
       console.error("[ff] get_ff_login_route failed:", error.message);
       return { route: "/login", role: "none" as const };
     }
-    return parseFfLoginRoute(data);
+    return parseBcnLoginRoute(data);
   } catch (err) {
     console.error("[ff] get_ff_login_route network error:", err);
     return { route: "/login", role: "none" as const };
@@ -34,7 +74,7 @@ async function fetchFfLoginRoute(
 
 function resolveSafeNext(
   next: string | null,
-  loginRoute: ReturnType<typeof parseFfLoginRoute>
+  loginRoute: ReturnType<typeof parseBcnLoginRoute>
 ): string {
   if (!next || !next.startsWith("/")) {
     return loginRoute.route;
@@ -48,10 +88,24 @@ function resolveSafeNext(
     return loginRoute.route;
   }
 
+  if (pathOnly === "/switchboard") {
+    return loginRoute.route;
+  }
+
   const guard = ffRouteGuardRedirect(pathOnly, loginRoute);
   if (guard) return guard;
 
   return `${pathOnly}${query}`;
+}
+
+function protectedLoginPath(pathname: string): string {
+  if (isGlobalAdminPath(pathname) || isDistributorPath(pathname)) {
+    return `${PORTAL_LOGIN}?next=${encodeURIComponent(pathname)}`;
+  }
+  if (isClientPath(pathname)) {
+    return `${CLIENT_LOGIN}?next=${encodeURIComponent(pathname)}`;
+  }
+  return `/login?next=${encodeURIComponent(pathname)}`;
 }
 
 export async function updateSession(request: NextRequest) {
@@ -107,22 +161,46 @@ export async function updateSession(request: NextRequest) {
 
   if (!hasSession && isProtected) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname + request.nextUrl.search);
+    const target = protectedLoginPath(pathname);
+    const qIndex = target.indexOf("?");
+    url.pathname = qIndex === -1 ? target : target.slice(0, qIndex);
+    url.search = qIndex === -1 ? "" : target.slice(qIndex);
     return NextResponse.redirect(url);
   }
 
   if (hasSession) {
-    const loginRoute = await fetchFfLoginRoute(supabase);
+    const loginRoute = await fetchBcnLoginRoute(supabase);
 
-    if (isAuthRoute || pathname === "/") {
+    if (pathname === "/switchboard") {
+      const url = request.nextUrl.clone();
+      url.pathname = loginRoute.route.split("?")[0] ?? loginRoute.route;
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (isAuthRoute) {
+      if (hasInviteParam(request)) {
+        return supabaseResponse;
+      }
+
       const url = request.nextUrl.clone();
       const next = request.nextUrl.searchParams.get("next");
+      const home = authRouteHome(pathname, loginRoute);
       const target =
-        isAuthRoute && next ? resolveSafeNext(next, loginRoute) : loginRoute.route;
+        next && home !== null ? resolveSafeNext(next, loginRoute) : home;
+
+      if (!target || target === pathname) {
+        return supabaseResponse;
+      }
+
       const qIndex = target.indexOf("?");
       url.pathname = qIndex === -1 ? target : target.slice(0, qIndex);
       url.search = qIndex === -1 ? "" : target.slice(qIndex);
+
+      if (url.pathname === pathname && url.search === request.nextUrl.search) {
+        return supabaseResponse;
+      }
+
       return NextResponse.redirect(url);
     }
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getTenantByDomain } from "@/lib/ff/tenant";
+import { getTenantByDomain } from "@/lib/bcn/tenant";
 
 type Props = {
   params: Promise<{ domain: string }>;

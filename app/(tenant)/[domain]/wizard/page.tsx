@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { ContinuityWizard } from "@/components/ff/ContinuityWizard";
+import { ContinuityWizard } from "@/components/bcn/ContinuityWizard";
 
 type Props = {
   params: Promise<{ domain: string }>;

@@ -2,9 +2,24 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
 
-export type CommercialTier = "global_admin" | "distributor" | "client" | "none";
+export type CommercialTier = "global_admin" | "operator" | "client" | "none";
 
 const CODEXONE_DOMAIN = "@codexone.io";
+
+/** Legacy DB rows may still use distributor until migrations are applied everywhere. */
+export function normalizeCommercialRole(
+  role: string | null | undefined
+): CommercialTier | null {
+  if (role === "global_admin") return "global_admin";
+  if (role === "operator" || role === "distributor") return "operator";
+  if (role === "client") return "client";
+  if (role === "none") return "none";
+  return null;
+}
+
+export function isOperatorRole(role: string | null | undefined): boolean {
+  return role === "operator" || role === "distributor";
+}
 
 export function isCodexOneEmail(email: string | null | undefined): boolean {
   return Boolean(email?.toLowerCase().endsWith(CODEXONE_DOMAIN));
@@ -30,9 +45,9 @@ export async function getTier(
     .select("role")
     .eq("user_id", userId);
 
-  const set = new Set((roles ?? []).map((r) => r.role));
+  const set = new Set((roles ?? []).map((r) => String(r.role)));
   if (set.has("global_admin")) return "global_admin";
-  if (set.has("distributor")) return "distributor";
+  if (set.has("operator") || set.has("distributor")) return "operator";
   if (set.has("client")) return "client";
   return "none";
 }
@@ -63,7 +78,7 @@ export async function canSellModule(
   if (!mod) return false;
 
   const { data } = await supabase
-    .from("distributor_modules")
+    .from("operator_modules")
     .select("allowed")
     .eq("distributor_tenant_id", tenantId)
     .eq("module_id", mod.id)
@@ -101,21 +116,93 @@ export async function canAccessModule(
   return Boolean(data);
 }
 
-export async function getPrimaryDistributorTenantId(
+export async function getPrimaryOperatorTenantId(
   supabase: SupabaseClient<Database>,
   userId: string
 ): Promise<string | null> {
   const { data } = await supabase
     .from("user_roles")
-    .select("tenant_id")
+    .select("tenant_id, role")
     .eq("user_id", userId)
-    .eq("role", "distributor")
-    .order("created_at", { ascending: true })
-    .limit(1)
+    .order("created_at", { ascending: true });
+
+  const row = (data ?? []).find((r) => isOperatorRole(String(r.role)));
+  return row?.tenant_id ?? null;
+}
+
+export type OperatorClientGrant = {
+  tenantId: string;
+  grantId: string | null;
+};
+
+/**
+ * Single sanctioned entry for operator cross-client reads (service-role admin client).
+ * Returns null when no active grant exists (suspended/revoked/absent).
+ */
+export async function operatorHasClientGrant(
+  admin: SupabaseClient<Database>,
+  operatorUserId: string,
+  clientUserId: string,
+  moduleSlug: string,
+  opts?: { allowGlobalAdmin?: boolean }
+): Promise<OperatorClientGrant | null> {
+  const { data: mod } = await admin
+    .from("modules")
+    .select("id")
+    .eq("slug", moduleSlug)
     .maybeSingle();
 
-  return data?.tenant_id ?? null;
+  if (!mod) return null;
+
+  const { data: roles } = await admin
+    .from("user_roles")
+    .select("role, tenant_id")
+    .eq("user_id", operatorUserId);
+
+  const roleRows = roles ?? [];
+  const isGlobalAdmin = roleRows.some((r) => r.role === "global_admin");
+
+  if (opts?.allowGlobalAdmin && isGlobalAdmin) {
+    const { data: activeGrants } = await admin
+      .from("client_module_access")
+      .select("id, distributor_tenant_id")
+      .eq("client_user_id", clientUserId)
+      .eq("module_id", mod.id)
+      .eq("status", "active")
+      .order("granted_at", { ascending: false })
+      .limit(1);
+
+    const activeGrant = activeGrants?.[0];
+    if (!activeGrant) return null;
+
+    return {
+      tenantId: activeGrant.distributor_tenant_id,
+      grantId: activeGrant.id,
+    };
+  }
+
+  const operatorRow = roleRows.find((r) => isOperatorRole(String(r.role)));
+  if (!operatorRow?.tenant_id) return null;
+
+  const { data: grant } = await admin
+    .from("client_module_access")
+    .select("id, distributor_tenant_id")
+    .eq("client_user_id", clientUserId)
+    .eq("module_id", mod.id)
+    .eq("distributor_tenant_id", operatorRow.tenant_id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!grant) return null;
+
+  return {
+    tenantId: grant.distributor_tenant_id,
+    grantId: grant.id,
+  };
 }
+
+/** @deprecated use getPrimaryOperatorTenantId */
+export const getPrimaryDistributorTenantId = getPrimaryOperatorTenantId;
 
 export async function afterAuthBootstrap(
   supabase: SupabaseClient<Database>,

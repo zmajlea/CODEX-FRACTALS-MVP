@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { clearAuthSessionStorage } from "@/lib/auth/oauth";
 import { afterAuthBootstrap } from "@/lib/auth/rbac";
-import { parseFfLoginRoute } from "@/lib/ff/routing";
+import { parseBcnLoginRoute } from "@/lib/bcn/routing";
 import { createClient } from "@/utils/supabase/client";
 
 export default function LoginForm() {
@@ -74,7 +74,7 @@ export default function LoginForm() {
       let target = next;
       if (!target || target === "/switchboard") {
         const { data: routeData } = await supabase.rpc("get_ff_login_route");
-        target = parseFfLoginRoute(routeData).route;
+        target = parseBcnLoginRoute(routeData).route;
       }
 
       router.push(target);

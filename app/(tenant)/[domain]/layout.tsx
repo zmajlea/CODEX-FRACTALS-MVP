@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { getTenantByDomain } from "@/lib/ff/tenant";
-import { FfTopbar } from "@/components/ff/FfTopbar";
+import { getTenantByDomain } from "@/lib/bcn/tenant";
+import { BcnTopbar } from "@/components/bcn/BcnTopbar";
 import "@/app/ff/ff-v1.css";
 
 type Props = {
@@ -20,9 +20,9 @@ export default async function TenantLayout({ children, params }: Props) {
   const accent = tenant.brand_color_hex ?? "#E67E50";
 
   return (
-    <div className="ff-shell min-h-screen" data-ff-tenant={tenant.domain_slug}>
+    <div className="ff-shell min-h-screen" data-bcn-tenant={tenant.domain_slug}>
       <style>{`:root { --cinnabar: ${accent}; --brand: ${accent}; --cinnabar-deep: ${accent}; }`}</style>
-      <FfTopbar
+      <BcnTopbar
         name={tenant.name}
         logoUrl={tenant.logo_url}
         domain={tenant.domain_slug}

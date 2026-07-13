@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server";
 import { getRequestOrigin } from "@/lib/request-origin";
-import { afterAuthBootstrap, resolveLoginPath } from "@/lib/auth/rbac";
+import {
+  isLegacyDefaultNext,
+  resolvePostAuthPath,
+  type AuthFlow,
+} from "@/lib/auth/login-flow";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const siteUrl = getRequestOrigin(request);
   const code = searchParams.get("code");
-  let next = searchParams.get("next") ?? null;
+  const flow = (searchParams.get("flow") === "portal" ? "portal" : "client") as AuthFlow;
+  const invite = searchParams.get("invite");
+  let next = searchParams.get("next");
 
   if (next && (!next.startsWith("/") || next.startsWith("//"))) {
+    next = null;
+  }
+  if (isLegacyDefaultNext(next)) {
     next = null;
   }
 
@@ -23,15 +32,27 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
-        await afterAuthBootstrap(supabase, user);
+        try {
+          const target = await resolvePostAuthPath(supabase, user, flow, {
+            next,
+            inviteToken: invite,
+          });
+          return NextResponse.redirect(`${siteUrl}${target}`);
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Sign-in could not be completed.";
+          const loginPath = flow === "portal" ? "/portal/login" : "/client/login";
+          const params = new URLSearchParams({ error: message });
+          if (invite) params.set("invite", invite);
+          if (next) params.set("next", next);
+          return NextResponse.redirect(`${siteUrl}${loginPath}?${params.toString()}`);
+        }
       }
-
-      const target = next ?? (await resolveLoginPath(supabase));
-      return NextResponse.redirect(`${siteUrl}${target}`);
     }
   }
 
+  const loginPath = flow === "portal" ? "/portal/login" : "/client/login";
   return NextResponse.redirect(
-    `${siteUrl}/login?error=${encodeURIComponent("Google sign-in failed. Try again.")}`
+    `${siteUrl}${loginPath}?error=${encodeURIComponent("Google sign-in failed. Try again.")}`
   );
 }

@@ -61,13 +61,10 @@ export async function setVaultEncryptionKeyTest(
     key
   );
 
-  const { error } = await supabase
-    .from("vaults")
-    .update({
-      encryption_test: encryptedTest,
-      encryption_test_updated_at: new Date().toISOString(),
-    })
-    .eq("id", vaultId);
+  const { error } = await supabase.rpc("set_vault_encryption_test", {
+    p_vault_id: vaultId,
+    p_encryption_test: encryptedTest,
+  });
 
   if (error) {
     throw new Error(error.message);

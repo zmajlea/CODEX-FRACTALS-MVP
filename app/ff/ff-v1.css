@@ -1,4 +1,4 @@
-/* Financial Firefighter V1 — continuity chrome (Digital Vellum) */
+/* Business Continuity Navigator V1 — continuity chrome (Digital Vellum) */
 
 .ff-shell {
   background: var(--vellum);
@@ -78,7 +78,7 @@
   color: #fff;
 }
 
-.ff-card {
+.bcn-card {
   background: #fff;
   border: 1px solid var(--bone);
   border-radius: var(--codex-radius-lg);

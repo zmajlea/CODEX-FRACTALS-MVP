@@ -2,7 +2,7 @@ This is the **CodexOne / Fractals MVP** — Next.js + Supabase + E2E encryption.
 
 **New agent onboarding:** see [`IA_CONTEXT/README.md`](IA_CONTEXT/README.md) for full stack, Supabase CLI, Vercel, schema, and agent rules.
 
-**Financial Firefighter V1:** copy-paste master prompt → [`IA_CONTEXT/FF-V1-MASTER-PROMPT.md`](IA_CONTEXT/FF-V1-MASTER-PROMPT.md)
+**Business Continuity Navigator V1:** copy-paste master prompt → [`IA_CONTEXT/FF-V1-MASTER-PROMPT.md`](IA_CONTEXT/FF-V1-MASTER-PROMPT.md)
 
 ## Database migration
 

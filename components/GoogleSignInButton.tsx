@@ -2,15 +2,20 @@
 
 import { useState } from "react";
 import { startGoogleSignIn } from "@/lib/auth/oauth";
+import type { AuthFlow } from "@/lib/auth/login-flow";
 
 type GoogleSignInButtonProps = {
+  flow?: AuthFlow;
   nextPath?: string;
+  invite?: string;
   disabled?: boolean;
   label?: string;
 };
 
 export default function GoogleSignInButton({
-  nextPath = "/switchboard",
+  flow = "client",
+  nextPath,
+  invite,
   disabled = false,
   label = "Continue with Google",
 }: GoogleSignInButtonProps) {
@@ -21,7 +26,7 @@ export default function GoogleSignInButton({
     setError(null);
     setLoading(true);
     try {
-      startGoogleSignIn(nextPath);
+      startGoogleSignIn({ flow, nextPath, invite });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed");
       setLoading(false);

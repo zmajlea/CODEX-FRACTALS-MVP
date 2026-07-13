@@ -26,7 +26,7 @@ export function ModuleSelector({ grants, activeGrantId }: Props) {
       onChange={(e) => {
         const grant = grants.find((g) => g.id === e.target.value);
         document.cookie = `active_grant_id=${e.target.value};path=/;max-age=31536000`;
-        const base = grant?.modules?.route_base ?? "/ff";
+        const base = grant?.modules?.route_base ?? "/bcn";
         router.push(`/client${base}`);
         router.refresh();
       }}

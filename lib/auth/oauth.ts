@@ -16,10 +16,18 @@ export function clearAuthSessionStorage() {
 }
 
 /** Full-page navigation — server builds redirectTo from Vercel forwarded headers. */
-export function startGoogleSignIn(nextPath = "/switchboard") {
+export function startGoogleSignIn(options?: {
+  flow?: "portal" | "client";
+  nextPath?: string;
+  invite?: string;
+}) {
   clearAuthSessionStorage();
 
   const origin = getBrowserOrigin();
-  const next = encodeURIComponent(nextPath);
-  window.location.assign(`${origin}/api/auth/google?next=${next}`);
+  const params = new URLSearchParams();
+  params.set("flow", options?.flow ?? "client");
+  if (options?.nextPath) params.set("next", options.nextPath);
+  if (options?.invite) params.set("invite", options.invite);
+
+  window.location.assign(`${origin}/api/auth/google?${params.toString()}`);
 }

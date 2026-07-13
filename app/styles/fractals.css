@@ -627,7 +627,7 @@ body.show-tokens [data-copy]{ font-family:var(--mono)!important; color:var(--cin
    ============================================================ */
 
 /* ===== FF1 — Fiduciary Ledger (cool stone · oxblood · parchment) ===== */
-html[data-brand="ff1"]{
+html[data-brand="bcn1"]{
   --vellum:#F3F1EC; --vellum-card:#FAF9F5;
   --obsidian:#23252A; --oxford:#555A61; --ink-soft:#555A61; --muted:#8C9097;
   --amber:#A8852C; --amber-deep:#876A1F;
@@ -635,7 +635,7 @@ html[data-brand="ff1"]{
   --bone:#E4DDCD; --bone-line:#E8E4DC;
 }
 /* ===== FF2 — Engine House ★ DEFAULT (warm-grey stone/ivory · bold ember) ===== */
-html[data-brand="ff2"]{
+html[data-brand="bcn2"]{
   --vellum:#EFECE3; --vellum-card:#F6F4ED;
   --obsidian:#23262B; --oxford:#5A5F66; --ink-soft:#5A5F66; --muted:#8A8F96;
   --amber:#B99339; --amber-deep:#94732A;
@@ -643,7 +643,7 @@ html[data-brand="ff2"]{
   --bone:#E2D7C0; --bone-line:#E3DED2;
 }
 /* ===== FF3 — Heritage Ledger (warm grey · bone-ivory · oxblood) ===== */
-html[data-brand="ff3"]{
+html[data-brand="bcn3"]{
   --vellum:#FBF8F2; --vellum-card:#FFFFFF;
   --obsidian:#262019; --oxford:#564E43; --ink-soft:#564E43; --muted:#8B8374;
   --amber:#9A7B2C; --amber-deep:#7C6120;
@@ -651,7 +651,7 @@ html[data-brand="ff3"]{
   --bone:#D7CEBD; --bone-line:#DBD3C4;
 }
 /* ===== FF4 — Firehouse (black canvas → white paper · bright fire-red · silver foil) ===== */
-html[data-brand="ff4"]{
+html[data-brand="bcn4"]{
   --vellum:#FFFFFF; --vellum-card:#FBF7F0;
   --obsidian:#1A1A1A; --oxford:#4A4540; --ink-soft:#4A4540; --muted:#8A857C;
   --amber:#B9BDC2; --amber-deep:#8E9298;
@@ -679,16 +679,16 @@ html[data-brand="summit"]{
 /* ---------- Tier-B parity polish (Vera · Step 6) ---------- */
 /* ff4: silver foil is the QUIET proposed state (as in BCN ff4), never a primary CTA.
    So give the primary "go" buttons a confident graphite-chrome treatment on white. */
-html[data-brand="ff4"] .btn-amber{ background:#26221F; color:#F4EFE7; box-shadow:0 1px 2px rgba(0,0,0,0.18); }
-html[data-brand="ff4"] .btn-amber:hover{ background:#1A1A1A; color:#FFFFFF; }
+html[data-brand="bcn4"] .btn-amber{ background:#26221F; color:#F4EFE7; box-shadow:0 1px 2px rgba(0,0,0,0.18); }
+html[data-brand="bcn4"] .btn-amber:hover{ background:#1A1A1A; color:#FFFFFF; }
 
 /* ---------- Step-6 polish: per-brand display face + warmer card paper (co-CEO findings #3/#5) ----------
    --head drives headings + the wordmark, so each skin now differs by typeface (as the shell does);
    fractals keeps Playfair (native). Warm the near-white card surfaces toward the house bone. */
-html[data-brand="ff1"]{ --head:'Fraunces',Georgia,serif; }
-html[data-brand="ff2"]{ --head:'Zilla Slab',Georgia,serif; }
-html[data-brand="ff3"]{ --head:'Newsreader',Georgia,serif; --vellum-card:#FFFCF6; }
-html[data-brand="ff4"]{ --head:'Oswald','Arial Narrow',sans-serif; }
+html[data-brand="bcn1"]{ --head:'Fraunces',Georgia,serif; }
+html[data-brand="bcn2"]{ --head:'Zilla Slab',Georgia,serif; }
+html[data-brand="bcn3"]{ --head:'Newsreader',Georgia,serif; --vellum-card:#FFFCF6; }
+html[data-brand="bcn4"]{ --head:'Oswald','Arial Narrow',sans-serif; }
 html[data-brand="summit"]{ --head:'Newsreader',Georgia,serif; --vellum-card:#FBFAF6; }
 
 /* ---------- Deadlines brand switcher (Vera · Step 8) — the white-label proof, mirrors the shell ---------- */
@@ -709,68 +709,68 @@ html[data-brand="summit"]{ --head:'Newsreader',Georgia,serif; --vellum-card:#FBF
    ============================================================ */
 
 /* ff2 — dark canvas + chrome */
-html[data-brand="ff2"]{ --obsidian:#E8E4DC; --oxford:#C2C6CC; --ink-soft:#C2C6CC; --muted:#9BA0A7; }
-html[data-brand="ff2"] body{ background:#3B3F46; }
-html[data-brand="ff2"] .rail-top{ background:rgba(45,48,54,.92); border-bottom-color:rgba(255,255,255,.08); }
-html[data-brand="ff2"] .rail-side{ background:#2D3036; border-right-color:rgba(255,255,255,.08); }
-html[data-brand="ff2"] .hdr-sep{ background:rgba(255,255,255,.14); }
-html[data-brand="ff2"] .reccard,
-html[data-brand="ff2"] .summary-strip,
-html[data-brand="ff2"] .summary-empty,
-html[data-brand="ff2"] .drawer,
-html[data-brand="ff2"] .sect,
-html[data-brand="ff2"] .seg .opt,
-html[data-brand="ff2"] .filerow,
-html[data-brand="ff2"] .gov-table,
-html[data-brand="ff2"] .actlog,
-html[data-brand="ff2"] .root-card,
-html[data-brand="ff2"] .deleg-sect,
-html[data-brand="ff2"] .usage-table,
-html[data-brand="ff2"] .viewlogs,
-html[data-brand="ff2"] .frame-link,
-html[data-brand="ff2"] .inbox-item,
-html[data-brand="ff2"] .taxo-chip,
-html[data-brand="ff2"] .ctx-card,
-html[data-brand="ff2"] .ac-list,
-html[data-brand="ff2"] .qbar .qfield,
-html[data-brand="ff2"] .copy-toggle,
-html[data-brand="ff2"] .inspector,
-html[data-brand="ff2"] .act-guide .ag-body,
-html[data-brand="ff2"] .act-guide .ag-tab,
-html[data-brand="ff2"] .demo-reset,
-html[data-brand="ff2"] .mtag{ color:#23262B; --obsidian:#23262B; --oxford:#5A5F66; --ink-soft:#5A5F66; --muted:#8A8F96; }
+html[data-brand="bcn2"]{ --obsidian:#E8E4DC; --oxford:#C2C6CC; --ink-soft:#C2C6CC; --muted:#9BA0A7; }
+html[data-brand="bcn2"] body{ background:#3B3F46; }
+html[data-brand="bcn2"] .rail-top{ background:rgba(45,48,54,.92); border-bottom-color:rgba(255,255,255,.08); }
+html[data-brand="bcn2"] .rail-side{ background:#2D3036; border-right-color:rgba(255,255,255,.08); }
+html[data-brand="bcn2"] .hdr-sep{ background:rgba(255,255,255,.14); }
+html[data-brand="bcn2"] .reccard,
+html[data-brand="bcn2"] .summary-strip,
+html[data-brand="bcn2"] .summary-empty,
+html[data-brand="bcn2"] .drawer,
+html[data-brand="bcn2"] .sect,
+html[data-brand="bcn2"] .seg .opt,
+html[data-brand="bcn2"] .filerow,
+html[data-brand="bcn2"] .gov-table,
+html[data-brand="bcn2"] .actlog,
+html[data-brand="bcn2"] .root-card,
+html[data-brand="bcn2"] .deleg-sect,
+html[data-brand="bcn2"] .usage-table,
+html[data-brand="bcn2"] .viewlogs,
+html[data-brand="bcn2"] .frame-link,
+html[data-brand="bcn2"] .inbox-item,
+html[data-brand="bcn2"] .taxo-chip,
+html[data-brand="bcn2"] .ctx-card,
+html[data-brand="bcn2"] .ac-list,
+html[data-brand="bcn2"] .qbar .qfield,
+html[data-brand="bcn2"] .copy-toggle,
+html[data-brand="bcn2"] .inspector,
+html[data-brand="bcn2"] .act-guide .ag-body,
+html[data-brand="bcn2"] .act-guide .ag-tab,
+html[data-brand="bcn2"] .demo-reset,
+html[data-brand="bcn2"] .mtag{ color:#23262B; --obsidian:#23262B; --oxford:#5A5F66; --ink-soft:#5A5F66; --muted:#8A8F96; }
 
 /* ff4 — dark canvas + chrome */
-html[data-brand="ff4"]{ --obsidian:#F4EFE7; --oxford:#CFC9C1; --ink-soft:#CFC9C1; --muted:#9A948C; }
-html[data-brand="ff4"] body{ background:#1A1816; }
-html[data-brand="ff4"] .rail-top{ background:rgba(13,12,11,.92); border-bottom-color:rgba(255,255,255,.08); }
-html[data-brand="ff4"] .rail-side{ background:#0D0C0B; border-right-color:rgba(255,255,255,.08); }
-html[data-brand="ff4"] .hdr-sep{ background:rgba(255,255,255,.14); }
-html[data-brand="ff4"] .reccard,
-html[data-brand="ff4"] .summary-strip,
-html[data-brand="ff4"] .summary-empty,
-html[data-brand="ff4"] .drawer,
-html[data-brand="ff4"] .sect,
-html[data-brand="ff4"] .seg .opt,
-html[data-brand="ff4"] .filerow,
-html[data-brand="ff4"] .gov-table,
-html[data-brand="ff4"] .actlog,
-html[data-brand="ff4"] .root-card,
-html[data-brand="ff4"] .deleg-sect,
-html[data-brand="ff4"] .usage-table,
-html[data-brand="ff4"] .viewlogs,
-html[data-brand="ff4"] .frame-link,
-html[data-brand="ff4"] .inbox-item,
-html[data-brand="ff4"] .taxo-chip,
-html[data-brand="ff4"] .ctx-card,
-html[data-brand="ff4"] .ac-list,
-html[data-brand="ff4"] .qbar .qfield,
-html[data-brand="ff4"] .copy-toggle,
-html[data-brand="ff4"] .inspector,
-html[data-brand="ff4"] .act-guide .ag-body,
-html[data-brand="ff4"] .act-guide .ag-tab,
-html[data-brand="ff4"] .demo-reset,
-html[data-brand="ff4"] .mtag{ color:#1A1A1A; --obsidian:#1A1A1A; --oxford:#4A4540; --ink-soft:#4A4540; --muted:#8A857C; }
+html[data-brand="bcn4"]{ --obsidian:#F4EFE7; --oxford:#CFC9C1; --ink-soft:#CFC9C1; --muted:#9A948C; }
+html[data-brand="bcn4"] body{ background:#1A1816; }
+html[data-brand="bcn4"] .rail-top{ background:rgba(13,12,11,.92); border-bottom-color:rgba(255,255,255,.08); }
+html[data-brand="bcn4"] .rail-side{ background:#0D0C0B; border-right-color:rgba(255,255,255,.08); }
+html[data-brand="bcn4"] .hdr-sep{ background:rgba(255,255,255,.14); }
+html[data-brand="bcn4"] .reccard,
+html[data-brand="bcn4"] .summary-strip,
+html[data-brand="bcn4"] .summary-empty,
+html[data-brand="bcn4"] .drawer,
+html[data-brand="bcn4"] .sect,
+html[data-brand="bcn4"] .seg .opt,
+html[data-brand="bcn4"] .filerow,
+html[data-brand="bcn4"] .gov-table,
+html[data-brand="bcn4"] .actlog,
+html[data-brand="bcn4"] .root-card,
+html[data-brand="bcn4"] .deleg-sect,
+html[data-brand="bcn4"] .usage-table,
+html[data-brand="bcn4"] .viewlogs,
+html[data-brand="bcn4"] .frame-link,
+html[data-brand="bcn4"] .inbox-item,
+html[data-brand="bcn4"] .taxo-chip,
+html[data-brand="bcn4"] .ctx-card,
+html[data-brand="bcn4"] .ac-list,
+html[data-brand="bcn4"] .qbar .qfield,
+html[data-brand="bcn4"] .copy-toggle,
+html[data-brand="bcn4"] .inspector,
+html[data-brand="bcn4"] .act-guide .ag-body,
+html[data-brand="bcn4"] .act-guide .ag-tab,
+html[data-brand="bcn4"] .demo-reset,
+html[data-brand="bcn4"] .mtag{ color:#1A1A1A; --obsidian:#1A1A1A; --oxford:#4A4540; --ink-soft:#4A4540; --muted:#8A857C; }
 
 /* summit — dark canvas + chrome */
 html[data-brand="summit"]{ --obsidian:#E9F0F8; --oxford:#BCCBDD; --ink-soft:#BCCBDD; --muted:#8E9BAC; }
@@ -805,19 +805,19 @@ html[data-brand="summit"] .demo-reset,
 html[data-brand="summit"] .mtag{ color:#15212E; --obsidian:#15212E; --oxford:#46566A; --ink-soft:#46566A; --muted:#8995A6; }
 
 /* ff1 — light stone canvas + paper cards (text stays dark) */
-html[data-brand="ff1"] body{ background:#D7D9DD; }
-html[data-brand="ff1"] .rail-top{ background:color-mix(in srgb, #EAE8E2 88%, transparent); }
-html[data-brand="ff1"] .rail-side{ background:#EAE8E2; }
+html[data-brand="bcn1"] body{ background:#D7D9DD; }
+html[data-brand="bcn1"] .rail-top{ background:color-mix(in srgb, #EAE8E2 88%, transparent); }
+html[data-brand="bcn1"] .rail-side{ background:#EAE8E2; }
 
 /* ff3 — light stone canvas + paper cards (text stays dark) */
-html[data-brand="ff3"] body{ background:#C5C0B6; }
-html[data-brand="ff3"] .rail-top{ background:color-mix(in srgb, #E8E3D9 88%, transparent); }
-html[data-brand="ff3"] .rail-side{ background:#E8E3D9; }
+html[data-brand="bcn3"] body{ background:#C5C0B6; }
+html[data-brand="bcn3"] .rail-top{ background:color-mix(in srgb, #E8E3D9 88%, transparent); }
+html[data-brand="bcn3"] .rail-side{ background:#E8E3D9; }
 
 /* Step-9 harden (co-CEO recheck): nudge on-canvas secondary text/ghost-button contrast up on the
    dark trio. Only the on-canvas (html-level) values change; cards still re-scope these to dark. */
-html[data-brand="ff2"]{ --oxford:#D2D6DC; --ink-soft:#D2D6DC; }
-html[data-brand="ff4"]{ --oxford:#DAD5CE; --ink-soft:#DAD5CE; }
+html[data-brand="bcn2"]{ --oxford:#D2D6DC; --ink-soft:#D2D6DC; }
+html[data-brand="bcn4"]{ --oxford:#DAD5CE; --ink-soft:#DAD5CE; }
 html[data-brand="summit"]{ --oxford:#CCD7E5; --ink-soft:#CCD7E5; }
 
 /* ============================================================
@@ -825,29 +825,29 @@ html[data-brand="summit"]{ --oxford:#CCD7E5; --ink-soft:#CCD7E5; }
    The drawer is a workspace panel (not a transient modal) → it should carry the
    brand canvas. Re-lighten its text tokens (overrides the card-reset) + fix bits.
    ============================================================ */
-html[data-brand="ff2"] .drawer{ background:#2D3036; border-left-color:rgba(255,255,255,.09); color:#E8E4DC; --obsidian:#E8E4DC; --oxford:#C2C6CC; --ink-soft:#C2C6CC; --muted:#9BA0A7; }
-html[data-brand="ff4"] .drawer{ background:#100F0D; border-left-color:rgba(255,255,255,.09); color:#F4EFE7; --obsidian:#F4EFE7; --oxford:#CFC9C1; --ink-soft:#CFC9C1; --muted:#9A948C; }
+html[data-brand="bcn2"] .drawer{ background:#2D3036; border-left-color:rgba(255,255,255,.09); color:#E8E4DC; --obsidian:#E8E4DC; --oxford:#C2C6CC; --ink-soft:#C2C6CC; --muted:#9BA0A7; }
+html[data-brand="bcn4"] .drawer{ background:#100F0D; border-left-color:rgba(255,255,255,.09); color:#F4EFE7; --obsidian:#F4EFE7; --oxford:#CFC9C1; --ink-soft:#CFC9C1; --muted:#9A948C; }
 html[data-brand="summit"] .drawer{ background:#122B43; border-left-color:rgba(255,255,255,.10); color:#E9F0F8; --obsidian:#E9F0F8; --oxford:#BCCBDD; --ink-soft:#BCCBDD; --muted:#8E9BAC; }
 /* dividers/borders inside the dark drawer → faint light hairlines */
-html[data-brand="ff2"] .drawer-head, html[data-brand="ff2"] .drawer-foot,
-html[data-brand="ff4"] .drawer-head, html[data-brand="ff4"] .drawer-foot,
+html[data-brand="bcn2"] .drawer-head, html[data-brand="bcn2"] .drawer-foot,
+html[data-brand="bcn4"] .drawer-head, html[data-brand="bcn4"] .drawer-foot,
 html[data-brand="summit"] .drawer-head, html[data-brand="summit"] .drawer-foot{ border-color:rgba(255,255,255,.10); }
-html[data-brand="ff2"] .lrow, html[data-brand="ff4"] .lrow, html[data-brand="summit"] .lrow{ border-bottom-color:rgba(255,255,255,.07); }
-html[data-brand="ff2"] .drawer-tabs, html[data-brand="ff4"] .drawer-tabs, html[data-brand="summit"] .drawer-tabs{ border-color:rgba(255,255,255,.16); }
+html[data-brand="bcn2"] .lrow, html[data-brand="bcn4"] .lrow, html[data-brand="summit"] .lrow{ border-bottom-color:rgba(255,255,255,.07); }
+html[data-brand="bcn2"] .drawer-tabs, html[data-brand="bcn4"] .drawer-tabs, html[data-brand="summit"] .drawer-tabs{ border-color:rgba(255,255,255,.16); }
 /* active triage tab — brand accent with guaranteed contrast on the dark drawer */
-html[data-brand="ff2"] .drawer-tabs button.on{ background:var(--cinnabar); color:#fff; }
-html[data-brand="ff4"] .drawer-tabs button.on{ background:var(--cinnabar); color:#fff; }
+html[data-brand="bcn2"] .drawer-tabs button.on{ background:var(--cinnabar); color:#fff; }
+html[data-brand="bcn4"] .drawer-tabs button.on{ background:var(--cinnabar); color:#fff; }
 html[data-brand="summit"] .drawer-tabs button.on{ background:var(--amber); color:#15212E; }
 /* the collapsed drawer-strip badge stays legible */
-html[data-brand="ff2"] .drawer-strip .ds-ico, html[data-brand="ff4"] .drawer-strip .ds-ico, html[data-brand="summit"] .drawer-strip .ds-ico{ color:currentColor; }
+html[data-brand="bcn2"] .drawer-strip .ds-ico, html[data-brand="bcn4"] .drawer-strip .ds-ico, html[data-brand="summit"] .drawer-strip .ds-ico{ color:currentColor; }
 
 /* dark-drawer SEAL buttons: brand accent can vanish on the dark panel (navy-on-navy for summit)
    → use a light hairline + light text, hover to the brand foil. */
-html[data-brand="ff2"] .drawer .l-seal,
-html[data-brand="ff4"] .drawer .l-seal,
+html[data-brand="bcn2"] .drawer .l-seal,
+html[data-brand="bcn4"] .drawer .l-seal,
 html[data-brand="summit"] .drawer .l-seal{ border-color:rgba(255,255,255,.34); color:inherit; background:rgba(255,255,255,.05); }
-html[data-brand="ff2"] .drawer .l-seal:hover,
-html[data-brand="ff4"] .drawer .l-seal:hover,
+html[data-brand="bcn2"] .drawer .l-seal:hover,
+html[data-brand="bcn4"] .drawer .l-seal:hover,
 html[data-brand="summit"] .drawer .l-seal:hover{ background:var(--amber); color:#1a1a1a; border-color:var(--amber); }
 
 /* ============================================================
@@ -855,38 +855,38 @@ html[data-brand="summit"] .drawer .l-seal:hover{ background:var(--amber); color:
    ============================================================ */
 
 /* ff2 dark inspector */
-html[data-brand="ff2"] .inspector{ background:#2D3036; border-color:rgba(255,255,255,.12); color:#E8E4DC; --obsidian:#E8E4DC; --oxford:#E8E4DC; --ink-soft:#E8E4DC; --muted:#9BA0A7; }
-html[data-brand="ff2"] .insp-context{ background:rgba(255,255,255,.05); border-bottom-color:rgba(255,255,255,.10); }
-html[data-brand="ff2"] .insp-context, html[data-brand="ff2"] .insp-context a{ color:#9BA0A7; }
-html[data-brand="ff2"] .insp-left{ background:rgba(255,255,255,.03); border-right-color:rgba(255,255,255,.10); }
-html[data-brand="ff2"] .insp-secthead{ border-bottom-color:rgba(255,255,255,.12); }
-html[data-brand="ff2"] .evidence-doc{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.15); }
-html[data-brand="ff2"] .clause{ color:rgba(255,255,255,.88); }
-html[data-brand="ff2"] .clause mark{ color:#15212e; }
-html[data-brand="ff2"] .doc-page{ background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.12); box-shadow:none; }
-html[data-brand="ff2"] .doc-page .ln{ background:rgba(255,255,255,.14); }
-html[data-brand="ff2"] .input, html[data-brand="ff2"] select.input, html[data-brand="ff2"] textarea.input{ background:rgba(255,255,255,.06); color:#E8E4DC; border-color:rgba(255,255,255,.20); }
-html[data-brand="ff2"] .input:focus{ border-color:rgba(255,255,255,.42); box-shadow:0 0 0 3px rgba(255,255,255,.06); }
-html[data-brand="ff2"] .chip.sealed{ color:#9BA0A7; border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.05); }
-html[data-brand="ff2"] .chip.sealed .dot{ background:#E8E4DC; border-color:rgba(255,255,255,.4); box-shadow:none; }
-html[data-brand="ff2"] .hist-row{ border-bottom-color:rgba(255,255,255,.08); }
+html[data-brand="bcn2"] .inspector{ background:#2D3036; border-color:rgba(255,255,255,.12); color:#E8E4DC; --obsidian:#E8E4DC; --oxford:#E8E4DC; --ink-soft:#E8E4DC; --muted:#9BA0A7; }
+html[data-brand="bcn2"] .insp-context{ background:rgba(255,255,255,.05); border-bottom-color:rgba(255,255,255,.10); }
+html[data-brand="bcn2"] .insp-context, html[data-brand="bcn2"] .insp-context a{ color:#9BA0A7; }
+html[data-brand="bcn2"] .insp-left{ background:rgba(255,255,255,.03); border-right-color:rgba(255,255,255,.10); }
+html[data-brand="bcn2"] .insp-secthead{ border-bottom-color:rgba(255,255,255,.12); }
+html[data-brand="bcn2"] .evidence-doc{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.15); }
+html[data-brand="bcn2"] .clause{ color:rgba(255,255,255,.88); }
+html[data-brand="bcn2"] .clause mark{ color:#15212e; }
+html[data-brand="bcn2"] .doc-page{ background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.12); box-shadow:none; }
+html[data-brand="bcn2"] .doc-page .ln{ background:rgba(255,255,255,.14); }
+html[data-brand="bcn2"] .input, html[data-brand="bcn2"] select.input, html[data-brand="bcn2"] textarea.input{ background:rgba(255,255,255,.06); color:#E8E4DC; border-color:rgba(255,255,255,.20); }
+html[data-brand="bcn2"] .input:focus{ border-color:rgba(255,255,255,.42); box-shadow:0 0 0 3px rgba(255,255,255,.06); }
+html[data-brand="bcn2"] .chip.sealed{ color:#9BA0A7; border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.05); }
+html[data-brand="bcn2"] .chip.sealed .dot{ background:#E8E4DC; border-color:rgba(255,255,255,.4); box-shadow:none; }
+html[data-brand="bcn2"] .hist-row{ border-bottom-color:rgba(255,255,255,.08); }
 
 /* ff4 dark inspector */
-html[data-brand="ff4"] .inspector{ background:#100F0D; border-color:rgba(255,255,255,.12); color:#F4EFE7; --obsidian:#F4EFE7; --oxford:#F4EFE7; --ink-soft:#F4EFE7; --muted:#9A948C; }
-html[data-brand="ff4"] .insp-context{ background:rgba(255,255,255,.05); border-bottom-color:rgba(255,255,255,.10); }
-html[data-brand="ff4"] .insp-context, html[data-brand="ff4"] .insp-context a{ color:#9A948C; }
-html[data-brand="ff4"] .insp-left{ background:rgba(255,255,255,.03); border-right-color:rgba(255,255,255,.10); }
-html[data-brand="ff4"] .insp-secthead{ border-bottom-color:rgba(255,255,255,.12); }
-html[data-brand="ff4"] .evidence-doc{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.15); }
-html[data-brand="ff4"] .clause{ color:rgba(255,255,255,.88); }
-html[data-brand="ff4"] .clause mark{ color:#15212e; }
-html[data-brand="ff4"] .doc-page{ background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.12); box-shadow:none; }
-html[data-brand="ff4"] .doc-page .ln{ background:rgba(255,255,255,.14); }
-html[data-brand="ff4"] .input, html[data-brand="ff4"] select.input, html[data-brand="ff4"] textarea.input{ background:rgba(255,255,255,.06); color:#F4EFE7; border-color:rgba(255,255,255,.20); }
-html[data-brand="ff4"] .input:focus{ border-color:rgba(255,255,255,.42); box-shadow:0 0 0 3px rgba(255,255,255,.06); }
-html[data-brand="ff4"] .chip.sealed{ color:#9A948C; border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.05); }
-html[data-brand="ff4"] .chip.sealed .dot{ background:#F4EFE7; border-color:rgba(255,255,255,.4); box-shadow:none; }
-html[data-brand="ff4"] .hist-row{ border-bottom-color:rgba(255,255,255,.08); }
+html[data-brand="bcn4"] .inspector{ background:#100F0D; border-color:rgba(255,255,255,.12); color:#F4EFE7; --obsidian:#F4EFE7; --oxford:#F4EFE7; --ink-soft:#F4EFE7; --muted:#9A948C; }
+html[data-brand="bcn4"] .insp-context{ background:rgba(255,255,255,.05); border-bottom-color:rgba(255,255,255,.10); }
+html[data-brand="bcn4"] .insp-context, html[data-brand="bcn4"] .insp-context a{ color:#9A948C; }
+html[data-brand="bcn4"] .insp-left{ background:rgba(255,255,255,.03); border-right-color:rgba(255,255,255,.10); }
+html[data-brand="bcn4"] .insp-secthead{ border-bottom-color:rgba(255,255,255,.12); }
+html[data-brand="bcn4"] .evidence-doc{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.15); }
+html[data-brand="bcn4"] .clause{ color:rgba(255,255,255,.88); }
+html[data-brand="bcn4"] .clause mark{ color:#15212e; }
+html[data-brand="bcn4"] .doc-page{ background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.12); box-shadow:none; }
+html[data-brand="bcn4"] .doc-page .ln{ background:rgba(255,255,255,.14); }
+html[data-brand="bcn4"] .input, html[data-brand="bcn4"] select.input, html[data-brand="bcn4"] textarea.input{ background:rgba(255,255,255,.06); color:#F4EFE7; border-color:rgba(255,255,255,.20); }
+html[data-brand="bcn4"] .input:focus{ border-color:rgba(255,255,255,.42); box-shadow:0 0 0 3px rgba(255,255,255,.06); }
+html[data-brand="bcn4"] .chip.sealed{ color:#9A948C; border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.05); }
+html[data-brand="bcn4"] .chip.sealed .dot{ background:#F4EFE7; border-color:rgba(255,255,255,.4); box-shadow:none; }
+html[data-brand="bcn4"] .hist-row{ border-bottom-color:rgba(255,255,255,.08); }
 
 /* summit dark inspector */
 html[data-brand="summit"] .inspector{ background:#122B43; border-color:rgba(255,255,255,.12); color:#E9F0F8; --obsidian:#E9F0F8; --oxford:#E9F0F8; --ink-soft:#E9F0F8; --muted:#8E9BAC; }
@@ -919,17 +919,17 @@ html[data-brand="summit"] .hist-row{ border-bottom-color:rgba(255,255,255,.08); 
    ============================================================ */
 /* 1. Results-ledger provenance record-name was the brand accent → invisible on dark (summit navy-on-navy).
       Use the (light, on-dark) ink-soft token so "which record" stays readable. */
-html[data-brand="ff2"] .drawer .l-prov .rec,
-html[data-brand="ff4"] .drawer .l-prov .rec,
+html[data-brand="bcn2"] .drawer .l-prov .rec,
+html[data-brand="bcn4"] .drawer .l-prov .rec,
 html[data-brand="summit"] .drawer .l-prov .rec{ color:var(--ink-soft); }
 /* 2. Okafor "Now · Jun 18" marker sank into the dark canvas (summit slate-blue) → use the brand foil
       for guaranteed contrast on the dark trio (gold on navy/slate, silver on near-black). */
-html[data-brand="ff2"] .vtl-now .lbl,
-html[data-brand="ff4"] .vtl-now .lbl,
+html[data-brand="bcn2"] .vtl-now .lbl,
+html[data-brand="bcn4"] .vtl-now .lbl,
 html[data-brand="summit"] .vtl-now .lbl{ color:var(--amber); }
-html[data-brand="ff2"] .vtl-now .ln,
-html[data-brand="ff4"] .vtl-now .ln,
+html[data-brand="bcn2"] .vtl-now .ln,
+html[data-brand="bcn4"] .vtl-now .ln,
 html[data-brand="summit"] .vtl-now .ln{ background:linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--amber) 0%, transparent)); }
 /* 3. ff4 inspector evidence highlight read as flat slate (ff4's amber = silver foil) → use a confident
       fire-red band (ff4's brand accent) so it reads as a deliberate highlight, not text-selection. */
-html[data-brand="ff4"] .clause mark{ background:color-mix(in srgb, var(--cinnabar) 26%, transparent); border-color:color-mix(in srgb, var(--cinnabar) 55%, transparent); }
+html[data-brand="bcn4"] .clause mark{ background:color-mix(in srgb, var(--cinnabar) 26%, transparent); border-color:color-mix(in srgb, var(--cinnabar) 55%, transparent); }

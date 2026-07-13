@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       alerts: {
@@ -218,6 +243,24 @@ export type Database = {
           },
         ]
       }
+      client_encryption_keys: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          dek_secret_id: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          dek_secret_id: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          dek_secret_id?: string
+        }
+        Relationships: []
+      }
       credit_transactions: {
         Row: {
           action: string
@@ -279,45 +322,51 @@ export type Database = {
           },
         ]
       }
-      distributor_modules: {
+      operator_modules: {
         Row: {
           allowed: boolean
+          branding: Json
           created_at: string
           distributor_tenant_id: string
           granted_by: string | null
+          logo_url: string | null
           module_id: string
         }
         Insert: {
           allowed?: boolean
+          branding?: Json
           created_at?: string
           distributor_tenant_id: string
           granted_by?: string | null
+          logo_url?: string | null
           module_id: string
         }
         Update: {
           allowed?: boolean
+          branding?: Json
           created_at?: string
           distributor_tenant_id?: string
           granted_by?: string | null
+          logo_url?: string | null
           module_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "distributor_modules_distributor_tenant_id_fkey"
+            foreignKeyName: "operator_modules_distributor_tenant_id_fkey"
             columns: ["distributor_tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "distributor_modules_granted_by_fkey"
+            foreignKeyName: "operator_modules_granted_by_fkey"
             columns: ["granted_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "distributor_modules_module_id_fkey"
+            foreignKeyName: "operator_modules_module_id_fkey"
             columns: ["module_id"]
             isOneToOne: false
             referencedRelation: "modules"
@@ -722,6 +771,51 @@ export type Database = {
           },
         ]
       }
+      plaid_items: {
+        Row: {
+          access_token_ciphertext: string
+          client_user_id: string
+          created_at: string
+          distributor_tenant_id: string | null
+          id: string
+          institution_name: string | null
+          plaid_item_id: string
+        }
+        Insert: {
+          access_token_ciphertext: string
+          client_user_id: string
+          created_at?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          institution_name?: string | null
+          plaid_item_id: string
+        }
+        Update: {
+          access_token_ciphertext?: string
+          client_user_id?: string
+          created_at?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          institution_name?: string | null
+          plaid_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plaid_items_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plaid_items_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       record_activity_events: {
         Row: {
           actor_id: string | null
@@ -836,6 +930,54 @@ export type Database = {
             columns: ["vault_id"]
             isOneToOne: false
             referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_invites: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          invite_token: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["ff_commercial_role"]
+          status: Database["public"]["Enums"]["invite_status"]
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          invite_token?: string
+          invited_by?: string | null
+          role: Database["public"]["Enums"]["ff_commercial_role"]
+          status?: Database["public"]["Enums"]["invite_status"]
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          invite_token?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["ff_commercial_role"]
+          status?: Database["public"]["Enums"]["invite_status"]
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -967,6 +1109,66 @@ export type Database = {
             columns: ["sealed_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_accounts: {
+        Row: {
+          account_id: string
+          available_balance: number | null
+          client_user_id: string
+          current_balance: number | null
+          id: string
+          iso_currency_code: string | null
+          mask: string | null
+          name: string | null
+          plaid_item_id: string
+          subtype: string | null
+          type: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          available_balance?: number | null
+          client_user_id: string
+          current_balance?: number | null
+          id?: string
+          iso_currency_code?: string | null
+          mask?: string | null
+          name?: string | null
+          plaid_item_id: string
+          subtype?: string | null
+          type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          available_balance?: number | null
+          client_user_id?: string
+          current_balance?: number | null
+          id?: string
+          iso_currency_code?: string | null
+          mask?: string | null
+          name?: string | null
+          plaid_item_id?: string
+          subtype?: string | null
+          type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_accounts_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_accounts_plaid_item_id_fkey"
+            columns: ["plaid_item_id"]
+            isOneToOne: false
+            referencedRelation: "plaid_items"
             referencedColumns: ["id"]
           },
         ]
@@ -1297,6 +1499,7 @@ export type Database = {
           id: string
           invite_token: string | null
           invited_by: string | null
+          module_slug: string | null
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["invite_status"]
           tenant_id: string | null
@@ -1309,6 +1512,7 @@ export type Database = {
           id?: string
           invite_token?: string | null
           invited_by?: string | null
+          module_slug?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["invite_status"]
           tenant_id?: string | null
@@ -1321,6 +1525,7 @@ export type Database = {
           id?: string
           invite_token?: string | null
           invited_by?: string | null
+          module_slug?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["invite_status"]
           tenant_id?: string | null
@@ -1455,7 +1660,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      assign_distributor: {
+      accept_client_invite: { Args: { p_token: string }; Returns: Json }
+      accept_staff_invite: { Args: { p_token: string }; Returns: Json }
+      assign_operator: {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: {
           created_at: string
@@ -1474,7 +1681,7 @@ export type Database = {
       }
       claim_bootstrap_global_admin: { Args: never; Returns: boolean }
       claim_demo_tenant_admin: { Args: never; Returns: boolean }
-      create_distributor_tenant: {
+      create_operator_tenant: {
         Args: {
           p_brand_color_hex?: string
           p_domain_slug: string
@@ -1525,13 +1732,52 @@ export type Database = {
       }
       elevate_codexone_global_admin: { Args: never; Returns: boolean }
       ff_generate_invite_token: { Args: never; Returns: string }
+      get_client_invite_preview: { Args: { p_token: string }; Returns: Json }
+      get_client_login_route: { Args: never; Returns: Json }
+      get_client_module_branding: {
+        Args: { p_grant_id: string }
+        Returns: Json
+      }
+      internal_vault_create_secret: {
+        Args: { p_description?: string; p_name: string; p_secret: string }
+        Returns: string
+      }
+      internal_vault_delete_secret: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
+      internal_vault_read_secret: {
+        Args: { p_id: string }
+        Returns: string
+      }
       get_ff_login_route: { Args: never; Returns: Json }
-      is_distributor: { Args: { p_tenant_id: string }; Returns: boolean }
+      get_staff_invite_preview: { Args: { p_token: string }; Returns: Json }
+      invite_operator_staff: {
+        Args: { p_email: string; p_tenant_id: string }
+        Returns: Json
+      }
+      invite_global_admin_staff: { Args: { p_email: string }; Returns: Json }
+      is_operator: { Args: { p_tenant_id: string }; Returns: boolean }
       is_ff_client: { Args: { p_tenant_id: string }; Returns: boolean }
       is_global_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { p_tenant_id: string }; Returns: boolean }
       is_vault_admin: { Args: { p_vault_id: string }; Returns: boolean }
       is_vault_member: { Args: { p_vault_id: string }; Returns: boolean }
+      list_operator_client_invites: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      list_operator_clients: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      list_operator_treasury_clients: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
+      list_operator_modules: { Args: { p_tenant_id: string }; Returns: Json }
+      list_operator_staff_directory: { Args: never; Returns: Json }
+      normalize_module_branding: { Args: { p_branding: Json }; Returns: Json }
       provision_client_seat:
         | {
             Args: {
@@ -1550,9 +1796,49 @@ export type Database = {
             }
             Returns: Json
           }
+      regenerate_client_invite: { Args: { p_invite_id: string }; Returns: Json }
       resolve_billing_rule_id: {
         Args: { p_distributor_tenant_id?: string; p_module_id: string }
         Returns: string
+      }
+      revoke_client_invite: { Args: { p_invite_id: string }; Returns: Json }
+      revoke_operator_client_access: { Args: { p_grant_id: string }; Returns: Json }
+      suspend_operator_client_access: { Args: { p_grant_id: string }; Returns: Json }
+      erase_operator_client_record: { Args: { p_grant_id: string }; Returns: Json }
+      set_operator_module: {
+        Args: { p_allowed: boolean; p_module_slug: string; p_tenant_id: string }
+        Returns: {
+          allowed: boolean
+          branding: Json
+          created_at: string
+          distributor_tenant_id: string
+          granted_by: string | null
+          logo_url: string | null
+          module_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "operator_modules"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_operator_module_branding: {
+        Args: {
+          p_branding?: Json
+          p_logo_url?: string
+          p_module_slug: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      set_tenant_credit_balance: {
+        Args: { p_target_balance: number; p_tenant_id: string }
+        Returns: Json
+      }
+      set_vault_encryption_test: {
+        Args: { p_encryption_test: string; p_vault_id: string }
+        Returns: undefined
       }
       storage_vault_id: { Args: { object_name: string }; Returns: string }
       sync_tenant_credit_balance: {
@@ -1561,7 +1847,7 @@ export type Database = {
       }
     }
     Enums: {
-      ff_commercial_role: "global_admin" | "distributor" | "client"
+      ff_commercial_role: "global_admin" | "operator" | "client"
       ff_status: "unstarted" | "in_progress" | "sealed"
       ingestion_file_status:
         | "uploading"
@@ -1715,9 +2001,12 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
-      ff_commercial_role: ["global_admin", "distributor", "client"],
+      ff_commercial_role: ["global_admin", "operator", "client"],
       ff_status: ["unstarted", "in_progress", "sealed"],
       ingestion_file_status: [
         "uploading",
@@ -1754,6 +2043,3 @@ export const Constants = {
 } as const
 
 export type TemporalObjectKind = Database["public"]["Enums"]["temporal_object_kind"];
-export type FfStatus = Database["public"]["Enums"]["ff_status"];
-export type FfCommercialRole = Database["public"]["Enums"]["ff_commercial_role"];
-export type UserRole = Database["public"]["Enums"]["user_role"];
