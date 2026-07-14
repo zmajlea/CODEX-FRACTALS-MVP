@@ -7,11 +7,10 @@ import { createClient } from "@/utils/supabase/client";
 import { BcnContinuityShell } from "@/components/bcn/BcnContinuityShell";
 import { BcnIcon } from "@/components/bcn/BcnIcon";
 import type { BcnRailGroup } from "@/components/bcn/BcnRail";
-import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
 import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
 import { InviteClientModal } from "@/components/platform/InviteClientModal";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
-import { formatTreasuryMoney } from "@/components/treasury/TreasuryAccountsView";
+import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
 
 export type OperatorTreasuryClientRow = {
   grant_id: string;
@@ -40,18 +39,6 @@ type Props = {
   treasurySeatCost?: number;
 };
 
-function formatAsOf(iso: string | null): string {
-  if (!iso) return "Not synced yet";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
-
 function primaryCashDisplay(row: OperatorTreasuryClientRow): string {
   const entries = Object.entries(row.total_cash_by_currency ?? {});
   if (entries.length === 1) {
@@ -74,13 +61,12 @@ export function OperatorTreasuryPortfolio({
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
-  const theme = useBcnThemeOptional();
-  const wordmark = theme.wordmark ?? defaultWordmark(theme.dataBrand);
   const [clients, setClients] = useState(initialClients);
   const [modules, setModules] = useState<ActiveModule[]>([]);
   const [who, setWho] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +78,16 @@ export function OperatorTreasuryPortfolio({
     }
     setLoading(false);
   }, [supabase, tenantId]);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch(`/api/operator/treasury/inbox?tenantId=${tenantId}`);
+      if (res.ok) {
+        const data = (await res.json()) as { unreadCount?: number };
+        if (typeof data.unreadCount === "number") setInboxUnread(data.unreadCount);
+      }
+    })();
+  }, [tenantId]);
 
   useEffect(() => {
     void (async () => {
@@ -128,12 +124,19 @@ export function OperatorTreasuryPortfolio({
   const railGroups: BcnRailGroup[] = useMemo(
     () => [
       {
-        label: "Workspace",
+        label: "Portfolio",
         items: [
+          {
+            id: "treasury-inbox",
+            icon: "inbox",
+            label: "Inbox",
+            badge: inboxUnread,
+            href: "/operator/treasury/inbox",
+          },
           {
             id: "treasury-clients",
             icon: "grid",
-            label: "Treasury clients",
+            label: "Portfolio Dashboard",
             active: true,
           },
           {
@@ -145,7 +148,7 @@ export function OperatorTreasuryPortfolio({
         ],
       },
     ],
-    []
+    [inboxUnread]
   );
 
   const seatsUsed = clients.length;
@@ -154,8 +157,8 @@ export function OperatorTreasuryPortfolio({
     <>
       <BcnContinuityShell
         mode="operator"
-        dataBrand={theme.dataBrand}
-        wordmark={wordmark}
+        dataBrand="summit"
+        wordmark={defaultWordmark("summit")}
         homeHref="/operator"
         recordPill={{
           primary: "Treasury workspace",
@@ -171,7 +174,7 @@ export function OperatorTreasuryPortfolio({
           <div className="hubhead">
             <div>
               <div className="eyebrow">{tenantName}</div>
-              <h1 className="title">Your Treasury clients</h1>
+              <h1 className="title">Portfolio Dashboard</h1>
               <p className="text-sm text-codex-muted mt-1">
                 {seatsUsed} active client{seatsUsed === 1 ? "" : "s"} · cache-only
                 balances (as-of dates shown per client)
@@ -248,7 +251,7 @@ export function OperatorTreasuryPortfolio({
                     {row.account_count === 1 ? "" : "s"}
                   </p>
                   <p className="text-xs text-codex-muted">
-                    As of {formatAsOf(row.last_synced_at)}
+                    As of {formatTreasuryAsOf(row.last_synced_at)}
                   </p>
                   <span className="inline-flex">
                     <span className="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 uppercase tracking-wide">

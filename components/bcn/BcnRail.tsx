@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { BcnIcon } from "@/components/bcn/BcnIcon";
 import { BcnNib } from "@/components/bcn/brand/BcnBrandMarks";
+import { RailBrandFoot } from "@/components/bcn/RailBrandFoot";
 import type { BcnIconName } from "@/lib/bcn/icons";
 
 export type BcnRailItem = {
@@ -14,6 +15,7 @@ export type BcnRailItem = {
   onClick?: () => void;
   sealed?: boolean;
   unreadDot?: boolean;
+  badge?: number;
   pinned?: boolean;
 };
 
@@ -48,6 +50,9 @@ function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }
     <>
       <BcnIcon name={item.icon} />
       <span className="ri-t">{item.label}</span>
+      {item.badge != null && item.badge > 0 ? (
+        <span className="ri-badge">{item.badge}</span>
+      ) : null}
       {item.unreadDot ? <span className="ri-dot" /> : null}
       {item.sealed ? <BcnNib dataBrand={dataBrand} /> : null}
     </>
@@ -65,27 +70,6 @@ function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }
     <button type="button" className={className} onClick={item.onClick}>
       {content}
     </button>
-  );
-}
-
-function FractalsMark() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 2.5 21.5 12 12 21.5 2.5 12Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path d="M12 8 16 12 12 16 8 12Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function BcnSolutionMark() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2.5 20 5.2v6.2c0 5-3.4 8.5-8 10.1-4.6-1.6-8-5.1-8-10.1V5.2L12 2.5Z" />
-    </svg>
   );
 }
 
@@ -155,26 +139,10 @@ export function BcnRail({
       </div>
 
       {(showBcnSolutionLine || showPoweredBy) && (
-        <div className="railbrand">
-          {showBcnSolutionLine ? (
-            <div className="rb-line rb-ff" title="A Business Continuity Navigator solution">
-              <span className="rb-mark">
-                <BcnSolutionMark />
-              </span>
-              <span className="ri-t rb-t">A Business Continuity Navigator solution</span>
-            </div>
-          ) : null}
-          {showPoweredBy ? (
-            <div className="rb-line rb-fr" title="Powered by Fractals">
-              <span className="rb-mark">
-                <FractalsMark />
-              </span>
-              <span className="ri-t rb-t">
-                powered by <b>Fractals</b>
-              </span>
-            </div>
-          ) : null}
-        </div>
+        <RailBrandFoot
+          showBcnSolutionLine={showBcnSolutionLine}
+          showPoweredBy={showPoweredBy}
+        />
       )}
     </>
   );

@@ -1,13 +1,15 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Transaction } from "plaid";
 import { decryptForClient } from "@/lib/server/envelope-crypto";
+import { upsertTransactions, loadRecentTransactionsForClient } from "@/lib/server/treasury-ingest";
 import { plaid } from "@/lib/server/plaid";
 import type {
+  NormalizedTxRow,
   TreasuryAccountView,
   TreasuryAccountsResponse,
   TreasuryInstitutionView,
-  TreasuryTransaction,
 } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
 
@@ -52,51 +54,228 @@ function mapAccountRow(row: {
   };
 }
 
-/** Cache-only read from treasury_accounts + plaid_items metadata (no Plaid calls). */
-export async function readTreasuryCacheForClient(
+function plaidTxToRow(itemId: string, tx: Transaction): NormalizedTxRow {
+  const category = tx.personal_finance_category?.primary ?? tx.category?.[0] ?? null;
+  return {
+    external_id: tx.transaction_id,
+    plaid_item_id: itemId,
+    account_id: tx.account_id,
+    pending_external_id: tx.pending_transaction_id ?? null,
+    posted_date: tx.date,
+    authorized_date: tx.authorized_date ?? null,
+    amount: tx.amount,
+    iso_currency_code: tx.iso_currency_code ?? "USD",
+    raw_name: tx.name,
+    merchant_name: tx.merchant_name ?? null,
+    plaid_category: category,
+    pending: tx.pending,
+    is_removed: false,
+  };
+}
+
+export async function syncTransactionsForClient(
   admin: AdminClient,
   clientUserId: string
-): Promise<TreasuryAccountsResponse> {
-  const { data: items, error: itemsErr } = await admin
+): Promise<{ upserted: number; removed: number }> {
+  const { data: items, error } = await admin
     .from("plaid_items")
-    .select("id, institution_name")
+    .select("id, access_token_ciphertext, transactions_cursor")
     .eq("client_user_id", clientUserId);
 
-  if (itemsErr) {
-    console.error("[treasury-sync] cache load items", itemsErr);
-    throw new Error("Failed to load treasury cache");
+  if (error) throw error;
+
+  let totalUpserted = 0;
+  let totalRemoved = 0;
+
+  for (const item of items ?? []) {
+    try {
+      const accessToken = await decryptForClient(
+        admin,
+        clientUserId,
+        item.access_token_ciphertext
+      );
+
+      let cursor = item.transactions_cursor ?? undefined;
+      let hasMore = true;
+
+      while (hasMore) {
+        const res = await plaid.transactionsSync({
+          access_token: accessToken,
+          cursor,
+          count: 500,
+        });
+
+        const added = res.data.added.map((tx) => plaidTxToRow(item.id, tx));
+        const modified = res.data.modified.map((tx) => plaidTxToRow(item.id, tx));
+        const removed = res.data.removed.map((r) => ({
+          external_id: r.transaction_id,
+          account_id: "",
+          posted_date: null,
+          amount: 0,
+          is_removed: true,
+        }));
+
+        if (added.length > 0) {
+          const r = await upsertTransactions(admin, clientUserId, added, "plaid");
+          totalUpserted += r.upserted;
+        }
+        if (modified.length > 0) {
+          const r = await upsertTransactions(admin, clientUserId, modified, "plaid");
+          totalUpserted += r.upserted;
+        }
+        if (removed.length > 0) {
+          const r = await upsertTransactions(admin, clientUserId, removed, "plaid");
+          totalRemoved += r.removed;
+        }
+
+        cursor = res.data.next_cursor;
+        hasMore = res.data.has_more;
+      }
+
+      await admin
+        .from("plaid_items")
+        .update({
+          transactions_cursor: cursor ?? null,
+          transactions_last_synced_at: new Date().toISOString(),
+        })
+        .eq("id", item.id);
+    } catch (err) {
+      if (!isLoginRequired(err) && !isKeyDestroyedError(err)) {
+        console.error("[treasury-sync] transactionsSync", err);
+      }
+    }
   }
 
-  const { data: accountRows, error: acctErr } = await admin
+  return { upserted: totalUpserted, removed: totalRemoved };
+}
+
+async function buildInstitutions(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<TreasuryInstitutionView[]> {
+  const { data: items } = await admin
+    .from("plaid_items")
+    .select("id, institution_name, institution_id")
+    .eq("client_user_id", clientUserId);
+
+  const { data: accountRows } = await admin
     .from("treasury_accounts")
     .select(
-      "plaid_item_id, account_id, name, mask, type, subtype, current_balance, available_balance, iso_currency_code"
+      "source, plaid_item_id, account_id, name, mask, type, subtype, current_balance, available_balance, iso_currency_code"
     )
     .eq("client_user_id", clientUserId);
 
-  if (acctErr) {
-    console.error("[treasury-sync] cache load accounts", acctErr);
-    throw new Error("Failed to load treasury cache");
-  }
-
   const accountsByItem = new Map<string, TreasuryAccountView[]>();
+  const csvAccounts: TreasuryAccountView[] = [];
+
   for (const row of accountRows ?? []) {
-    const list = accountsByItem.get(row.plaid_item_id) ?? [];
-    list.push(mapAccountRow(row));
-    accountsByItem.set(row.plaid_item_id, list);
+    const view = mapAccountRow(row);
+    if (row.source === "csv" || !row.plaid_item_id) {
+      csvAccounts.push(view);
+    } else {
+      const list = accountsByItem.get(row.plaid_item_id) ?? [];
+      list.push(view);
+      accountsByItem.set(row.plaid_item_id, list);
+    }
   }
 
   const institutions: TreasuryInstitutionView[] = (items ?? []).map((item) => ({
     item_id: item.id,
     institution_name: item.institution_name,
+    institution_id: item.institution_id,
     needs_reconnect: false,
     accounts: accountsByItem.get(item.id) ?? [],
   }));
 
-  return { institutions, transactions: [] };
+  if (csvAccounts.length > 0) {
+    institutions.push({
+      item_id: "csv-manual",
+      institution_name: "Imported (CSV)",
+      needs_reconnect: false,
+      accounts: csvAccounts,
+    });
+  }
+
+  return institutions;
 }
 
-/** Live Plaid sync: decrypt tokens, refresh balances, fetch recent transactions. */
+const STALE_SYNC_MS = 5 * 60 * 1000;
+
+export async function getLastTransactionsSyncedAt(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("plaid_items")
+    .select("transactions_last_synced_at")
+    .eq("client_user_id", clientUserId);
+
+  if (error) throw error;
+  const times = (data ?? [])
+    .map((r) => r.transactions_last_synced_at)
+    .filter(Boolean) as string[];
+  if (times.length === 0) return null;
+  return times.sort().reverse()[0] ?? null;
+}
+
+export async function isTransactionsSyncStale(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("plaid_items")
+    .select("transactions_last_synced_at")
+    .eq("client_user_id", clientUserId);
+
+  if (error) throw error;
+  if (!data?.length) return false;
+
+  const now = Date.now();
+  return data.some((item) => {
+    if (!item.transactions_last_synced_at) return true;
+    return now - new Date(item.transactions_last_synced_at).getTime() > STALE_SYNC_MS;
+  });
+}
+
+async function countClientTransactions(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<number> {
+  const { count, error } = await admin
+    .from("treasury_transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("client_user_id", clientUserId)
+    .eq("is_removed", false);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function buildResponse(
+  admin: AdminClient,
+  clientUserId: string,
+  syncTriggered: boolean
+): Promise<TreasuryAccountsResponse> {
+  const institutions = await buildInstitutions(admin, clientUserId);
+  const transactions = await loadRecentTransactionsForClient(admin, clientUserId);
+  const last_synced_at = await getLastTransactionsSyncedAt(admin, clientUserId);
+  const transaction_count = await countClientTransactions(admin, clientUserId);
+  return {
+    institutions,
+    transactions,
+    last_synced_at,
+    sync_triggered: syncTriggered,
+    transaction_count,
+  };
+}
+
+export async function readTreasuryCacheForClient(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<TreasuryAccountsResponse> {
+  return buildResponse(admin, clientUserId, false);
+}
+
 export async function syncTreasuryForClient(
   admin: AdminClient,
   clientUserId: string
@@ -106,18 +285,11 @@ export async function syncTreasuryForClient(
     .select("id, institution_name, access_token_ciphertext")
     .eq("client_user_id", clientUserId);
 
-  if (itemsErr) {
-    console.error("[treasury-sync] load items", itemsErr);
-    throw new Error("Failed to load plaid items");
-  }
-
-  const institutions: TreasuryInstitutionView[] = [];
-  const transactions: TreasuryTransaction[] = [];
+  if (itemsErr) throw new Error("Failed to load plaid items");
 
   for (const item of items ?? []) {
     let needsReconnect = false;
     let keyDestroyed = false;
-    const accounts: TreasuryAccountView[] = [];
 
     try {
       const accessToken = await decryptForClient(
@@ -126,24 +298,12 @@ export async function syncTreasuryForClient(
         item.access_token_ciphertext
       );
 
-      const balanceRes = await plaid.accountsBalanceGet({
-        access_token: accessToken,
-      });
+      const balanceRes = await plaid.accountsBalanceGet({ access_token: accessToken });
 
       for (const acct of balanceRes.data.accounts) {
-        accounts.push({
-          account_id: acct.account_id,
-          name: acct.name,
-          mask: acct.mask,
-          type: acct.type,
-          subtype: acct.subtype,
-          current_balance: acct.balances.current,
-          available_balance: acct.balances.available,
-          iso_currency_code: acct.balances.iso_currency_code,
-        });
-
         await admin.from("treasury_accounts").upsert(
           {
+            source: "plaid",
             plaid_item_id: item.id,
             client_user_id: clientUserId,
             account_id: acct.account_id,
@@ -155,59 +315,23 @@ export async function syncTreasuryForClient(
             available_balance: acct.balances.available,
             iso_currency_code: acct.balances.iso_currency_code,
           },
-          { onConflict: "plaid_item_id,account_id" }
+          { onConflict: "client_user_id,account_id" }
         );
       }
-
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
-
-      try {
-        const txRes = await plaid.transactionsGet({
-          access_token: accessToken,
-          start_date: start.toISOString().slice(0, 10),
-          end_date: end.toISOString().slice(0, 10),
-          options: { count: 50, offset: 0 },
-        });
-
-        for (const tx of txRes.data.transactions) {
-          transactions.push({
-            date: tx.date,
-            name: tx.merchant_name ?? tx.name,
-            amount: tx.amount,
-            iso_currency_code: tx.iso_currency_code,
-            account_id: tx.account_id,
-            pending: tx.pending,
-          });
-        }
-      } catch (txErr) {
-        console.warn("[treasury-sync] transactions fetch", txErr);
-      }
     } catch (err) {
-      if (isKeyDestroyedError(err)) {
-        keyDestroyed = true;
-      } else if (isLoginRequired(err)) {
-        needsReconnect = true;
-      } else {
-        console.error("[treasury-sync] item fetch", err);
+      if (isKeyDestroyedError(err)) keyDestroyed = true;
+      else if (isLoginRequired(err)) needsReconnect = true;
+      else {
+        console.error("[treasury-sync] balance fetch", err);
         needsReconnect = true;
       }
     }
 
-    institutions.push({
-      item_id: item.id,
-      institution_name: item.institution_name,
-      needs_reconnect: needsReconnect,
-      key_destroyed: keyDestroyed,
-      accounts,
-    });
+    void needsReconnect;
+    void keyDestroyed;
   }
 
-  transactions.sort((a, b) => b.date.localeCompare(a.date));
+  await syncTransactionsForClient(admin, clientUserId);
 
-  return {
-    institutions,
-    transactions: transactions.slice(0, 50),
-  };
+  return buildResponse(admin, clientUserId, true);
 }

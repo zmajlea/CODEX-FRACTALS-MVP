@@ -34,7 +34,7 @@ export function GlobalAdminPanel({ tenants, billingRules }: Props) {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    const { error } = await supabase.rpc("create_operator_tenant", {
+    const { error } = await supabase.rpc("create_distributor_tenant", {
       p_name: name.trim(),
       p_domain_slug: slug.trim().toLowerCase(),
       p_initial_credits: parseInt(credits, 10) || 0,
@@ -51,7 +51,7 @@ export function GlobalAdminPanel({ tenants, billingRules }: Props) {
     e.preventDefault();
     setErr(null);
     setInviteUrl(null);
-    const { data, error } = await supabase.rpc("invite_operator_staff", {
+    const { data, error } = await supabase.rpc("invite_distributor_staff", {
       p_tenant_id: inviteTenantId,
       p_email: inviteEmail.trim(),
     });

@@ -1,0 +1,40 @@
+{
+  "override_accounts": [
+    {
+      "type": "depository",
+      "subtype": "checking",
+      "starting_balance": 85000,
+      "meta": {
+        "name": "Operating",
+        "official_name": "Tim Manufacturing Operating"
+      },
+      "numbers": {
+        "account": "1234567890",
+        "ach_routing": "011401533"
+      },
+      "transactions": [
+        {
+          "date_transacted": "2025-06-01",
+          "date_posted": "2025-06-03",
+          "amount": 4200,
+          "description": "ACH DEBIT BIRCHWOOD PROPERTIES RENT",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2025-06-14",
+          "date_posted": "2025-06-14",
+          "amount": 18500,
+          "description": "ACH PAYROLL ADP WAGE PMT",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2025-06-25",
+          "date_posted": "2025-06-25",
+          "amount": -28500,
+          "description": "WIRE IN ACME CORP PAYMENT",
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}

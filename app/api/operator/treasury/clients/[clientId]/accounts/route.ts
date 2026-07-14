@@ -1,55 +1,44 @@
 import { NextResponse } from "next/server";
-import { operatorHasClientGrant } from "@/lib/auth/rbac";
 import { writeOperatorTreasuryReadAudit } from "@/lib/server/operator-treasury-audit";
 import {
+  isGuardResponse,
+  requireOperatorTreasuryGrant,
+} from "@/lib/server/operator-treasury-route";
+import { applyRulesForClient } from "@/lib/server/treasury-rules";
+import {
+  isTransactionsSyncStale,
   readTreasuryCacheForClient,
   syncTreasuryForClient,
 } from "@/lib/server/treasury-sync";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/utils/supabase/server";
 
-type RouteContext = {
-  params: Promise<{ clientId: string }>;
-};
+type RouteContext = { params: Promise<{ clientId: string }> };
 
 export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guard = await requireOperatorTreasuryGrant(clientId);
+  if (isGuardResponse(guard)) return guard;
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const admin = createSupabaseAdminClient();
-  const grant = await operatorHasClientGrant(
-    admin,
-    user.id,
-    clientId,
-    "treasury",
-    { allowGlobalAdmin: true }
-  );
-
-  if (!grant) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  await writeOperatorTreasuryReadAudit(admin, {
-    actorUserId: user.id,
+  await writeOperatorTreasuryReadAudit(guard.admin, {
+    actorUserId: guard.user.id,
     clientUserId: clientId,
-    tenantId: grant.tenantId,
-    grantId: grant.grantId,
+    tenantId: guard.grant.tenantId,
+    grantId: guard.grant.grantId,
+    surface: "accounts",
   });
 
   const url = new URL(request.url);
   const refresh = url.searchParams.get("refresh") === "1";
+  const stale = refresh ? false : await isTransactionsSyncStale(guard.admin, clientId);
+  const shouldSync = refresh || stale;
 
   try {
-    const result = refresh
-      ? await syncTreasuryForClient(admin, clientId)
-      : await readTreasuryCacheForClient(admin, clientId);
+    const result = shouldSync
+      ? await syncTreasuryForClient(guard.admin, clientId)
+      : await readTreasuryCacheForClient(guard.admin, clientId);
+
+    if (shouldSync) {
+      await applyRulesForClient(guard.admin, clientId);
+    }
 
     return NextResponse.json(result);
   } catch (err) {

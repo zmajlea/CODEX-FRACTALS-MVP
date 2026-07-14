@@ -1,0 +1,3 @@
+posted_date,type,amount,balance,description,account,currency
+2025-01-03,debit,2500.00,47500.00,ACH DEBIT BIRCHWOOD PROPERTIES RENT,Operating,USD
+2025-01-15,credit,12000.00,59500.00,WIRE IN ACME CORP PAYMENT,Operating,USD

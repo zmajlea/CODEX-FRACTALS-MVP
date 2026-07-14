@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       alerts: {
@@ -164,6 +139,27 @@ export type Database = {
           },
         ]
       }
+      client_encryption_keys: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          dek_secret_id: string
+          key_provider: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          dek_secret_id: string
+          key_provider?: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          dek_secret_id?: string
+          key_provider?: string
+        }
+        Relationships: []
+      }
       client_module_access: {
         Row: {
           billing_rule_id: string | null
@@ -243,24 +239,6 @@ export type Database = {
           },
         ]
       }
-      client_encryption_keys: {
-        Row: {
-          client_user_id: string
-          created_at: string
-          dek_secret_id: string
-        }
-        Insert: {
-          client_user_id: string
-          created_at?: string
-          dek_secret_id: string
-        }
-        Update: {
-          client_user_id?: string
-          created_at?: string
-          dek_secret_id?: string
-        }
-        Relationships: []
-      }
       credit_transactions: {
         Row: {
           action: string
@@ -318,58 +296,6 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      operator_modules: {
-        Row: {
-          allowed: boolean
-          branding: Json
-          created_at: string
-          distributor_tenant_id: string
-          granted_by: string | null
-          logo_url: string | null
-          module_id: string
-        }
-        Insert: {
-          allowed?: boolean
-          branding?: Json
-          created_at?: string
-          distributor_tenant_id: string
-          granted_by?: string | null
-          logo_url?: string | null
-          module_id: string
-        }
-        Update: {
-          allowed?: boolean
-          branding?: Json
-          created_at?: string
-          distributor_tenant_id?: string
-          granted_by?: string | null
-          logo_url?: string | null
-          module_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "operator_modules_distributor_tenant_id_fkey"
-            columns: ["distributor_tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "operator_modules_granted_by_fkey"
-            columns: ["granted_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "operator_modules_module_id_fkey"
-            columns: ["module_id"]
-            isOneToOne: false
-            referencedRelation: "modules"
             referencedColumns: ["id"]
           },
         ]
@@ -730,6 +656,108 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_modules: {
+        Row: {
+          allowed: boolean
+          branding: Json
+          created_at: string
+          distributor_tenant_id: string
+          granted_by: string | null
+          logo_url: string | null
+          module_id: string
+        }
+        Insert: {
+          allowed?: boolean
+          branding?: Json
+          created_at?: string
+          distributor_tenant_id: string
+          granted_by?: string | null
+          logo_url?: string | null
+          module_id: string
+        }
+        Update: {
+          allowed?: boolean
+          branding?: Json
+          created_at?: string
+          distributor_tenant_id?: string
+          granted_by?: string | null
+          logo_url?: string | null
+          module_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributor_modules_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distributor_modules_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distributor_modules_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plaid_items: {
+        Row: {
+          access_token_ciphertext: string
+          client_user_id: string
+          created_at: string
+          distributor_tenant_id: string | null
+          id: string
+          institution_id: string | null
+          institution_name: string | null
+          plaid_item_id: string
+          status: string
+          transactions_cursor: string | null
+          transactions_last_synced_at: string | null
+        }
+        Insert: {
+          access_token_ciphertext: string
+          client_user_id: string
+          created_at?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          institution_id?: string | null
+          institution_name?: string | null
+          plaid_item_id: string
+          status?: string
+          transactions_cursor?: string | null
+          transactions_last_synced_at?: string | null
+        }
+        Update: {
+          access_token_ciphertext?: string
+          client_user_id?: string
+          created_at?: string
+          distributor_tenant_id?: string | null
+          id?: string
+          institution_id?: string | null
+          institution_name?: string | null
+          plaid_item_id?: string
+          status?: string
+          transactions_cursor?: string | null
+          transactions_last_synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plaid_items_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_audit_events: {
         Row: {
           action: string
@@ -767,51 +795,6 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      plaid_items: {
-        Row: {
-          access_token_ciphertext: string
-          client_user_id: string
-          created_at: string
-          distributor_tenant_id: string | null
-          id: string
-          institution_name: string | null
-          plaid_item_id: string
-        }
-        Insert: {
-          access_token_ciphertext: string
-          client_user_id: string
-          created_at?: string
-          distributor_tenant_id?: string | null
-          id?: string
-          institution_name?: string | null
-          plaid_item_id: string
-        }
-        Update: {
-          access_token_ciphertext?: string
-          client_user_id?: string
-          created_at?: string
-          distributor_tenant_id?: string | null
-          id?: string
-          institution_name?: string | null
-          plaid_item_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "plaid_items_client_user_id_fkey"
-            columns: ["client_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "plaid_items_distributor_tenant_id_fkey"
-            columns: ["distributor_tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1113,66 +1096,6 @@ export type Database = {
           },
         ]
       }
-      treasury_accounts: {
-        Row: {
-          account_id: string
-          available_balance: number | null
-          client_user_id: string
-          current_balance: number | null
-          id: string
-          iso_currency_code: string | null
-          mask: string | null
-          name: string | null
-          plaid_item_id: string
-          subtype: string | null
-          type: string | null
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          available_balance?: number | null
-          client_user_id: string
-          current_balance?: number | null
-          id?: string
-          iso_currency_code?: string | null
-          mask?: string | null
-          name?: string | null
-          plaid_item_id: string
-          subtype?: string | null
-          type?: string | null
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          available_balance?: number | null
-          client_user_id?: string
-          current_balance?: number | null
-          id?: string
-          iso_currency_code?: string | null
-          mask?: string | null
-          name?: string | null
-          plaid_item_id?: string
-          subtype?: string | null
-          type?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treasury_accounts_client_user_id_fkey"
-            columns: ["client_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treasury_accounts_plaid_item_id_fkey"
-            columns: ["plaid_item_id"]
-            isOneToOne: false
-            referencedRelation: "plaid_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       temporal_objects: {
         Row: {
           body_ciphertext: string | null
@@ -1370,6 +1293,357 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      treasury_accounts: {
+        Row: {
+          account_id: string
+          available_balance: number | null
+          client_user_id: string
+          current_balance: number | null
+          id: string
+          iso_currency_code: string | null
+          mask: string | null
+          name: string | null
+          plaid_item_id: string | null
+          source: string
+          subtype: string | null
+          type: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          available_balance?: number | null
+          client_user_id: string
+          current_balance?: number | null
+          id?: string
+          iso_currency_code?: string | null
+          mask?: string | null
+          name?: string | null
+          plaid_item_id?: string | null
+          source?: string
+          subtype?: string | null
+          type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          available_balance?: number | null
+          client_user_id?: string
+          current_balance?: number | null
+          id?: string
+          iso_currency_code?: string | null
+          mask?: string | null
+          name?: string | null
+          plaid_item_id?: string | null
+          source?: string
+          subtype?: string | null
+          type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_accounts_plaid_item_id_fkey"
+            columns: ["plaid_item_id"]
+            isOneToOne: false
+            referencedRelation: "plaid_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_recommendations: {
+        Row: {
+          anchor_ref: Json | null
+          anchor_type: string
+          category: string
+          client_seen_at: string | null
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          decided_at: string | null
+          decline_note: string | null
+          decline_reason: string | null
+          id: string
+          impact_amount: number | null
+          impact_basis: string | null
+          impact_unit: string | null
+          operator_seen_at: string | null
+          operator_tenant_id: string | null
+          sealed_at: string | null
+          sealed_by: string | null
+          sent_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          why: string
+        }
+        Insert: {
+          anchor_ref?: Json | null
+          anchor_type?: string
+          category: string
+          client_seen_at?: string | null
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decline_note?: string | null
+          decline_reason?: string | null
+          id?: string
+          impact_amount?: number | null
+          impact_basis?: string | null
+          impact_unit?: string | null
+          operator_seen_at?: string | null
+          operator_tenant_id?: string | null
+          sealed_at?: string | null
+          sealed_by?: string | null
+          sent_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          why: string
+        }
+        Update: {
+          anchor_ref?: Json | null
+          anchor_type?: string
+          category?: string
+          client_seen_at?: string | null
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decline_note?: string | null
+          decline_reason?: string | null
+          id?: string
+          impact_amount?: number | null
+          impact_basis?: string | null
+          impact_unit?: string | null
+          operator_seen_at?: string | null
+          operator_tenant_id?: string | null
+          sealed_at?: string | null
+          sealed_by?: string | null
+          sent_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          why?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_recommendations_operator_tenant_id_fkey"
+            columns: ["operator_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_rule_rejections: {
+        Row: {
+          rejected_at: string
+          rejected_by: string | null
+          rule_id: string
+          transaction_id: string
+        }
+        Insert: {
+          rejected_at?: string
+          rejected_by?: string | null
+          rule_id: string
+          transaction_id: string
+        }
+        Update: {
+          rejected_at?: string
+          rejected_by?: string | null
+          rule_id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_rule_rejections_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_rule_rejections_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_rules: {
+        Row: {
+          active: boolean
+          amount_max: number | null
+          amount_min: number | null
+          assign_label: string
+          cadence: string | null
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          direction: string | null
+          id: string
+          match_merchant: string
+          match_type: string
+          name: string
+          source_transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          amount_max?: number | null
+          amount_min?: number | null
+          assign_label: string
+          cadence?: string | null
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          direction?: string | null
+          id?: string
+          match_merchant: string
+          match_type?: string
+          name: string
+          source_transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amount_max?: number | null
+          amount_min?: number | null
+          assign_label?: string
+          cadence?: string | null
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          direction?: string | null
+          id?: string
+          match_merchant?: string
+          match_type?: string
+          name?: string
+          source_transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_rules_source_transaction_id_fkey"
+            columns: ["source_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_transactions: {
+        Row: {
+          account_id: string
+          amount: number
+          authorized_date: string | null
+          client_user_id: string
+          created_at: string
+          description: string | null
+          direction: string | null
+          external_id: string
+          id: string
+          is_removed: boolean
+          iso_currency_code: string | null
+          label: string | null
+          label_source: string | null
+          labeled_at: string | null
+          labeled_by: string | null
+          merchant_name: string | null
+          normalized_merchant: string | null
+          pending: boolean
+          pending_external_id: string | null
+          plaid_category: string | null
+          plaid_item_id: string | null
+          posted_date: string | null
+          raw_name: string | null
+          source: string
+          suggested_by_rule_id: string | null
+          suggested_label: string | null
+          suggestion_explanation: string | null
+          suggestion_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          authorized_date?: string | null
+          client_user_id: string
+          created_at?: string
+          description?: string | null
+          direction?: string | null
+          external_id: string
+          id?: string
+          is_removed?: boolean
+          iso_currency_code?: string | null
+          label?: string | null
+          label_source?: string | null
+          labeled_at?: string | null
+          labeled_by?: string | null
+          merchant_name?: string | null
+          normalized_merchant?: string | null
+          pending?: boolean
+          pending_external_id?: string | null
+          plaid_category?: string | null
+          plaid_item_id?: string | null
+          posted_date?: string | null
+          raw_name?: string | null
+          source?: string
+          suggested_by_rule_id?: string | null
+          suggested_label?: string | null
+          suggestion_explanation?: string | null
+          suggestion_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          authorized_date?: string | null
+          client_user_id?: string
+          created_at?: string
+          description?: string | null
+          direction?: string | null
+          external_id?: string
+          id?: string
+          is_removed?: boolean
+          iso_currency_code?: string | null
+          label?: string | null
+          label_source?: string | null
+          labeled_at?: string | null
+          labeled_by?: string | null
+          merchant_name?: string | null
+          normalized_merchant?: string | null
+          pending?: boolean
+          pending_external_id?: string | null
+          plaid_category?: string | null
+          plaid_item_id?: string | null
+          posted_date?: string | null
+          raw_name?: string | null
+          source?: string
+          suggested_by_rule_id?: string | null
+          suggested_label?: string | null
+          suggestion_explanation?: string | null
+          suggestion_status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_transactions_plaid_item_id_fkey"
+            columns: ["plaid_item_id"]
+            isOneToOne: false
+            referencedRelation: "plaid_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_transactions_suggested_rule_fkey"
+            columns: ["suggested_by_rule_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_rules"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_audit_events: {
         Row: {
@@ -1662,7 +1936,7 @@ export type Database = {
     Functions: {
       accept_client_invite: { Args: { p_token: string }; Returns: Json }
       accept_staff_invite: { Args: { p_token: string }; Returns: Json }
-      assign_operator: {
+      assign_distributor: {
         Args: { p_tenant_id: string; p_user_id: string }
         Returns: {
           created_at: string
@@ -1681,7 +1955,7 @@ export type Database = {
       }
       claim_bootstrap_global_admin: { Args: never; Returns: boolean }
       claim_demo_tenant_admin: { Args: never; Returns: boolean }
-      create_operator_tenant: {
+      create_distributor_tenant: {
         Args: {
           p_brand_color_hex?: string
           p_domain_slug: string
@@ -1731,6 +2005,10 @@ export type Database = {
         }
       }
       elevate_codexone_global_admin: { Args: never; Returns: boolean }
+      erase_operator_client_record: {
+        Args: { p_grant_id: string }
+        Returns: Json
+      }
       ff_generate_invite_token: { Args: never; Returns: string }
       get_client_invite_preview: { Args: { p_token: string }; Returns: Json }
       get_client_login_route: { Args: never; Returns: Json }
@@ -1738,6 +2016,8 @@ export type Database = {
         Args: { p_grant_id: string }
         Returns: Json
       }
+      get_ff_login_route: { Args: never; Returns: Json }
+      get_staff_invite_preview: { Args: { p_token: string }; Returns: Json }
       internal_vault_create_secret: {
         Args: { p_description?: string; p_name: string; p_secret: string }
         Returns: string
@@ -1746,37 +2026,29 @@ export type Database = {
         Args: { p_id: string }
         Returns: undefined
       }
-      internal_vault_read_secret: {
-        Args: { p_id: string }
-        Returns: string
-      }
-      get_ff_login_route: { Args: never; Returns: Json }
-      get_staff_invite_preview: { Args: { p_token: string }; Returns: Json }
-      invite_operator_staff: {
+      internal_vault_read_secret: { Args: { p_id: string }; Returns: string }
+      invite_distributor_staff: {
         Args: { p_email: string; p_tenant_id: string }
         Returns: Json
       }
       invite_global_admin_staff: { Args: { p_email: string }; Returns: Json }
-      is_operator: { Args: { p_tenant_id: string }; Returns: boolean }
       is_ff_client: { Args: { p_tenant_id: string }; Returns: boolean }
       is_global_admin: { Args: never; Returns: boolean }
+      is_operator: { Args: { p_tenant_id: string }; Returns: boolean }
       is_tenant_admin: { Args: { p_tenant_id: string }; Returns: boolean }
       is_vault_admin: { Args: { p_vault_id: string }; Returns: boolean }
       is_vault_member: { Args: { p_vault_id: string }; Returns: boolean }
+      list_distributor_staff_directory: { Args: never; Returns: Json }
       list_operator_client_invites: {
         Args: { p_tenant_id: string }
         Returns: Json
       }
-      list_operator_clients: {
-        Args: { p_tenant_id: string }
-        Returns: Json
-      }
+      list_operator_clients: { Args: { p_tenant_id: string }; Returns: Json }
+      list_operator_modules: { Args: { p_tenant_id: string }; Returns: Json }
       list_operator_treasury_clients: {
         Args: { p_tenant_id: string }
         Returns: Json
       }
-      list_operator_modules: { Args: { p_tenant_id: string }; Returns: Json }
-      list_operator_staff_directory: { Args: never; Returns: Json }
       normalize_module_branding: { Args: { p_branding: Json }; Returns: Json }
       provision_client_seat:
         | {
@@ -1802,9 +2074,10 @@ export type Database = {
         Returns: string
       }
       revoke_client_invite: { Args: { p_invite_id: string }; Returns: Json }
-      revoke_operator_client_access: { Args: { p_grant_id: string }; Returns: Json }
-      suspend_operator_client_access: { Args: { p_grant_id: string }; Returns: Json }
-      erase_operator_client_record: { Args: { p_grant_id: string }; Returns: Json }
+      revoke_operator_client_access: {
+        Args: { p_grant_id: string }
+        Returns: Json
+      }
       set_operator_module: {
         Args: { p_allowed: boolean; p_module_slug: string; p_tenant_id: string }
         Returns: {
@@ -1840,7 +2113,13 @@ export type Database = {
         Args: { p_encryption_test: string; p_vault_id: string }
         Returns: undefined
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       storage_vault_id: { Args: { object_name: string }; Returns: string }
+      suspend_operator_client_access: {
+        Args: { p_grant_id: string }
+        Returns: Json
+      }
       sync_tenant_credit_balance: {
         Args: { p_tenant_id: string }
         Returns: undefined
@@ -2001,9 +2280,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       ff_commercial_role: ["global_admin", "operator", "client"],

@@ -12,6 +12,7 @@ import {
 import { ClientGrantsProvider } from "@/components/platform/ClientGrantsContext";
 import { ClientShellFrame } from "@/components/platform/ClientShellFrame";
 import { BcnThemeProvider } from "@/components/bcn/BcnThemeContext";
+import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
 import type { Database } from "@/lib/database.types";
 import "@/app/styles/continuity.css";
 
@@ -86,6 +87,14 @@ export default async function ClientShellLayout({
         >[0]
       );
     }
+  }
+
+  if (moduleMeta?.slug === "treasury") {
+    theme = {
+      ...theme,
+      dataBrand: "summit",
+      wordmark: defaultWordmark("summit"),
+    };
   }
 
   return (

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { ClientModuleRailSwitcher } from "@/components/platform/ClientModuleRailSwitcher";
+import { RailBrandFoot } from "@/components/bcn/RailBrandFoot";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BcnThemeStyleInjector } from "@/components/bcn/BcnThemeStyleInjector";
 
@@ -62,8 +63,11 @@ export function ClientShellFrame({
         <SignOutButton className="btn sm ghost" />
       </header>
       <div className="app-row">
-        <aside className="rail app-rail" id="rail">
-          <ClientModuleRailSwitcher />
+        <aside className="rail app-rail flex flex-col" id="rail">
+          <div className="flex-1 min-h-0">
+            <ClientModuleRailSwitcher />
+          </div>
+          <RailBrandFoot showPoweredBy />
         </aside>
         <main className="app-main">
           <div className="app-wrap">{children}</div>

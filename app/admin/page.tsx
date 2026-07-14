@@ -46,7 +46,7 @@ export default async function GlobalAdminPage() {
     allowed: row.allowed,
   }));
 
-  const { data: directoryData } = await supabase.rpc("list_operator_staff_directory");
+  const { data: directoryData } = await supabase.rpc("list_distributor_staff_directory");
   const firms = (Array.isArray(directoryData) ? directoryData : []) as DistributorFirmRow[];
 
   const tenantList = (tenants ?? []).map((t) => ({

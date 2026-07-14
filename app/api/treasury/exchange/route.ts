@@ -8,6 +8,8 @@ import { createClient } from "@/utils/supabase/server";
 type Body = {
   public_token?: string;
   institution_name?: string;
+  institution_id?: string;
+  force?: boolean;
 };
 
 async function resolveGrantTenantId(
@@ -62,6 +64,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing public_token" }, { status: 400 });
   }
 
+  const institutionId = body.institution_id?.trim() || null;
+  const admin = createSupabaseAdminClient();
+
+  if (institutionId) {
+    const { data: existing } = await admin
+      .from("plaid_items")
+      .select("id, institution_name")
+      .eq("client_user_id", user.id)
+      .eq("institution_id", institutionId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+
+    if (existing && body.force !== true) {
+      return NextResponse.json({
+        status: "already_linked",
+        institution_name: existing.institution_name ?? body.institution_name ?? null,
+      });
+    }
+  }
+
   try {
     const exchange = await plaid.itemPublicTokenExchange({
       public_token: publicToken,
@@ -70,7 +93,6 @@ export async function POST(request: Request) {
     const itemId = exchange.data.item_id;
     const institutionName = body.institution_name?.trim() || null;
 
-    const admin = createSupabaseAdminClient();
     const ciphertext = await encryptForClient(admin, user.id, accessToken);
     const distributorTenantId = await resolveGrantTenantId(supabase, user.id);
 
@@ -82,6 +104,8 @@ export async function POST(request: Request) {
           distributor_tenant_id: distributorTenantId,
           plaid_item_id: itemId,
           institution_name: institutionName,
+          institution_id: institutionId,
+          status: "active",
           access_token_ciphertext: ciphertext,
         },
         { onConflict: "client_user_id,plaid_item_id" }
@@ -96,6 +120,7 @@ export async function POST(request: Request) {
     const balances = await plaid.accountsBalanceGet({ access_token: accessToken });
     const accounts = balances.data.accounts;
     const accountRows = accounts.map((acct) => ({
+      source: "plaid" as const,
       plaid_item_id: itemRow.id,
       client_user_id: user.id,
       account_id: acct.account_id,
@@ -111,9 +136,12 @@ export async function POST(request: Request) {
     if (accountRows.length > 0) {
       const { error: acctErr } = await admin
         .from("treasury_accounts")
-        .upsert(accountRows, { onConflict: "plaid_item_id,account_id" });
+        .upsert(accountRows, { onConflict: "client_user_id,account_id" });
       if (acctErr) throw acctErr;
     }
+
+    const { syncTransactionsForClient } = await import("@/lib/server/treasury-sync");
+    await syncTransactionsForClient(admin, user.id);
 
     return NextResponse.json({
       ok: true,

@@ -21,6 +21,15 @@ type Props = {
 
 const TEXT_SCALE_KEY = "fractals-textscale";
 
+function applyZoomToViewHost(value: number) {
+  const host = document.getElementById("viewhost");
+  if (host) {
+    if (value === 1) host.style.removeProperty("zoom");
+    else host.style.zoom = String(value);
+  }
+  document.documentElement.style.removeProperty("zoom");
+}
+
 export function BcnTopbarContinuity({
   wordmark,
   dataBrand,
@@ -42,7 +51,7 @@ export function BcnTopbarContinuity({
         const value = parseFloat(stored);
         if (!Number.isNaN(value)) {
           setTextScale(value);
-          document.documentElement.style.zoom = String(value);
+          applyZoomToViewHost(value);
         }
       }
     } catch {
@@ -52,7 +61,7 @@ export function BcnTopbarContinuity({
 
   function applyTextScale(value: number) {
     setTextScale(value);
-    document.documentElement.style.zoom = String(value);
+    applyZoomToViewHost(value);
     try {
       localStorage.setItem(TEXT_SCALE_KEY, String(value));
     } catch {

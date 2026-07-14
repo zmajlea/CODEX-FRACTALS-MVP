@@ -13,8 +13,8 @@ export function TreasuryManagedByLine() {
   if (!tenantName) return null;
 
   return (
-    <p className="text-xs text-codex-muted mt-2">
-      Managed by <span className="font-medium text-ink">{tenantName}</span>
+    <p className="treasury-meta mt-2">
+      Managed by <span className="treasury-ink font-medium">{tenantName}</span>
     </p>
   );
 }
