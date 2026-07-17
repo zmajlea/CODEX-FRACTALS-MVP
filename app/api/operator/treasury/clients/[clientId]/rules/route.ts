@@ -3,7 +3,7 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { applyRulesForClient, countRuleMatches } from "@/lib/server/treasury-rules";
+import { applyRulesForClient, countRuleQueues } from "@/lib/server/treasury-rules";
 import type { TreasuryRuleRow } from "@/lib/treasury/types";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
@@ -24,13 +24,19 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const ruleRows = (data ?? []) as TreasuryRuleRow[];
-  const matchedCounts = await countRuleMatches(guard.admin, clientId, ruleRows);
+  const queueCounts = await countRuleQueues(guard.admin, clientId, ruleRows);
 
   return NextResponse.json({
-    rules: ruleRows.map((rule) => ({
-      ...rule,
-      matched_count: matchedCounts.get(rule.id) ?? 0,
-    })),
+    rules: ruleRows.map((rule) => {
+      const q = queueCounts.get(rule.id) ?? { suggested: 0, confirmed: 0 };
+      return {
+        ...rule,
+        suggested_count: q.suggested,
+        confirmed_count: q.confirmed,
+        // Legacy field = sum (do not use for UI — Spec 36)
+        matched_count: q.suggested + q.confirmed,
+      };
+    }),
   });
 }
 

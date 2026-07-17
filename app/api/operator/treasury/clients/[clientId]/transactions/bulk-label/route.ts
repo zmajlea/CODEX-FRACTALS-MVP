@@ -14,6 +14,8 @@ type PatchBody = {
   confirmSuggestions?: boolean;
   /** Confirm every suggested row for this client (paginated). Ignores transactionIds. */
   confirmAllSuggested?: boolean;
+  /** When set with confirmAllSuggested, only confirm that rule’s suggestions. */
+  ruleId?: string;
 };
 
 const MAX_BULK = 500;
@@ -39,17 +41,19 @@ export async function PATCH(
     let ids = (body.transactionIds ?? []).filter(Boolean);
 
     if (body.confirmAllSuggested) {
-      const rows = await fetchAllRows((from, to) =>
-        guard.admin
+      const rows = await fetchAllRows((from, to) => {
+        let q = guard.admin
           .from("treasury_transactions")
           .select("id, suggested_label, suggestion_status")
           .eq("client_user_id", clientId)
           .eq("is_removed", false)
           .eq("suggestion_status", "suggested")
-          .not("suggested_label", "is", null)
-          .order("id", { ascending: true })
-          .range(from, to)
-      );
+          .not("suggested_label", "is", null);
+        if (body.ruleId) {
+          q = q.eq("suggested_by_rule_id", body.ruleId);
+        }
+        return q.order("id", { ascending: true }).range(from, to);
+      });
       ids = rows.map((r) => r.id);
     }
 

@@ -40,11 +40,13 @@ export function TreasuryDateRangePicker({ value, onChange, onBucketHint }: Props
   }
 
   function shift(direction: -1 | 1) {
-    const shifted = shiftRange(value.from, value.to, direction);
+    const from = value.from ?? todayIso();
+    const to = value.to ?? todayIso();
+    const shifted = shiftRange(from, to, direction);
     onChange({ ...shifted, preset: "custom" });
   }
 
-  const nextDisabled = value.to >= todayIso();
+  const nextDisabled = (value.to ?? todayIso()) >= todayIso();
 
   return (
     <div className="treasury-daterange flex flex-wrap gap-3 items-center mb-4">
@@ -67,7 +69,7 @@ export function TreasuryDateRangePicker({ value, onChange, onBucketHint }: Props
         <input
           type="date"
           className="border rounded px-2 py-1 text-sm"
-          value={value.from}
+          value={value.from ?? ""}
           onChange={(e) =>
             onChange({ from: e.target.value, to: value.to, preset: "custom" })
           }
@@ -76,7 +78,7 @@ export function TreasuryDateRangePicker({ value, onChange, onBucketHint }: Props
         <input
           type="date"
           className="border rounded px-2 py-1 text-sm"
-          value={value.to}
+          value={value.to ?? ""}
           max={todayIso()}
           onChange={(e) =>
             onChange({ from: value.from, to: e.target.value, preset: "custom" })

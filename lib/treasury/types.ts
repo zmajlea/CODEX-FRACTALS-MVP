@@ -38,12 +38,28 @@ export type TreasuryAccountsResponse = {
   transaction_count?: number;
 };
 
-export type DateRangePreset = "7d" | "30d" | "3m" | "12m" | "all" | "custom";
+export type DateRangePreset =
+  | "7d"
+  | "30d"
+  | "3m"
+  | "12m"
+  | "90d"
+  | "ytd"
+  | "all"
+  | "custom";
 
+/** All time = preset "all" with no from/to (no date filter on the API). */
 export type TreasuryDateRange = {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
   preset: DateRangePreset;
+};
+
+export type TreasuryBookStats = {
+  count: number;
+  first: string | null;
+  last: string | null;
+  importedAt: string | null;
 };
 
 export type TreasuryDrillRange = {
@@ -185,7 +201,10 @@ export type TreasuryRuleRow = {
   source_transaction_id: string | null;
   created_at: string;
   last_applied_at?: string | null;
+  /** @deprecated Spec 36 — use suggested_count / confirmed_count */
   matched_count?: number;
+  suggested_count?: number;
+  confirmed_count?: number;
 };
 
 export type TreasuryRecommendationAnchorRef = {

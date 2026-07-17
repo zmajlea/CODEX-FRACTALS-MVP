@@ -4,12 +4,14 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
+import {
+  applyTxPredicate,
+  withStatus,
+  type TxFilterInput,
+  type TxStatusFilter,
+} from "@/lib/treasury/tx-predicate";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
-
-function escapeIlike(q: string): string {
-  return q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/,/g, "\\,");
-}
 
 function parseAccountIds(url: URL): string[] {
   const raw = url.searchParams.getAll("account_id");
@@ -19,15 +21,47 @@ function parseAccountIds(url: URL): string[] {
     .filter(Boolean);
 }
 
+function parseFilters(url: URL): TxFilterInput {
+  const amountMinRaw = url.searchParams.get("amount_min");
+  const amountMaxRaw = url.searchParams.get("amount_max");
+  const amountExactRaw = url.searchParams.get("amount_exact");
+  const ruleQueue = url.searchParams.get("rule_queue");
+  return {
+    from: url.searchParams.get("from") || undefined,
+    to: url.searchParams.get("to") || undefined,
+    status: (url.searchParams.get("status") as TxStatusFilter | null) ?? undefined,
+    labeled: url.searchParams.get("labeled"),
+    q: url.searchParams.get("q") || undefined,
+    accountIds: parseAccountIds(url),
+    amountExact:
+      amountExactRaw != null && amountExactRaw !== ""
+        ? Number(amountExactRaw)
+        : null,
+    amountMin:
+      amountMinRaw != null && amountMinRaw !== "" ? Number(amountMinRaw) : null,
+    amountMax:
+      amountMaxRaw != null && amountMaxRaw !== "" ? Number(amountMaxRaw) : null,
+    ruleId: url.searchParams.get("rule_id") || undefined,
+    ruleQueue:
+      ruleQueue === "suggested" ||
+      ruleQueue === "confirmed" ||
+      ruleQueue === "rejected"
+        ? ruleQueue
+        : undefined,
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
   const url = new URL(request.url);
+  const page = Math.max(0, Number(url.searchParams.get("page") ?? 0));
   const cursor = url.searchParams.get("cursor") ?? undefined;
+  const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
 
-  if (!cursor) {
+  if (!cursor && page === 0) {
     await writeOperatorTreasuryReadAudit(guard.admin, {
       actorUserId: guard.user.id,
       clientUserId: clientId,
@@ -37,78 +71,63 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  const from = url.searchParams.get("from") ?? undefined;
-  const to = url.searchParams.get("to") ?? undefined;
-  const accountIds = parseAccountIds(url);
-  const label = url.searchParams.get("label") ?? undefined;
-  const labeled = url.searchParams.get("labeled");
-  /** status=needs_label | suggested | labeled — siblings; overrides labeled= when set */
-  const status = url.searchParams.get("status") ?? undefined;
-  const q = url.searchParams.get("q") ?? undefined;
-  const amountMinRaw = url.searchParams.get("amount_min");
-  const amountMaxRaw = url.searchParams.get("amount_max");
-  const amountExactRaw = url.searchParams.get("amount_exact");
-  const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 100);
+  const filters = parseFilters(url);
 
-  let query = guard.admin
-    .from("treasury_transactions")
-    .select("*")
-    .eq("client_user_id", clientId)
-    .eq("is_removed", false)
-    .order("posted_date", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit + 1);
-
-  if (from) query = query.gte("posted_date", from);
-  if (to) query = query.lte("posted_date", to);
-  if (accountIds.length) query = query.in("account_id", accountIds);
-  if (label) query = query.eq("label", label);
-
-  if (status === "suggested") {
-    query = query.eq("suggestion_status", "suggested");
-  } else if (status === "labeled") {
-    query = query.not("label", "is", null);
-  } else if (status === "needs_label") {
-    query = query.or(
-      "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
-    );
-  } else {
-    if (labeled === "true") query = query.not("label", "is", null);
-    if (labeled === "false") query = query.is("label", null);
+  if (filters.amountExact != null && (!Number.isFinite(filters.amountExact) || filters.amountExact < 0)) {
+    return NextResponse.json({ error: "Invalid amount_exact" }, { status: 400 });
   }
-
-  if (q) {
-    const safe = escapeIlike(q);
-    query = query.or(
-      `raw_name.ilike.%${safe}%,merchant_name.ilike.%${safe}%,description.ilike.%${safe}%`
-    );
-  }
-
-  if (amountExactRaw != null && amountExactRaw !== "") {
-    const x = Number(amountExactRaw);
-    if (!Number.isFinite(x) || x < 0) {
-      return NextResponse.json({ error: "Invalid amount_exact" }, { status: 400 });
-    }
-    query = query.or(`amount.eq.${x},amount.eq.${-x}`);
-  } else if (amountMinRaw != null || amountMaxRaw != null) {
-    const min = Number(amountMinRaw ?? amountMaxRaw);
-    const max = Number(amountMaxRaw ?? amountMinRaw);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < 0) {
+  if (
+    (filters.amountMin != null || filters.amountMax != null) &&
+    filters.amountExact == null
+  ) {
+    const min = filters.amountMin ?? filters.amountMax;
+    const max = filters.amountMax ?? filters.amountMin;
+    if (
+      min == null ||
+      max == null ||
+      !Number.isFinite(min) ||
+      !Number.isFinite(max) ||
+      min < 0 ||
+      max < 0
+    ) {
       return NextResponse.json({ error: "Invalid amount range" }, { status: 400 });
     }
-    const lo = Math.min(min, max);
-    const hi = Math.max(min, max);
-    query = query.or(
-      `and(amount.gte.${lo},amount.lte.${hi}),and(amount.gte.${-hi},amount.lte.${-lo})`
-    );
   }
 
+  const base = () =>
+    applyTxPredicate(
+      guard.admin
+        .from("treasury_transactions")
+        .select("*")
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false),
+      filters
+    );
+
+  const offset = page * limit;
+  let query = base()
+    .order("posted_date", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  // Legacy cursor support
   if (cursor) {
     const [cursorDate, cursorId] = cursor.split("|");
     if (cursorDate && cursorId) {
-      query = query.or(
-        `posted_date.lt.${cursorDate},and(posted_date.eq.${cursorDate},id.lt.${cursorId})`
-      );
+      query = applyTxPredicate(
+        guard.admin
+          .from("treasury_transactions")
+          .select("*")
+          .eq("client_user_id", clientId)
+          .eq("is_removed", false),
+        filters
+      )
+        .order("posted_date", { ascending: false })
+        .order("id", { ascending: false })
+        .or(
+          `posted_date.lt.${cursorDate},and(posted_date.eq.${cursorDate},id.lt.${cursorId})`
+        )
+        .limit(limit + 1);
     }
   }
 
@@ -119,10 +138,11 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const rows = data ?? [];
-  const hasMore = rows.length > limit;
-  const page = hasMore ? rows.slice(0, limit) : rows;
-  const last = page[page.length - 1];
-  const nextCursor = hasMore && last ? `${last.posted_date}|${last.id}` : null;
+  const hasMore = cursor ? rows.length > limit : false;
+  const pageRows = cursor && hasMore ? rows.slice(0, limit) : rows;
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor =
+    cursor && hasMore && last ? `${last.posted_date}|${last.id}` : null;
 
   const { data: accountRows } = await guard.admin
     .from("treasury_accounts")
@@ -164,7 +184,7 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  const transactions = page.map((tx) => ({
+  const transactions = pageRows.map((tx) => ({
     ...tx,
     account: accountMap.get(tx.account_id) ?? {
       name: null,
@@ -173,38 +193,101 @@ export async function GET(request: Request, context: RouteContext) {
     },
   }));
 
-  const baseCount = () =>
+  const countHead = (f: TxFilterInput) =>
+    applyTxPredicate(
+      guard.admin
+        .from("treasury_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false),
+      f
+    );
+
+  const filtersSansStatus: TxFilterInput = {
+    ...filters,
+    status: "all",
+    labeled: null,
+    ruleId: filters.ruleId,
+    ruleQueue: filters.ruleQueue,
+  };
+
+  // Status chips share other filters; when in rule queue mode, skip chip counts.
+  const chipBase: TxFilterInput = filters.ruleId
+    ? filtersSansStatus
+    : { ...filtersSansStatus, ruleId: null, ruleQueue: null };
+
+  const [
+    { count: filteredTotal },
+    { count: needsLabel },
+    { count: suggestedTotal },
+    { count: labeledTotal },
+    { count: pendingCount },
+    bookCountRes,
+    bookFirstRes,
+    bookLastRes,
+    bookImportRes,
+  ] = await Promise.all([
+    countHead(filters),
+    filters.ruleId
+      ? Promise.resolve({ count: 0 })
+      : countHead(withStatus(chipBase, "needs_label")),
+    filters.ruleId
+      ? Promise.resolve({ count: 0 })
+      : countHead(withStatus(chipBase, "suggested")),
+    filters.ruleId
+      ? Promise.resolve({ count: 0 })
+      : countHead(withStatus(chipBase, "labeled")),
     guard.admin
       .from("treasury_transactions")
       .select("id", { count: "exact", head: true })
       .eq("client_user_id", clientId)
       .eq("is_removed", false)
-      .eq("pending", false);
-
-  const [{ count: needsLabel }, { count: suggestedTotal }, { count: labeledTotal }, { count: pendingCount }] =
-    await Promise.all([
-      guard.admin
-        .from("treasury_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("client_user_id", clientId)
-        .eq("is_removed", false)
-        .eq("pending", false)
-        .or(
-          "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
-        ),
-      baseCount().eq("suggestion_status", "suggested"),
-      baseCount().not("label", "is", null),
-      guard.admin
-        .from("treasury_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("client_user_id", clientId)
-        .eq("is_removed", false)
-        .eq("pending", true),
-    ]);
+      .eq("pending", true),
+    guard.admin
+      .from("treasury_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false),
+    guard.admin
+      .from("treasury_transactions")
+      .select("posted_date")
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false)
+      .not("posted_date", "is", null)
+      .order("posted_date", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    guard.admin
+      .from("treasury_transactions")
+      .select("posted_date")
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false)
+      .not("posted_date", "is", null)
+      .order("posted_date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    guard.admin
+      .from("treasury_transactions")
+      .select("created_at")
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   return NextResponse.json({
     transactions,
     nextCursor,
+    total: filteredTotal ?? 0,
+    page,
+    limit,
+    book: {
+      count: bookCountRes.count ?? 0,
+      first: bookFirstRes.data?.posted_date ?? null,
+      last: bookLastRes.data?.posted_date ?? null,
+      importedAt: bookImportRes.data?.created_at ?? null,
+    },
     needsLabelCount: needsLabel ?? 0,
     suggestedCount: suggestedTotal ?? 0,
     labeledCount: labeledTotal ?? 0,

@@ -1,0 +1,107 @@
+/**
+ * Single Transactions WHERE assembly for the operator ledger.
+ * Rows and every scoped count must go through applyTxPredicate — no second builder.
+ */
+
+export type TxStatusFilter = "all" | "needs_label" | "suggested" | "labeled";
+
+export type TxFilterInput = {
+  from?: string | null;
+  to?: string | null;
+  status?: TxStatusFilter | string | null;
+  /** Legacy labeled=true/false when status unset */
+  labeled?: string | null;
+  q?: string | null;
+  accountIds?: string[];
+  amountMin?: number | null;
+  amountMax?: number | null;
+  amountExact?: number | null;
+  /** Rule queue: suggested_by_rule_id scope */
+  ruleId?: string | null;
+  /** When ruleId set: suggested | confirmed | rejected */
+  ruleQueue?: "suggested" | "confirmed" | "rejected" | null;
+};
+
+export function escapeIlike(q: string): string {
+  return q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/,/g, "\\,");
+}
+
+type Filterable = {
+  gte: (col: string, val: string) => Filterable;
+  lte: (col: string, val: string) => Filterable;
+  in: (col: string, vals: string[]) => Filterable;
+  eq: (col: string, val: string) => Filterable;
+  not: (col: string, op: string, val: null) => Filterable;
+  is: (col: string, val: null) => Filterable;
+  or: (expr: string) => Filterable;
+};
+
+/**
+ * Apply the shared ledger predicate. Does not set client_user_id / is_removed /
+ * order / limit / cursor — those stay on the route.
+ */
+export function applyTxPredicate<Q extends Filterable>(query: Q, filters: TxFilterInput): Q {
+  let q: Filterable = query;
+
+  if (filters.from) q = q.gte("posted_date", filters.from);
+  if (filters.to) q = q.lte("posted_date", filters.to);
+  if (filters.accountIds?.length) q = q.in("account_id", filters.accountIds);
+
+  if (filters.ruleId && filters.ruleQueue) {
+    q = q.eq("suggested_by_rule_id", filters.ruleId);
+    if (filters.ruleQueue === "suggested") {
+      q = q.eq("suggestion_status", "suggested");
+    } else if (filters.ruleQueue === "confirmed") {
+      q = q.eq("label_source", "rule_confirmed");
+    } else if (filters.ruleQueue === "rejected") {
+      q = q.eq("suggestion_status", "rejected");
+    }
+  } else {
+    const status = filters.status ?? undefined;
+    if (status === "suggested") {
+      q = q.eq("suggestion_status", "suggested");
+    } else if (status === "labeled") {
+      q = q.not("label", "is", null);
+    } else if (status === "needs_label") {
+      q = q.or(
+        "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
+      );
+    } else if (!status || status === "all") {
+      if (filters.labeled === "true") q = q.not("label", "is", null);
+      if (filters.labeled === "false") q = q.is("label", null);
+    }
+  }
+
+  if (filters.q) {
+    const safe = escapeIlike(filters.q);
+    q = q.or(
+      `normalized_merchant.ilike.%${safe}%,raw_name.ilike.%${safe}%,merchant_name.ilike.%${safe}%,description.ilike.%${safe}%`
+    );
+  }
+
+  if (filters.amountExact != null && Number.isFinite(filters.amountExact)) {
+    const x = Math.abs(filters.amountExact);
+    q = q.or(`amount.eq.${x},amount.eq.${-x}`);
+  } else if (
+    (filters.amountMin != null && Number.isFinite(filters.amountMin)) ||
+    (filters.amountMax != null && Number.isFinite(filters.amountMax))
+  ) {
+    const min = Number(filters.amountMin ?? filters.amountMax);
+    const max = Number(filters.amountMax ?? filters.amountMin);
+    const lo = Math.min(Math.abs(min), Math.abs(max));
+    const hi = Math.max(Math.abs(min), Math.abs(max));
+    q = q.or(
+      `and(amount.gte.${lo},amount.lte.${hi}),and(amount.gte.${-hi},amount.lte.${-lo})`
+    );
+  }
+
+  return q as Q;
+}
+
+/** Chip counts: same filters with only the status dimension swapped. */
+export function withStatus(
+  filters: TxFilterInput,
+  status: TxStatusFilter
+): TxFilterInput {
+  return { ...filters, status, ruleId: null, ruleQueue: null };
+}

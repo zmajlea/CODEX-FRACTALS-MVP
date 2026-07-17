@@ -61,9 +61,36 @@ export function subtractDays(iso: string, days: number): string {
   return addDays(iso, -days);
 }
 
-export function defaultDateRange(): { from: string; to: string; preset: "12m" } {
+/** Spec 36: Transactions default is All time (no date filter). */
+export function defaultDateRange(): { preset: "all" } {
+  return { preset: "all" };
+}
+
+/** Wall-clock last-12m — still used by summary/analytics surfaces that need a window. */
+export function wallClockLast12Months(): { from: string; to: string; preset: "12m" } {
   const to = todayIso();
   return { from: subtractMonths(to, 12), to, preset: "12m" };
+}
+
+/**
+ * Ledger date presets anchored to the last posted date (data-end), not today.
+ * All time → no from/to.
+ */
+export function ledgerPresetFromDataEnd(
+  preset: "all" | "12m" | "90d" | "ytd" | "custom",
+  dataEnd: string | null | undefined,
+  custom?: { from?: string; to?: string }
+): { from?: string; to?: string; preset: typeof preset } {
+  if (preset === "all") return { preset: "all" };
+  if (preset === "custom") {
+    return { from: custom?.from, to: custom?.to, preset: "custom" };
+  }
+  const to = dataEnd && dataEnd.length >= 10 ? dataEnd.slice(0, 10) : todayIso();
+  if (preset === "12m") return { from: subtractMonths(to, 12), to, preset: "12m" };
+  if (preset === "90d") return { from: subtractDays(to, 89), to, preset: "90d" };
+  // ytd: Jan 1 of data-end's year → data-end
+  const year = to.slice(0, 4);
+  return { from: `${year}-01-01`, to, preset: "ytd" };
 }
 
 export function bucketForPreset(preset: string): SummaryBucket {

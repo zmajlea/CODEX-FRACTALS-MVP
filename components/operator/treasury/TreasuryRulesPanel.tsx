@@ -1,16 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
-import type { TreasuryRuleRow } from "@/lib/treasury/types";
+import type { TreasuryRuleRow, TreasuryTransactionRow } from "@/lib/treasury/types";
 
 type Props = {
   clientUserId: string;
   draftRule?: Partial<TreasuryRuleRow> | null;
   onClearDraft?: () => void;
   onGoToTransactions?: () => void;
-  onRuleSaved?: (suggestedCount: number) => void;
+  /** Stay on Rules; open the new rule’s Suggested queue */
+  onRuleSaved?: (suggestedCount: number, ruleId: string | null) => void;
+  /** Open this rule’s Suggested queue (ledger return leg) */
+  openRuleQueueId?: string | null;
+  onOpenRuleQueueConsumed?: () => void;
 };
+
+type QueueTab = "suggested" | "confirmed";
 
 function formatAppliedAt(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -29,13 +36,14 @@ function formatAppliedAt(iso: string | null | undefined): string {
   }
 }
 
-function matchLine(r: TreasuryRuleRow): string {
+function queueLine(r: TreasuryRuleRow): string {
+  const suggested = r.suggested_count ?? 0;
+  const confirmed = r.confirmed_count ?? 0;
   if (r.last_applied_at == null) {
-    return "Never applied";
+    return `${suggested} suggested · ${confirmed} confirmed · Never applied`;
   }
   const applied = formatAppliedAt(r.last_applied_at);
-  const n = typeof r.matched_count === "number" ? r.matched_count : 0;
-  return `matched ${n} · applied ${applied}`;
+  return `${suggested} suggested · ${confirmed} confirmed · applied ${applied}`;
 }
 
 export function TreasuryRulesPanel({
@@ -44,6 +52,8 @@ export function TreasuryRulesPanel({
   onClearDraft,
   onGoToTransactions,
   onRuleSaved,
+  openRuleQueueId,
+  onOpenRuleQueueConsumed,
 }: Props) {
   const [rules, setRules] = useState<TreasuryRuleRow[]>([]);
   const [rulesLoading, setRulesLoading] = useState(true);
@@ -56,6 +66,14 @@ export function TreasuryRulesPanel({
   const [msg, setMsg] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [queueTab, setQueueTab] = useState<QueueTab>("suggested");
+  const [queueRows, setQueueRows] = useState<TreasuryTransactionRow[]>([]);
+  const [queueTotal, setQueueTotal] = useState(0);
+  const [queuePage, setQueuePage] = useState(0);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const load = useCallback(async () => {
     setRulesLoading(true);
@@ -83,6 +101,51 @@ export function TreasuryRulesPanel({
     setDirection((draftRule.direction as "in" | "out") ?? "");
   }, [draftRule]);
 
+  useEffect(() => {
+    if (!openRuleQueueId) return;
+    setExpandedId(openRuleQueueId);
+    setQueueTab("suggested");
+    setQueuePage(0);
+    onOpenRuleQueueConsumed?.();
+  }, [openRuleQueueId, onOpenRuleQueueConsumed]);
+
+  const loadQueue = useCallback(
+    async (ruleId: string, tab: QueueTab, page: number) => {
+      setQueueLoading(true);
+      const params = new URLSearchParams({
+        rule_id: ruleId,
+        rule_queue: tab,
+        limit: "50",
+        page: String(page),
+      });
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/transactions?${params}`
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          transactions: TreasuryTransactionRow[];
+          total: number;
+        };
+        setQueueRows(data.transactions);
+        setQueueTotal(data.total ?? 0);
+      } else {
+        setQueueRows([]);
+        setQueueTotal(0);
+      }
+      setQueueLoading(false);
+    },
+    [clientUserId]
+  );
+
+  useEffect(() => {
+    if (!expandedId) {
+      setQueueRows([]);
+      setQueueTotal(0);
+      return;
+    }
+    void loadQueue(expandedId, queueTab, queuePage);
+  }, [expandedId, queueTab, queuePage, loadQueue]);
+
   async function createRule(fromDraft = false) {
     const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/rules`,
@@ -101,19 +164,34 @@ export function TreasuryRulesPanel({
         }),
       }
     );
-    const data = (await res.json()) as { suggested?: number; error?: string };
+    const data = (await res.json()) as {
+      suggested?: number;
+      rule?: TreasuryRuleRow;
+      error?: string;
+    };
     if (!res.ok) {
       setMsg(data.error ?? "Failed to create rule");
       return;
     }
     const count = data.suggested ?? 0;
+    const ruleId = data.rule?.id ?? null;
     if (fromDraft) {
-      setMsg("Rule saved. This payee is remembered.");
+      setMsg("Rule saved. Review suggestions below.");
       onClearDraft?.();
-      onRuleSaved?.(count);
+      onRuleSaved?.(count, ruleId);
+      if (ruleId) {
+        setExpandedId(ruleId);
+        setQueueTab("suggested");
+        setQueuePage(0);
+      }
     } else {
       setMsg(`Rule created. ${count} suggestions applied.`);
       onClearDraft?.();
+      if (ruleId) {
+        setExpandedId(ruleId);
+        setQueueTab("suggested");
+        setQueuePage(0);
+      }
     }
     void load();
   }
@@ -148,11 +226,65 @@ export function TreasuryRulesPanel({
       return;
     }
     setMsg(`Applied — ${data.suggested ?? 0} new suggestions.`);
-    onRuleSaved?.(data.suggested ?? 0);
+    setExpandedId(rule.id);
+    setQueueTab("suggested");
+    setQueuePage(0);
     void load();
   }
 
+  async function patchTx(txId: string, body: Record<string, unknown>) {
+    await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/transactions/${txId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    if (expandedId) void loadQueue(expandedId, queueTab, queuePage);
+    void load();
+  }
+
+  async function confirmAllForRule(rule: TreasuryRuleRow) {
+    const n = rule.suggested_count ?? queueTotal;
+    if (n <= 0) return;
+    if (
+      !confirm(
+        `Apply the category "${rule.assign_label}" to all ${n} suggested transaction(s)?`
+      )
+    ) {
+      return;
+    }
+    setConfirmBusy(true);
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/transactions/bulk-label`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            confirmAllSuggested: true,
+            ruleId: rule.id,
+          }),
+        }
+      );
+      const data = (await res.json()) as { updated?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Confirm all failed");
+      setMsg(
+        `${data.updated ?? 0} transactions confirmed as ${rule.assign_label}.`
+      );
+      setQueueTab("confirmed");
+      setQueuePage(0);
+      void load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Confirm all failed");
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
   const dirLabel = direction === "in" ? "in" : direction === "out" ? "out" : "any";
+  const queuePageCount = Math.max(1, Math.ceil(queueTotal / 50));
 
   return (
     <div className="space-y-4">
@@ -166,7 +298,7 @@ export function TreasuryRulesPanel({
                 ? `${formatTreasuryMoney(Number(amountMin), "USD")}–${formatTreasuryMoney(Number(amountMax), "USD")}`
                 : "any"}
             </strong>
-            , direction <strong>{dirLabel}</strong> → suggest label{" "}
+            , direction <strong>{dirLabel}</strong> → suggest category{" "}
             <strong>{assignLabel || "…"}</strong>.
           </p>
           <div className="grid gap-2 max-w-lg mb-4">
@@ -184,7 +316,7 @@ export function TreasuryRulesPanel({
             />
             <input
               className="border rounded px-2 py-1 text-sm"
-              placeholder="Assign label"
+              placeholder="Assign category"
               value={assignLabel}
               onChange={(e) => setAssignLabel(e.target.value)}
             />
@@ -213,18 +345,18 @@ export function TreasuryRulesPanel({
         </div>
       ) : (
         <div className="panel p-4">
-          <h3 className="font-head text-lg mb-2">How labeling rules work</h3>
+          <h3 className="font-head text-lg mb-2">How categorization rules work</h3>
           <ol className="text-sm space-y-2 mb-4 list-decimal list-inside text-codex-muted">
-            <li>Label a transaction in the ledger</li>
-            <li>Make a rule from that labeled row</li>
+            <li>Categorize a transaction in the ledger</li>
+            <li>Make a rule from that categorized row</li>
             <li>Confirm the suggestions it finds</li>
           </ol>
           <p className="text-xs text-codex-muted mb-4">
-            Rules propose labels; nothing is applied until you confirm.
+            Rules propose categories; nothing is applied until you confirm.
           </p>
           {onGoToTransactions ? (
             <button type="button" className="btn" onClick={onGoToTransactions}>
-              Go label a transaction
+              Go categorize a transaction
             </button>
           ) : null}
         </div>
@@ -254,7 +386,7 @@ export function TreasuryRulesPanel({
             />
             <input
               className="border rounded px-2 py-1"
-              placeholder="Assign label"
+              placeholder="Assign category"
               value={assignLabel}
               onChange={(e) => setAssignLabel(e.target.value)}
             />
@@ -299,45 +431,163 @@ export function TreasuryRulesPanel({
           <p className="text-sm text-codex-muted">Loading rules…</p>
         ) : rules.length === 0 ? (
           <p className="text-sm text-codex-muted">
-            No rules yet — label a transaction and use &quot;Make rule&quot; to get
+            No rules yet — categorize a transaction and use &quot;Make rule&quot; to get
             started.
           </p>
         ) : (
           <ul className="space-y-3">
-            {rules.map((r) => (
-              <li
-                key={r.id}
-                className="flex justify-between gap-4 border-b border-sealed-bone/60 pb-3"
-              >
-                <div>
-                  <p className="text-sm">
-                    When payee contains <strong>&quot;{r.match_merchant}&quot;</strong> →
-                    suggest <strong>{r.assign_label}</strong>
-                    <span className="text-codex-muted"> · {matchLine(r)}</span>
-                  </p>
-                  <p className="text-xs text-codex-muted mt-1">{r.name}</p>
-                </div>
-                <div className="flex flex-col gap-1 shrink-0 items-stretch">
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-xs"
-                    onClick={() => void toggleRule(r)}
-                  >
-                    {r.active ? "Active" : "Paused"}
-                  </button>
-                  {r.active ? (
+            {rules.map((r) => {
+              const open = expandedId === r.id;
+              return (
+                <li
+                  key={r.id}
+                  className="border-b border-sealed-bone/60 pb-3"
+                >
+                  <div className="flex justify-between gap-4">
                     <button
                       type="button"
-                      className="btn btn-secondary text-xs"
-                      disabled={busyRuleId === r.id}
-                      onClick={() => void reapplyRule(r)}
+                      className="text-left flex-1"
+                      onClick={() => {
+                        if (open) {
+                          setExpandedId(null);
+                        } else {
+                          setExpandedId(r.id);
+                          setQueueTab("suggested");
+                          setQueuePage(0);
+                        }
+                      }}
                     >
-                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                      <p className="text-sm">
+                        When payee contains <strong>&quot;{r.match_merchant}&quot;</strong> →
+                        Category: <strong>{r.assign_label}</strong>
+                      </p>
+                      <p className="text-xs text-codex-muted mt-1">
+                        {queueLine(r)}
+                        {r.active ? " · ACTIVE" : " · PAUSED"}
+                      </p>
+                      <p className="text-xs text-codex-muted mt-1">{r.name}</p>
                     </button>
+                    <div className="flex flex-col gap-1 shrink-0 items-stretch">
+                      <button
+                        type="button"
+                        className="btn btn-secondary text-xs"
+                        onClick={() => void toggleRule(r)}
+                      >
+                        {r.active ? "Active" : "Paused"}
+                      </button>
+                      {r.active ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary text-xs"
+                          disabled={busyRuleId === r.id}
+                          onClick={() => void reapplyRule(r)}
+                        >
+                          {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {open ? (
+                    <div className="mt-3 pl-1">
+                      <div className="flex flex-wrap gap-3 mb-3 text-sm">
+                        {(
+                          [
+                            {
+                              id: "suggested" as const,
+                              label: `Suggested (${r.suggested_count ?? 0})`,
+                            },
+                            {
+                              id: "confirmed" as const,
+                              label: `Confirmed (${r.confirmed_count ?? 0})`,
+                            },
+                          ] as const
+                        ).map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className={`btn btn-secondary text-xs ${queueTab === t.id ? "on" : ""}`}
+                            onClick={() => {
+                              setQueueTab(t.id);
+                              setQueuePage(0);
+                            }}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                        {queueTab === "suggested" && (r.suggested_count ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            className="btn text-xs"
+                            disabled={confirmBusy}
+                            onClick={() => void confirmAllForRule(r)}
+                          >
+                            Confirm all {r.suggested_count}
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {queueLoading ? (
+                        <p className="text-sm text-codex-muted">Loading queue…</p>
+                      ) : queueRows.length === 0 ? (
+                        <p className="text-sm text-codex-muted">
+                          No {queueTab} transactions for this rule.
+                        </p>
+                      ) : (
+                        <div className="txtable txtable-extended">
+                          <div className="txhead">
+                            <span />
+                            <span>Date</span>
+                            <span>Source</span>
+                            <span>Payee / Memo</span>
+                            <span>Category</span>
+                            <span className="ta-r">Amount</span>
+                            <span>Status</span>
+                          </div>
+                          {queueRows.map((tx) => (
+                            <TreasuryTxRow
+                              key={tx.id}
+                              tx={tx}
+                              showSelect={false}
+                              onConfirm={() =>
+                                void patchTx(tx.id, { confirmSuggestion: true })
+                              }
+                              onReject={() =>
+                                void patchTx(tx.id, { rejectSuggestion: true })
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {queueTotal > 50 ? (
+                        <div className="flex gap-2 items-center mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-secondary text-xs"
+                            disabled={queuePage <= 0}
+                            onClick={() => setQueuePage((p) => Math.max(0, p - 1))}
+                          >
+                            Previous
+                          </button>
+                          <span className="text-xs text-codex-muted">
+                            Page {queuePage + 1} of {queuePageCount}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary text-xs"
+                            disabled={queuePage + 1 >= queuePageCount}
+                            onClick={() => setQueuePage((p) => p + 1)}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

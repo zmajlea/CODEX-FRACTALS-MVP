@@ -7,39 +7,50 @@ import {
   compareIso,
   formatRangeLabel,
   isBetweenIso,
+  ledgerPresetFromDataEnd,
   monthGridCells,
   monthTitle,
   startOfMonth,
-  subtractDays,
   todayIso,
 } from "@/lib/treasury/period-bounds";
 
 type Props = {
   value: TreasuryDateRange;
   onChange: (next: TreasuryDateRange) => void;
+  /** Last posted date — presets anchor here, not wall-clock today. */
+  dataEnd?: string | null;
 };
 
 type PickPhase = "idle" | "start-picked";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
+const LEDGER_PRESETS: { id: "all" | "12m" | "90d" | "ytd"; label: string }[] = [
+  { id: "all", label: "All time" },
+  { id: "12m", label: "Last 12 months of data" },
+  { id: "90d", label: "Last 90 days" },
+  { id: "ytd", label: "This year" },
+];
+
 function parseMonthAnchor(iso: string): { year: number; month: number } {
   const [y, m] = iso.split("-").map(Number);
   return { year: y, month: m - 1 };
 }
 
-export function TreasuryRangeCalendar({ value, onChange }: Props) {
+export function TreasuryRangeCalendar({ value, onChange, dataEnd }: Props) {
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<PickPhase>("idle");
   const [draftStart, setDraftStart] = useState<string | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
-  const [leftMonth, setLeftMonth] = useState(() => startOfMonth(value.from));
-  const [focusDate, setFocusDate] = useState(value.from);
+  const anchor = value.from ?? dataEnd ?? todayIso();
+  const [leftMonth, setLeftMonth] = useState(() => startOfMonth(anchor));
+  const [focusDate, setFocusDate] = useState(anchor);
 
   const rightMonth = addMonths(leftMonth, 1);
   const today = todayIso();
+  const isAllTime = value.preset === "all" || (!value.from && !value.to);
 
   const closePopover = useCallback(() => {
     setOpen(false);
@@ -107,12 +118,18 @@ export function TreasuryRangeCalendar({ value, onChange }: Props) {
     if (compareIso(iso, today) > 0) classes.push("disabled");
     const pStart = previewStart();
     const pEnd = previewEnd() ?? (phase === "start-picked" ? draftStart : null);
-    const rangeFrom = open && pStart ? pStart : value.from;
-    const rangeTo = open && pEnd ? pEnd : value.to;
+    const rangeFrom = open && pStart ? pStart : value.from ?? iso;
+    const rangeTo = open && pEnd ? pEnd : value.to ?? iso;
 
-    if (iso === rangeFrom) classes.push("range-start");
-    if (iso === rangeTo) classes.push("range-end");
-    if (isBetweenIso(iso, rangeFrom, rangeTo)) classes.push("in-range");
+    if (!isAllTime || (open && pStart)) {
+      if (iso === rangeFrom) classes.push("range-start");
+      if (iso === rangeTo) classes.push("range-end");
+      if (value.from && value.to && isBetweenIso(iso, rangeFrom, rangeTo)) {
+        classes.push("in-range");
+      } else if (open && pStart && pEnd && isBetweenIso(iso, rangeFrom, rangeTo)) {
+        classes.push("in-range");
+      }
+    }
     if (iso === focusDate) classes.push("focused");
     return classes.join(" ");
   }
@@ -154,11 +171,11 @@ export function TreasuryRangeCalendar({ value, onChange }: Props) {
     );
   }
 
-  function applyShortcut(days: number) {
-    const to = today;
-    const from = subtractDays(to, days - 1);
-    commitRange(from, to);
-  }
+  const triggerLabel = isAllTime
+    ? "All time"
+    : value.from && value.to
+      ? formatRangeLabel(value.from, value.to)
+      : "Custom…";
 
   return (
     <div className="treasury-range-cal relative" ref={rootRef}>
@@ -169,21 +186,28 @@ export function TreasuryRangeCalendar({ value, onChange }: Props) {
         aria-controls={popoverId}
         onClick={() => {
           setOpen((v) => !v);
-          setLeftMonth(startOfMonth(value.from));
+          setLeftMonth(startOfMonth(value.from ?? dataEnd ?? todayIso()));
         }}
       >
-        {formatRangeLabel(value.from, value.to)} ▾
+        {triggerLabel} ▾
       </button>
 
       {open ? (
         <div id={popoverId} className="txcal-popover" role="dialog" aria-label="Select date range">
-          <div className="txcal-shortcuts">
-            <button type="button" className="btn btn-secondary text-xs" onClick={() => applyShortcut(7)}>
-              7 days
-            </button>
-            <button type="button" className="btn btn-secondary text-xs" onClick={() => applyShortcut(30)}>
-              30 days
-            </button>
+          <div className="txcal-shortcuts flex flex-wrap gap-1">
+            {LEDGER_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`btn btn-secondary text-xs ${value.preset === p.id ? "on" : ""}`}
+                onClick={() => {
+                  onChange(ledgerPresetFromDataEnd(p.id, dataEnd));
+                  closePopover();
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
           <div className="txcal-nav">
             <button

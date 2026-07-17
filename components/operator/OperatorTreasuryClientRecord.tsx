@@ -119,6 +119,7 @@ export function OperatorTreasuryClientRecord({
   const [ruleBanner, setRuleBanner] = useState<string | null>(null);
   const [needsLabelCount, setNeedsLabelCount] = useState(0);
   const [ledgerKey, setLedgerKey] = useState(0);
+  const [openRuleQueueId, setOpenRuleQueueId] = useState<string | null>(null);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
   const hasSyncedData = (data?.transaction_count ?? 0) > 0;
@@ -324,15 +325,20 @@ export function OperatorTreasuryClientRecord({
     setDateRange(savedDateRange);
   }
 
-  function handleRuleSaved(suggestedCount: number) {
+  function handleRuleSaved(suggestedCount: number, ruleId: string | null) {
     setRuleDraft(null);
-    setRuleBanner(
-      suggestedCount > 0
-        ? `Rule found ${suggestedCount} similar transaction${suggestedCount === 1 ? "" : "s"} — review below.`
-        : "Rule saved. No matching unlabeled transactions in the current data."
-    );
-    setTab("transactions");
+    // Spec 36: stay on Rules; open the new rule’s Suggested queue
+    if (ruleId) setOpenRuleQueueId(ruleId);
+    setTab("rules");
     setLedgerKey((k) => k + 1);
+    if (suggestedCount === 0) {
+      setRuleBanner(null);
+    }
+  }
+
+  function handleOpenRuleQueue(ruleId: string) {
+    setOpenRuleQueueId(ruleId);
+    setTab("rules");
   }
 
   const prov = provenanceLine(data);
@@ -459,6 +465,7 @@ export function OperatorTreasuryClientRecord({
             hasSyncedData={hasSyncedData}
             onMakeRule={handleMakeRule}
             onNeedsLabelCount={setNeedsLabelCount}
+            onOpenRuleQueue={handleOpenRuleQueue}
             ruleBanner={ruleBanner}
             onDismissBanner={() => setRuleBanner(null)}
           />
@@ -471,6 +478,8 @@ export function OperatorTreasuryClientRecord({
             onClearDraft={() => setRuleDraft(null)}
             onGoToTransactions={() => setTab("transactions")}
             onRuleSaved={handleRuleSaved}
+            openRuleQueueId={openRuleQueueId}
+            onOpenRuleQueueConsumed={() => setOpenRuleQueueId(null)}
           />
         ) : null}
 

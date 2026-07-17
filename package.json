@@ -33,7 +33,8 @@
     "treasury:demo-csv": "npx tsx scripts/generate-treasury-csv.ts",
     "treasury:verify-import": "npx tsx scripts/verify-summit-import.ts",
     "treasury:verify-label-survival": "npx tsx scripts/verify-label-survival.ts",
-    "treasury:verify-spend-plan": "npx tsx scripts/verify-spend-plan.ts"
+    "treasury:verify-spend-plan": "npx tsx scripts/verify-spend-plan.ts",
+    "treasury:verify-tx-predicate": "npx tsx scripts/verify-tx-predicate.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

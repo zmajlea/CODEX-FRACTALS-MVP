@@ -3,8 +3,6 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { querySummary as querySummaryCore } from "@/lib/treasury/query-summary";
-import { merchantMatches } from "@/lib/treasury/rule-helpers";
-import { normalizeMerchant } from "@/lib/treasury/normalize";
 import type { SummaryBucket, TreasuryRuleRow } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
 
@@ -14,19 +12,25 @@ export { applyRulesForClient } from "@/lib/treasury/apply-rules-for-client";
 export { detectCadence, merchantMatches } from "@/lib/treasury/rule-helpers";
 export type { CadenceDetection } from "@/lib/treasury/rule-helpers";
 
+export type RuleQueueCounts = {
+  suggested: number;
+  confirmed: number;
+};
+
 /**
- * Stored-state match count:
- * - live suggestions (suggestion_status = suggested) attributed by suggested_by_rule_id
- * - rule_confirmed rows still attributed by suggested_by_rule_id (kept on confirm)
- * - legacy confirmed rows with cleared suggested_by_rule_id: merchant+label rematch
+ * Spec 36: honest split counts per rule (kills blended matched N).
+ * - suggested = suggested_by_rule_id = :id AND suggestion_status = 'suggested'
+ * - confirmed = label_source = 'rule_confirmed' AND suggested_by_rule_id = :id
  */
-export async function countRuleMatches(
+export async function countRuleQueues(
   admin: AdminClient,
   clientUserId: string,
   rules: TreasuryRuleRow[]
-): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
-  for (const rule of rules) counts.set(rule.id, 0);
+): Promise<Map<string, RuleQueueCounts>> {
+  const counts = new Map<string, RuleQueueCounts>();
+  for (const rule of rules) {
+    counts.set(rule.id, { suggested: 0, confirmed: 0 });
+  }
   if (rules.length === 0) return counts;
 
   const live = await fetchAllRows((from, to) =>
@@ -34,6 +38,7 @@ export async function countRuleMatches(
       .from("treasury_transactions")
       .select("suggested_by_rule_id")
       .eq("client_user_id", clientUserId)
+      .eq("is_removed", false)
       .eq("suggestion_status", "suggested")
       .not("suggested_by_rule_id", "is", null)
       .order("id", { ascending: true })
@@ -42,43 +47,45 @@ export async function countRuleMatches(
 
   for (const row of live) {
     const ruleId = row.suggested_by_rule_id;
-    if (ruleId && counts.has(ruleId)) {
-      counts.set(ruleId, (counts.get(ruleId) ?? 0) + 1);
-    }
+    if (!ruleId || !counts.has(ruleId)) continue;
+    const cur = counts.get(ruleId)!;
+    counts.set(ruleId, { ...cur, suggested: cur.suggested + 1 });
   }
 
   const confirmed = await fetchAllRows((from, to) =>
     admin
       .from("treasury_transactions")
-      .select(
-        "suggested_by_rule_id, normalized_merchant, raw_name, merchant_name, label, label_source"
-      )
+      .select("suggested_by_rule_id")
       .eq("client_user_id", clientUserId)
+      .eq("is_removed", false)
       .eq("label_source", "rule_confirmed")
+      .not("suggested_by_rule_id", "is", null)
       .order("id", { ascending: true })
       .range(from, to)
   );
 
   for (const tx of confirmed) {
-    if (tx.suggested_by_rule_id && counts.has(tx.suggested_by_rule_id)) {
-      counts.set(
-        tx.suggested_by_rule_id,
-        (counts.get(tx.suggested_by_rule_id) ?? 0) + 1
-      );
-      continue;
-    }
-    // Legacy confirms that cleared suggested_by_rule_id — rematch merchant + label
-    const normalized =
-      tx.normalized_merchant ?? normalizeMerchant(tx.raw_name, tx.merchant_name);
-    for (const rule of rules) {
-      if (tx.label !== rule.assign_label) continue;
-      if (!merchantMatches(normalized, rule)) continue;
-      counts.set(rule.id, (counts.get(rule.id) ?? 0) + 1);
-      break;
-    }
+    const ruleId = tx.suggested_by_rule_id;
+    if (!ruleId || !counts.has(ruleId)) continue;
+    const cur = counts.get(ruleId)!;
+    counts.set(ruleId, { ...cur, confirmed: cur.confirmed + 1 });
   }
 
   return counts;
+}
+
+/** @deprecated Spec 36 — prefer countRuleQueues */
+export async function countRuleMatches(
+  admin: AdminClient,
+  clientUserId: string,
+  rules: TreasuryRuleRow[]
+): Promise<Map<string, number>> {
+  const queues = await countRuleQueues(admin, clientUserId, rules);
+  const blended = new Map<string, number>();
+  for (const [id, q] of queues) {
+    blended.set(id, q.suggested + q.confirmed);
+  }
+  return blended;
 }
 
 export async function querySummary(
