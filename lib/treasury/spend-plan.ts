@@ -85,7 +85,12 @@ export type SpendPlanHistoryResponse = {
 export const SPEND_PLAN_METHOD_NOTE =
   'Projected spend for month t = L0 × (1+g)^(t/12) × seasonal index of that calendar month. Seasonal indices from history. Allocation for month t = base + step × FLOOR((t−1)/stepEveryMonths). Cumulative position = starting buffer + running sum of (allocation − spend).';
 
-/** Tim's published indices for fixture validation (Brass Monkey). */
+/**
+ * ORACLE ONLY — Tim's published 2dp seasonal indices (AL_Finance_PD_Stress_Test).
+ * Assert computed indices rounded to 2dp equal these. NEVER feed into projectSpendPlan:
+ * that reintroduced the phantom 3.5% gap (display rounding in arithmetic).
+ * Screenshots: CODEXONE/170726-R1-anallyzer/image01|02|03.png
+ */
 export const TIM_SEASONAL_INDICES: Record<number, number> = {
   1: 1.18,
   2: 1.05,
@@ -233,12 +238,65 @@ export function computeL0(
   return vals.reduce((s, v) => s + v, 0) / vals.length;
 }
 
+/**
+ * Cut complete months into whole 12-month blocks counted back from the last
+ * complete month. Orphan months older than the last whole block are unused
+ * (they'd re-introduce trend into the indices).
+ */
+export function partitionIntoYearBlocks(completeMonthKeys: string[]): string[][] {
+  const sorted = [...completeMonthKeys].sort();
+  const nBlocks = Math.floor(sorted.length / 12);
+  if (nBlocks < 1) return [];
+  const usable = sorted.slice(-nBlocks * 12);
+  const blocks: string[][] = [];
+  for (let i = 0; i < nBlocks; i++) {
+    blocks.push(usable.slice(i * 12, (i + 1) * 12));
+  }
+  return blocks;
+}
+
+export function meanOfMonths(
+  monthlyDebits: Record<string, number>,
+  monthKeys: string[]
+): number {
+  if (monthKeys.length === 0) return 0;
+  const sum = monthKeys.reduce((s, k) => s + (monthlyDebits[k] ?? 0), 0);
+  return sum / monthKeys.length;
+}
+
+/** Normalize to YYYY-MM for exclusion matching. */
+export function monthYm(isoOrYm: string): string {
+  return isoOrYm.slice(0, 7);
+}
+
+export function toExcludedSet(
+  excluded?: Iterable<string> | null
+): Set<string> {
+  const set = new Set<string>();
+  if (!excluded) return set;
+  for (const m of excluded) set.add(monthYm(m));
+  return set;
+}
+
+/**
+ * Tim's seasonal index method (Spec 38A / 38B):
+ *   index(M) = mean over blocks of ( debits(block, M) ÷ mean(months present in block) )
+ *
+ * Block boundaries use all complete months (counted back from last complete).
+ * Exclusions omit months from the mean and from that month's ratio — they do not
+ * collapse year boundaries. Self-normalising over months present; do NOT
+ * renormalise globally afterwards.
+ */
 export function computeSeasonalIndices(
   monthlyDebits: Record<string, number>,
   monthKeys: string[],
-  asOf: string
+  asOf: string,
+  excludedMonths?: Iterable<string> | null
 ): SeasonalIndexResult {
-  const completeKeys = monthKeys.filter((k) => isCompleteMonth(k, asOf));
+  const excluded = toExcludedSet(excludedMonths);
+  const completeKeys = monthKeys
+    .filter((k) => isCompleteMonth(k, asOf))
+    .sort();
   const distinct = new Set(completeKeys.map((k) => k.slice(0, 7))).size;
 
   if (distinct < 12) {
@@ -252,38 +310,26 @@ export function computeSeasonalIndices(
     };
   }
 
-  const byCalMonth = new Map<number, number[]>();
-  for (const key of completeKeys) {
-    const m = calendarMonthNumber(key);
-    const amt = monthlyDebits[key] ?? 0;
-    const list = byCalMonth.get(m) ?? [];
-    list.push(amt);
-    byCalMonth.set(m, list);
-  }
-
-  const monthlyMeans = completeKeys.map((k) => monthlyDebits[k] ?? 0);
-  const overallMean =
-    monthlyMeans.reduce((s, v) => s + v, 0) / monthlyMeans.length || 1;
-
+  const blocks = partitionIntoYearBlocks(completeKeys);
   const indices: Record<number, number> = {};
   const missingMonths: number[] = [];
 
   for (let m = 1; m <= 12; m++) {
-    const samples = byCalMonth.get(m);
-    if (!samples || samples.length === 0) {
+    const ratios: number[] = [];
+    for (const block of blocks) {
+      const present = block.filter((k) => !excluded.has(monthYm(k)));
+      const blockMean = meanOfMonths(monthlyDebits, present);
+      if (blockMean === 0 || present.length === 0) continue;
+      const key = block.find((k) => calendarMonthNumber(k) === m);
+      if (!key || excluded.has(monthYm(key))) continue;
+      ratios.push((monthlyDebits[key] ?? 0) / blockMean);
+    }
+    if (ratios.length === 0) {
       indices[m] = 1;
       missingMonths.push(m);
     } else {
-      const calMean = samples.reduce((s, v) => s + v, 0) / samples.length;
-      indices[m] = calMean / overallMean;
+      indices[m] = ratios.reduce((s, v) => s + v, 0) / ratios.length;
     }
-  }
-
-  const indexValues = Object.values(indices);
-  const indexMean =
-    indexValues.reduce((s, v) => s + v, 0) / indexValues.length || 1;
-  for (let m = 1; m <= 12; m++) {
-    indices[m] = indices[m]! / indexMean;
   }
 
   return {
@@ -294,18 +340,44 @@ export function computeSeasonalIndices(
   };
 }
 
+/**
+ * History-repeats growth = mean(latest block present) ÷ mean(previous block present) − 1.
+ *
+ * For two full 12-month blocks this equals sum(last12)/sum(prior12)−1
+ * (the ÷12 cancels). Mean/mean generalises correctly when 38B exclusions
+ * shorten a block — sum/sum would silently mis-weight the shorter block.
+ */
 export function computeTtmYoyGrowth(
   monthlyDebits: Record<string, number>,
-  completeMonthKeys: string[]
+  completeMonthKeys: string[],
+  excludedMonths?: Iterable<string> | null
 ): number | null {
-  const sorted = [...completeMonthKeys].sort();
-  if (sorted.length < 24) return null;
-  const last12 = sorted.slice(-12);
-  const prior12 = sorted.slice(-24, -12);
-  const sumLast = last12.reduce((s, k) => s + (monthlyDebits[k] ?? 0), 0);
-  const sumPrior = prior12.reduce((s, k) => s + (monthlyDebits[k] ?? 0), 0);
-  if (sumPrior === 0) return null;
-  return sumLast / sumPrior - 1;
+  const excluded = toExcludedSet(excludedMonths);
+  const blocks = partitionIntoYearBlocks(completeMonthKeys);
+  if (blocks.length < 2) return null;
+  const latest = blocks[blocks.length - 1]!.filter(
+    (k) => !excluded.has(monthYm(k))
+  );
+  const previous = blocks[blocks.length - 2]!.filter(
+    (k) => !excluded.has(monthYm(k))
+  );
+  const meanLatest = meanOfMonths(monthlyDebits, latest);
+  const meanPrevious = meanOfMonths(monthlyDebits, previous);
+  if (meanPrevious === 0 || previous.length === 0 || latest.length === 0) {
+    return null;
+  }
+  return meanLatest / meanPrevious - 1;
+}
+
+/** Round indices to 2dp for display / oracle asserts — never for projection. */
+export function roundSeasonalIndices2dp(
+  indices: Record<number, number>
+): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (let m = 1; m <= 12; m++) {
+    out[m] = Math.round((indices[m] ?? 1) * 100) / 100;
+  }
+  return out;
 }
 
 export function buildDefaultScenarios(ttmYoy: number | null): SpendPlanScenario[] {
@@ -475,6 +547,11 @@ export type SpendPlanDeriveInput = {
   fixedSeasonalIndices?: Record<number, number>;
   /** When set, projection uses this L0 instead of the pulled mean (Keep-saved / override). */
   fixedL0?: number;
+  /**
+   * Spec 38B: judgment months omitted from L0 / indices / history-repeats.
+   * YYYY-MM or YYYY-MM-01. Does not touch backtest actuals.
+   */
+  excludedMonths?: string[];
   backtest?: BacktestSpendPlanParams;
 };
 
@@ -503,6 +580,7 @@ export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
   const planStart = parseMonthStart(input.planStartMonth);
   const stepEveryMonths = input.stepEveryMonths ?? 3;
   const completeMonths = deriveCompleteMonths(input.monthlyOutflows, input.asOf);
+  const excluded = toExcludedSet(input.excludedMonths);
   const { firstMonth } = deriveDataSpan(input.monthlyOutflows);
   const lastCompleteMonth =
     completeMonths.length > 0 ? completeMonths[completeMonths.length - 1]! : null;
@@ -511,7 +589,9 @@ export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
     completeMonths
   );
 
-  const l0WindowMonths = lastNFromCompleteMonths(completeMonths, 6);
+  // L0: last 6 complete months still in the sample (exclusions are a view)
+  const sampleMonths = completeMonths.filter((m) => !excluded.has(monthYm(m)));
+  const l0WindowMonths = lastNFromCompleteMonths(sampleMonths, 6);
   const pulledL0 = computeL0(filledCompleteAmounts, l0WindowMonths) ?? 0;
   const l0 = input.fixedL0 ?? pulledL0;
   const l0ShortWindow = l0WindowMonths.length > 0 && l0WindowMonths.length < 6;
@@ -528,10 +608,15 @@ export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
       : computeSeasonalIndices(
           filledCompleteAmounts,
           seasonalKeys,
-          input.asOf
+          input.asOf,
+          excluded
         );
 
-  const ttmYoy = computeTtmYoyGrowth(filledCompleteAmounts, completeMonths);
+  const ttmYoy = computeTtmYoyGrowth(
+    filledCompleteAmounts,
+    completeMonths,
+    excluded
+  );
   const hasHistoryRepeats = input.scenarios.some(
     (s) => s.id === "history-repeats"
   );
@@ -563,6 +648,7 @@ export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
 
   let backtestRows: SpendPlanBacktestRow[] | undefined;
   let backtestNegativeMonths: number | undefined;
+  // Backtest uses unfiltered actuals — exclusions are a note, never a recomputation
   if (input.backtest) {
     backtestRows = backtestSpendPlan({
       ...input.backtest,
@@ -623,12 +709,17 @@ export function buildSpendPlanFromHistory(input: {
   fixedL0?: number;
   /** When true, starting_buffer chip is adjusted (kept-stale), not pulled. */
   bufferAdjusted?: boolean;
+  excludedMonths?: string[];
   backtest?: BacktestSpendPlanParams;
 }): SpendPlanResponse {
   const planStart = parseMonthStart(input.planStartMonth);
   const completeMonths = deriveCompleteMonths(input.monthlyDebits, input.asOf);
   const filled = fillCompleteMonthAmounts(input.monthlyDebits, completeMonths);
-  const ttmYoy = computeTtmYoyGrowth(filled, completeMonths);
+  const ttmYoy = computeTtmYoyGrowth(
+    filled,
+    completeMonths,
+    input.excludedMonths
+  );
   const scenarios =
     input.scenarios ?? buildDefaultScenarios(ttmYoy);
 
@@ -644,6 +735,7 @@ export function buildSpendPlanFromHistory(input: {
     scenarios,
     fixedSeasonalIndices: input.fixedSeasonalIndices,
     fixedL0: input.fixedL0,
+    excludedMonths: input.excludedMonths,
     backtest: input.backtest,
   });
 
