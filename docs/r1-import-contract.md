@@ -23,7 +23,15 @@ Header row labels are flexible (`Posted Date`, `posted_date`, etc.) after normal
 
 ## Sign rule
 
-**Signed files** (any negative amount in the Amount column):
+**Before import (Spec 32):** when Amounts are signed and a Balance column is present, Amount is checked against consecutive Balance deltas in **file order** (≥95% of discriminating pairs; `|amount| ≤ $0.04` skipped as non-discriminating; mismatches stay in the denominator). Result:
+
+- **as-stated** → import as written
+- **inverted** → Amounts flipped, announced in the reconcile panel
+- **unreconcilable** → import refused (HTTP 400); no rows written
+
+If Balance is missing or has fewer than 10 comparable pairs, Type is used for signed files (deposits vs withdrawals must carry opposite unanimous signs). `transfer` / `other` are excluded from that check. Legacy **unsigned** Absolute Amounts skip Balance verification; direction comes from Type as before.
+
+**Signed files** (any negative amount in the Amount column, after Spec 32 correction):
 
 - The **sign is truth**. Do not re-sign in Claude or Excel.
 - Negative = money out; positive = money in.
@@ -45,6 +53,7 @@ After import, the operator UI shows:
 
 - Rows read · imported · skipped · duplicates ignored
 - Sum of inflows · outflows · net (bank convention: positive in, negative out)
+- **Sign convention** message (Balance- or Type-verified; notes if Amounts were flipped)
 - Sign/type mismatches · rows needing direction
 - Date range · accounts touched · end balances
 

@@ -28,9 +28,11 @@ Matching is case-insensitive.
 
 ## Sign convention → `direction`
 
-Imported rows are normalized before upsert:
+**Spec 32:** When `balance` is present, Amount is verified against running Balance deltas (file order, ≥95% majority). Inverted files are auto-flipped; unreconcilable files are refused. Without enough Balance pairs, Type signs are cross-checked instead.
 
-1. **`type` → signed amount** (`lib/treasury/csv-import.ts`):
+Imported rows are then normalized before upsert:
+
+1. **`type` → signed amount** (`lib/treasury/csv-import.ts`) for unsigned legacy files:
    - `credit` or `deposit` → negative amount (inflow)
    - `debit` (or any other value) → positive amount (outflow)
 

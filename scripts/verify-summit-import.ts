@@ -4,7 +4,10 @@
  */
 import { readFileSync } from "fs";
 import { join } from "path";
-import { parseTreasuryCsv } from "../lib/treasury/csv-import";
+import {
+  parseTreasuryCsv,
+  SignConventionError,
+} from "../lib/treasury/csv-import";
 
 const ROOT = join(__dirname, "..");
 const CLIENT = "verify-client-id";
@@ -63,6 +66,16 @@ function verify(name: string, parsed: ReturnType<typeof parseTreasuryCsv>, t: Ta
   );
   console.log(`  unknown-direction skips: ${r.rowsNeedingDirection} ${okDir ? "OK" : "FAIL"}`);
   console.log(`  sign/type mismatches: ${r.signTypeMismatches}`);
+  if (r.signConvention) {
+    const ratio =
+      r.signConvention.total > 0
+        ? r.signConvention.agreeing / r.signConvention.total
+        : 0;
+    console.log(
+      `  sign convention: ${r.signConvention.kind} (${r.signConvention.method}) ${r.signConvention.agreeing}/${r.signConvention.total} = ${(ratio * 100).toFixed(2)}%`
+    );
+    console.log(`  ${r.signConvention.message}`);
+  }
 
   return okRows && okIn && okOut && okEnd && okDir;
 }
@@ -131,6 +144,127 @@ console.log(`  0617 transfer out: $${t617out.toLocaleString()}`);
 console.log(`  0625 transfer in:  $${t625in.toLocaleString()}`);
 console.log(`  match: ${near(t617out, t625in) && near(t617out, 114177) ? "OK" : "FAIL"}`);
 if (!near(t617out, t625in, 1)) allOk = false;
+
+// --- Spec 32: Balance-verified sign convention ---
+console.log(`\n=== Spec 32 sign convention ===`);
+
+function parseCsvLineLocal(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      out.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+function joinCsvLine(parts: string[]): string {
+  return parts
+    .map((p) => {
+      if (/[",\n\r]/.test(p)) {
+        return `"${p.replace(/"/g, '""')}"`;
+      }
+      return p;
+    })
+    .join(",");
+}
+
+function negateAmountColumn(csv: string): string {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return csv;
+  const headerCols = parseCsvLineLocal(lines[0]!);
+  const amountIdx = headerCols.findIndex((c) => /^amount$/i.test(c));
+  if (amountIdx < 0) throw new Error("Amount column not found");
+  const out = [lines[0]!];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = parseCsvLineLocal(lines[i]!);
+    const raw = parts[amountIdx]?.replace(/,/g, "").trim() ?? "";
+    const n = Number(raw);
+    if (!Number.isNaN(n) && raw !== "") {
+      parts[amountIdx] = String(-n);
+    }
+    out.push(joinCsvLine(parts));
+  }
+  return out.join("\n");
+}
+
+function scrambleBalanceColumn(csv: string): string {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return csv;
+  const headerCols = parseCsvLineLocal(lines[0]!);
+  const balanceIdx = headerCols.findIndex((c) => /^balance$/i.test(c));
+  if (balanceIdx < 0) throw new Error("Balance column not found");
+  const out = [lines[0]!];
+  let k = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const parts = parseCsvLineLocal(lines[i]!);
+    if (parts[balanceIdx]?.trim()) {
+      parts[balanceIdx] = String(1000000 + k * 17.31);
+      k += 1;
+    }
+    out.push(joinCsvLine(parts));
+  }
+  return out.join("\n");
+}
+
+{
+  const csv625 = readFileSync(join(ROOT, "docs/summit-ffm-0625.csv"), "utf8");
+  const base = parseTreasuryCsv(csv625, CLIENT);
+  const sc = base.reconcile.signConvention;
+  const ratio = sc.total > 0 ? sc.agreeing / sc.total : 0;
+  const okKind = sc.kind === "as-stated" && sc.method === "balance";
+  const okRatio = ratio >= 0.95;
+  console.log(
+    `  0625 as-stated: kind=${sc.kind} method=${sc.method} ${sc.agreeing}/${sc.total} (${(ratio * 100).toFixed(2)}%) ${okKind && okRatio ? "OK" : "FAIL"}`
+  );
+  if (!okKind || !okRatio) {
+    allOk = false;
+    console.log(
+      "  WARNING: if ratio is low, diff failing Balance pairs / suspect fixture (~6¢ slop) before changing classifier."
+    );
+  }
+
+  const invertedCsv = negateAmountColumn(csv625);
+  const inv = parseTreasuryCsv(invertedCsv, CLIENT);
+  const invSc = inv.reconcile.signConvention;
+  const okInvKind = invSc.kind === "inverted";
+  const okInvTotals =
+    near(inv.reconcile.inflowSum, base.reconcile.inflowSum) &&
+    near(inv.reconcile.outflowSum, base.reconcile.outflowSum);
+  console.log(
+    `  Amount-negated → inverted: kind=${invSc.kind} ${okInvKind ? "OK" : "FAIL"}`
+  );
+  console.log(
+    `  after flip in/out match original: in $${inv.reconcile.inflowSum} / out $${inv.reconcile.outflowSum} ${okInvTotals ? "OK" : "FAIL"}`
+  );
+  if (!okInvKind || !okInvTotals) allOk = false;
+
+  const scrambled = scrambleBalanceColumn(csv625);
+  let scrambledOk = false;
+  try {
+    parseTreasuryCsv(scrambled, CLIENT);
+    console.log("  Balance-scrambled: expected refuse, but parsed FAIL");
+  } catch (e) {
+    const isRefuse =
+      e instanceof SignConventionError && e.verdict.kind === "unreconcilable";
+    console.log(
+      `  Balance-scrambled refuses: ${isRefuse ? "OK" : "FAIL"} (${e instanceof Error ? e.message.slice(0, 120) : e})`
+    );
+    scrambledOk = isRefuse;
+  }
+  if (!scrambledOk) allOk = false;
+}
 
 console.log(allOk ? "\nAll checks passed." : "\nSome checks FAILED.");
 process.exit(allOk ? 0 : 1);

@@ -1,11 +1,18 @@
 import { createHash } from "crypto";
 import { amountToDirection, normalizeMerchant } from "@/lib/treasury/normalize";
+import {
+  classifySignConvention,
+  SignConventionError,
+  type SignConventionRow,
+  type SignConventionVerdict,
+} from "@/lib/treasury/sign-convention";
 import type { NormalizedTxRow } from "@/lib/treasury/types";
 
 /**
  * Internal amount convention (Plaid): positive = outflow, negative = inflow.
  * Summit signed CSV: source negative = money out → internal = -source.
  * Legacy unsigned CSV: type-based via csvTypeToAmount (credit/deposit → inflow).
+ * Spec 32: Balance (or Type) verifies Amount sign before that mapping; inverted files are flipped first.
  */
 
 const REQUIRED_CANONICAL = ["posted_date", "type", "amount", "description"] as const;
@@ -63,6 +70,7 @@ export type TreasuryImportReconcile = {
   warnings: string[];
   headerless: boolean;
   endBalances: Record<string, number | null>;
+  signConvention: SignConventionVerdict;
 };
 
 export type CsvParseResult = {
@@ -256,11 +264,46 @@ export function parseTreasuryCsv(
     throw new Error("CSV must include at least one data row");
   }
 
-  const signedMode = detectSignedFile(dataLines, colIndex);
   const getCol = (cols: string[], name: string) => {
     const idx = colIndex.get(name);
     return idx !== undefined ? (cols[idx] ?? "") : "";
   };
+
+  function resolveAccountRaw(accountRaw: string): string {
+    if (!isEmptyAccount(accountRaw)) return accountRaw.trim() || "default";
+    if (options.accountLabel?.trim()) return options.accountLabel.trim();
+    if (headerless) return "";
+    return "default";
+  }
+
+  // Spec 32 — classify Amount sign against Balance (file order) or Type before mapping.
+  const signRows: SignConventionRow[] = [];
+  for (let i = 0; i < dataLines.length; i++) {
+    const cols = parseCsvLine(dataLines[i]!);
+    const accountResolved = resolveAccountRaw(getCol(cols, "account"));
+    if (!accountResolved) continue;
+    const amount = parseAmount(getCol(cols, "amount"));
+    if (amount === null) continue;
+    const balanceRaw = getCol(cols, "balance");
+    const balance = balanceRaw.trim() ? parseAmount(balanceRaw) : null;
+    signRows.push({
+      account: accountResolved,
+      amount,
+      balance,
+      type: getCol(cols, "type").trim().toLowerCase() || "other",
+    });
+  }
+
+  const signConvention = classifySignConvention(signRows);
+  if (signConvention.kind === "unreconcilable") {
+    throw new SignConventionError(signConvention);
+  }
+  const amountFlip = signConvention.kind === "inverted" ? -1 : 1;
+  if (signConvention.kind === "inverted") {
+    warnings.push(signConvention.message);
+  }
+
+  const signedMode = detectSignedFile(dataLines, colIndex);
 
   const rows: NormalizedTxRow[] = [];
   const accountLabels = new Map<
@@ -320,11 +363,12 @@ export function parseTreasuryCsv(
       continue;
     }
 
-    const sourceAmount = parseAmount(amountRaw);
-    if (sourceAmount === null || sourceAmount === 0) {
+    const sourceAmountRaw = parseAmount(amountRaw);
+    if (sourceAmountRaw === null || sourceAmountRaw === 0) {
       skippedDetails.push({ row: fileRow, reason: "missing or zero amount" });
       continue;
     }
+    const sourceAmount = sourceAmountRaw * amountFlip;
 
     if (!description.trim() && !rawDescription.trim()) {
       skippedDetails.push({ row: fileRow, reason: "missing description" });
@@ -419,6 +463,7 @@ export function parseTreasuryCsv(
     warnings,
     headerless,
     endBalances,
+    signConvention,
   };
 
   return { rows, accountLabels, reconcile };
@@ -478,4 +523,4 @@ export function bankAmountFromInternal(internalAmount: number): number {
 }
 
 /** Exposed for tests: direction from internal amount. */
-export { amountToDirection, csvTypeToAmount };
+export { amountToDirection, csvTypeToAmount, SignConventionError };

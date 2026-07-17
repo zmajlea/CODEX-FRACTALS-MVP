@@ -132,6 +132,11 @@ export function TreasuryCsvImport({ clientUserId, onImported }: Props) {
               Sign/type mismatches: <strong>{report.signTypeMismatches}</strong> · Rows needing
               direction: <strong>{report.rowsNeedingDirection}</strong>
             </div>
+            {report.signConvention ? (
+              <div>
+                <strong>{report.signConvention.message}</strong>
+              </div>
+            ) : null}
             <div>
               Date range: {report.dateMin ?? "—"} → {report.dateMax ?? "—"}
             </div>
