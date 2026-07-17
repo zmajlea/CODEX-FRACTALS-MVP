@@ -8,6 +8,8 @@ import {
   type SpendPlanModelState,
 } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
 import { SpendPlanScenarioEditor } from "@/components/operator/treasury/spend-plan/SpendPlanScenarioEditor";
+import { AnalyzerSampleSection } from "@/components/operator/treasury/spend-plan/AnalyzerSampleSection";
+import { monthYm } from "@/lib/treasury/spend-plan";
 
 type Props = {
   clientUserId: string;
@@ -62,6 +64,10 @@ function SpendPlanPanelBody({
   setInputs,
   scenarios,
   setScenarios,
+  history,
+  excludedMonths,
+  toggleExcludedMonth,
+  setExcludedReason,
   pulledTtmYoy,
   loading,
   error,
@@ -76,6 +82,10 @@ function SpendPlanPanelBody({
   setInputs: SpendPlanModelState["setInputs"];
   scenarios: SpendPlanModelState["scenarios"];
   setScenarios: SpendPlanModelState["setScenarios"];
+  history: SpendPlanModelState["history"];
+  excludedMonths: SpendPlanModelState["excludedMonths"];
+  toggleExcludedMonth: SpendPlanModelState["toggleExcludedMonth"];
+  setExcludedReason: SpendPlanModelState["setExcludedReason"];
   pulledTtmYoy: number | null;
   loading: boolean;
   error: string | null;
@@ -85,13 +95,33 @@ function SpendPlanPanelBody({
   const activeScenarios = scenarios ?? model?.scenarios ?? [];
   const hasScenarios = activeScenarios.length > 0;
 
+  const backtestVerdict = useMemo(() => {
+    if (!model?.backtest?.length) return null;
+    const rows = model.backtest;
+    const minC = Math.min(...rows.map((r) => r.cumulative));
+    const nd = rows.filter((r) => r.surplus < 0).length;
+    const held = minC >= 0;
+    return {
+      nd,
+      minC,
+      held,
+      text: `${nd} monthly deficit${nd === 1 ? "" : "s"} · min cumulative ${fmtSigned(minC)} · ${held ? "the plan would have held" : "the plan would NOT have held"}`,
+    };
+  }, [model?.backtest]);
+
+  const bufferLabel = useMemo(() => {
+    const inp = model?.inputs.find((i) => i.key === "starting_buffer");
+    if (inp) return String(inp.value);
+    return "—";
+  }, [model?.inputs]);
+
   return (
     <div className="spend-plan-panel space-y-6">
-      <div className="panel p-4" style={{ border: "1px solid var(--line)" }}>
-        <p className="sec-title mb-2">Method</p>
-        <p className="treasury-meta text-sm leading-relaxed">
-          {model?.methodNote ??
-            "Projected spend = L0 × (1+g)^(t/12) × seasonal index. Allocation = base + step × FLOOR((t−1)/stepEveryMonths). Cumulative = buffer + Σ(allocation − spend)."}
+      <div>
+        <h2 className="font-head text-2xl mb-1">Analyzer</h2>
+        <p className="treasury-meta text-sm">
+          Deciding which months are real is the product — exclusions are a view,
+          never a deletion.
         </p>
       </div>
 
@@ -124,9 +154,9 @@ function SpendPlanPanelBody({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="treasury-meta">Step-up</span>
+              <span className="treasury-meta">Step</span>
               <input
-                className="field-input w-28"
+                className="field-input w-24"
                 type="number"
                 value={inputs.step}
                 onChange={(e) =>
@@ -137,7 +167,7 @@ function SpendPlanPanelBody({
             <label className="flex flex-col gap-1 text-sm">
               <span className="treasury-meta">Step every (months)</span>
               <input
-                className="field-input w-28"
+                className="field-input w-20"
                 type="number"
                 min={1}
                 value={inputs.stepEveryMonths}
@@ -155,14 +185,14 @@ function SpendPlanPanelBody({
                 type="number"
                 value={inputs.horizon}
                 onChange={(e) =>
-                  setInputs({ horizon: Number(e.target.value) || 1 })
+                  setInputs({ horizon: Number(e.target.value) || 24 })
                 }
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="treasury-meta">Start month</span>
+              <span className="treasury-meta">Projection start</span>
               <input
-                className="field-input w-32"
+                className="field-input"
                 type="month"
                 value={inputs.startMonth}
                 onChange={(e) => setInputs({ startMonth: e.target.value })}
@@ -173,28 +203,43 @@ function SpendPlanPanelBody({
       </div>
 
       {error ? (
-        <p className="text-sm" style={{ color: "var(--su-neg)" }}>
+        <p className="text-sm text-cinnabar" role="alert">
           {error}
         </p>
       ) : null}
-
       {noHistory ? (
         <p className="treasury-meta text-sm">
-          No outflow history for this account — spend plan cannot be derived.
+          No outflow history for this account yet.
+        </p>
+      ) : null}
+      {insufficientHistory ? (
+        <p className="treasury-meta text-sm">
+          Fewer than 3 complete months — baselines will be thin.
         </p>
       ) : null}
 
-      {insufficientHistory ? (
-        <p className="treasury-meta text-sm">
-          Fewer than 3 complete months of history — projections may be unreliable.
-        </p>
+      {history && model ? (
+        <AnalyzerSampleSection
+          history={history}
+          excludedMonths={excludedMonths}
+          l0={Number(model.inputs.find((i) => i.key === "l0")?.value ?? 0)}
+          l0WindowMonths={model.l0WindowMonths}
+          seasonalIndices={model.seasonalIndices}
+          ttmYoy={pulledTtmYoy}
+          bufferLabel={bufferLabel}
+          onToggle={toggleExcludedMonth}
+          onReason={setExcludedReason}
+        />
       ) : null}
 
       {model ? (
         <>
           <div className="panel p-4" style={{ border: "1px solid var(--line)" }}>
-            <p className="sec-title mb-3">Inputs</p>
-            <dl className="grid gap-2 sm:grid-cols-2 text-sm">
+            <p className="sec-title mb-3">03 · The projection</p>
+            <p className="treasury-meta text-sm mb-3 leading-relaxed">
+              {model.methodNote}
+            </p>
+            <dl className="grid gap-2 sm:grid-cols-2 text-sm mb-4">
               {model.inputs.map((inp) => (
                 <div key={inp.key} className="flex justify-between gap-2">
                   <dt className="treasury-meta">{inp.label}</dt>
@@ -224,12 +269,6 @@ function SpendPlanPanelBody({
                   ? `: ${model.historyRepeatsReason}`
                   : ""}
                 .
-              </p>
-            ) : null}
-            {model.l0WindowMonths.length > 0 ? (
-              <p className="treasury-meta-fine mt-1">
-                L0 window:{" "}
-                {model.l0WindowMonths.map((m) => m.slice(0, 7)).join(", ")}
               </p>
             ) : null}
           </div>
@@ -365,53 +404,90 @@ function SpendPlanPanelBody({
             </>
           ) : (
             <p className="treasury-meta text-sm">
-              No scenarios — add one to project. Results and projection stay
-              hidden until at least one scenario exists.
+              No scenarios — add one to project.
             </p>
           )}
 
-          {model.backtest && model.backtest.length > 0 ? (
-            <div
-              className="panel p-4 overflow-x-auto"
-              style={{ border: "1px solid var(--line)" }}
-            >
-              <p className="sec-title mb-2">Backtest</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="treasury-meta text-left">
-                    <th className="pb-2 pr-3">Month</th>
-                    <th className="pb-2 pr-3">t</th>
-                    <th className="pb-2 pr-3">Allocation</th>
-                    <th className="pb-2 pr-3">Actual debits</th>
-                    <th className="pb-2 pr-3">Surplus/(Deficit)</th>
-                    <th className="pb-2">Cumulative</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.backtest.map((row) => (
-                    <tr
-                      key={row.t}
-                      className="border-t border-[var(--line)] tabular-nums"
-                    >
-                      <td className="py-1 pr-3">{row.month.slice(0, 7)}</td>
-                      <td className="py-1 pr-3">{row.t}</td>
-                      <td className="py-1 pr-3">{fmt(row.allocation)}</td>
-                      <td className="py-1 pr-3">{fmt(row.actualDebits)}</td>
-                      <td className="py-1 pr-3">{fmtSigned(row.surplus)}</td>
-                      <td className="py-1">{fmtSigned(row.cumulative)}</td>
+          <div
+            className="panel p-4 overflow-x-auto"
+            style={{ border: "1px solid var(--line)" }}
+          >
+            <p className="sec-title mb-2">02 · The backtest</p>
+            <p className="treasury-meta text-sm mb-3 leading-relaxed">
+              No assumptions — allocation vs what actually left the bank. Exclusions
+              do not touch this table. <b>The actuals are the actuals.</b>
+            </p>
+            {inputs ? (
+              <div className="flex flex-wrap gap-3 mb-3 items-end">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="treasury-meta">
+                    What if the plan had started
+                  </span>
+                  <select
+                    className="field-input"
+                    value={inputs.backtestStartMonth}
+                    onChange={(e) =>
+                      setInputs({ backtestStartMonth: e.target.value })
+                    }
+                  >
+                    {(history?.completeMonths ?? []).map((m) => (
+                      <option key={m} value={monthYm(m)}>
+                        {monthYm(m)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {backtestVerdict ? (
+                  <p
+                    className={`text-sm font-medium ${backtestVerdict.held ? "text-[var(--su-pos)]" : "text-[var(--su-neg)]"}`}
+                  >
+                    {backtestVerdict.text}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {model.backtest && model.backtest.length > 0 ? (
+              <>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="treasury-meta text-left">
+                      <th className="pb-2 pr-3">Month</th>
+                      <th className="pb-2 pr-3">t</th>
+                      <th className="pb-2 pr-3">Allocation</th>
+                      <th className="pb-2 pr-3">Actual debits</th>
+                      <th className="pb-2 pr-3">Surplus/(Deficit)</th>
+                      <th className="pb-2">Cumulative</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="treasury-meta-fine mt-2">
-                Monthly deficits can occur while cumulative stays positive.
-                Negative months in backtest: {model.backtestNegativeMonths ?? 0}.
-              </p>
-            </div>
-          ) : null}
+                  </thead>
+                  <tbody>
+                    {model.backtest.map((row) => (
+                      <tr
+                        key={row.t}
+                        className="border-t border-[var(--line)] tabular-nums"
+                      >
+                        <td className="py-1 pr-3">{row.month.slice(0, 7)}</td>
+                        <td className="py-1 pr-3">{row.t}</td>
+                        <td className="py-1 pr-3">{fmt(row.allocation)}</td>
+                        <td className="py-1 pr-3">{fmt(row.actualDebits)}</td>
+                        <td className="py-1 pr-3">{fmtSigned(row.surplus)}</td>
+                        <td className="py-1">{fmtSigned(row.cumulative)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="treasury-meta-fine mt-2">
+                  A single negative month is not an alert; the cumulative going
+                  negative is. Deficits in backtest:{" "}
+                  {model.backtestNegativeMonths ?? 0}.
+                </p>
+              </>
+            ) : (
+              <p className="treasury-meta text-sm">No backtest months available.</p>
+            )}
+          </div>
         </>
       ) : loading ? (
-        <p className="treasury-meta">Loading spend plan…</p>
+        <p className="treasury-meta">Loading Analyzer…</p>
       ) : null}
     </div>
   );
@@ -465,6 +541,10 @@ export function TreasurySpendPlanPanel({
       setInputs={state.setInputs}
       scenarios={state.scenarios}
       setScenarios={state.setScenarios}
+      history={state.history}
+      excludedMonths={state.excludedMonths}
+      toggleExcludedMonth={state.toggleExcludedMonth}
+      setExcludedReason={state.setExcludedReason}
       pulledTtmYoy={state.currentSnapshot?.ttmYoy ?? null}
       loading={state.loading}
       error={state.error}

@@ -15,8 +15,10 @@ import {
   deriveCompleteMonths,
   fillCompleteMonthAmounts,
   lastNFromCompleteMonths,
+  monthYm,
   roundBaseDefault,
   seasonalWindowFromCompleteMonths,
+  toExcludedSet,
   type SpendPlanHistoryResponse,
   type SpendPlanResponse,
   type SpendPlanScenario,
@@ -25,6 +27,7 @@ import {
   buildDerivedSnapshot,
   type DerivedSnapshot,
   type StudyBaselineOverrides,
+  type StudyExcludedMonth,
   emptyOverrides,
 } from "@/lib/treasury/studies";
 
@@ -34,6 +37,8 @@ export type SpendPlanModelInputs = {
   stepEveryMonths: number;
   horizon: number;
   startMonth: string;
+  /** YYYY-MM — explicit backtest start (Spec 38B motion B). */
+  backtestStartMonth: string;
   backtestMonths: number;
   bufferAdjustment: number;
 };
@@ -47,8 +52,12 @@ export type SpendPlanModelState = {
   setOverrides: (next: StudyBaselineOverrides) => void;
   scenarios: SpendPlanScenario[] | null;
   setScenarios: (next: SpendPlanScenario[]) => void;
+  excludedMonths: StudyExcludedMonth[];
+  setExcludedMonths: (next: StudyExcludedMonth[]) => void;
+  toggleExcludedMonth: (monthYm: string, reason?: string) => void;
+  setExcludedReason: (monthYm: string, reason: string) => void;
   currentSnapshot: DerivedSnapshot | null;
-  /** Pulled L0 from current history (ignores Keep-saved override). */
+  /** Pulled L0 from current history + exclusions (ignores Keep-saved override). */
   pulledL0: number | null;
   loading: boolean;
   error: string | null;
@@ -60,19 +69,28 @@ export type SpendPlanModelState = {
     inputs: Partial<SpendPlanModelInputs>;
     overrides: StudyBaselineOverrides;
     scenarios?: SpendPlanScenario[];
+    excludedMonths?: StudyExcludedMonth[];
   }) => void;
 };
 
 function computeCurrentSnapshot(
-  history: SpendPlanHistoryResponse
+  history: SpendPlanHistoryResponse,
+  excludedMonths: StudyExcludedMonth[]
 ): { snapshot: DerivedSnapshot; pulledL0: number } {
+  const excluded = toExcludedSet(excludedMonths.map((e) => e.month));
   const completeMonths = history.completeMonths;
   const filled = fillCompleteMonthAmounts(history.monthlyOutflows, completeMonths);
-  const l0Window = lastNFromCompleteMonths(completeMonths, 6);
+  const sampleMonths = completeMonths.filter((m) => !excluded.has(monthYm(m)));
+  const l0Window = lastNFromCompleteMonths(sampleMonths, 6);
   const pulledL0 = computeL0(filled, l0Window) ?? 0;
   const seasonalKeys = seasonalWindowFromCompleteMonths(completeMonths, 24);
-  const seasonal = computeSeasonalIndices(filled, seasonalKeys, history.asOf);
-  const ttmYoy = computeTtmYoyGrowth(filled, completeMonths);
+  const seasonal = computeSeasonalIndices(
+    filled,
+    seasonalKeys,
+    history.asOf,
+    excluded
+  );
+  const ttmYoy = computeTtmYoyGrowth(filled, completeMonths, excluded);
   return {
     pulledL0,
     snapshot: buildDerivedSnapshot({
@@ -99,6 +117,7 @@ export function useSpendPlanModel(
   const [inputs, setInputsState] = useState<SpendPlanModelInputs | null>(null);
   const [overrides, setOverrides] = useState<StudyBaselineOverrides>(emptyOverrides());
   const [scenarios, setScenarios] = useState<SpendPlanScenario[] | null>(null);
+  const [excludedMonths, setExcludedMonths] = useState<StudyExcludedMonth[]>([]);
   const [syncKey, setSyncKey] = useState(0);
   const [seedToken, setSeedToken] = useState(0);
 
@@ -110,9 +129,11 @@ export function useSpendPlanModel(
       inputs: Partial<SpendPlanModelInputs>;
       overrides: StudyBaselineOverrides;
       scenarios?: SpendPlanScenario[];
+      excludedMonths?: StudyExcludedMonth[];
     }) => {
       setOverrides(seed.overrides);
       if (seed.scenarios) setScenarios(seed.scenarios);
+      if (seed.excludedMonths) setExcludedMonths(seed.excludedMonths);
       setInputsState((prev) =>
         prev
           ? { ...prev, ...seed.inputs }
@@ -122,6 +143,7 @@ export function useSpendPlanModel(
               stepEveryMonths: seed.inputs.stepEveryMonths ?? 3,
               horizon: seed.inputs.horizon ?? 24,
               startMonth: seed.inputs.startMonth ?? "",
+              backtestStartMonth: seed.inputs.backtestStartMonth ?? "",
               backtestMonths: seed.inputs.backtestMonths ?? 12,
               bufferAdjustment: seed.inputs.bufferAdjustment ?? 0,
             }
@@ -168,9 +190,12 @@ export function useSpendPlanModel(
         const l0 = computeL0(filled, l0Window) ?? 0;
         const planStart = defaultPlanStartMonth(json.asOf).slice(0, 7);
         const btMonths = Math.min(12, completeMonths.length);
+        const btStart =
+          completeMonths.length >= btMonths
+            ? completeMonths[completeMonths.length - btMonths]!.slice(0, 7)
+            : (completeMonths[0] ?? planStart).slice(0, 7);
         const ttmYoy = computeTtmYoyGrowth(filled, completeMonths);
 
-        // Fresh scope load resets overrides unless a seed just applied.
         setInputsState((prev) => {
           if (seedToken > 0 && prev) return prev;
           return {
@@ -179,12 +204,14 @@ export function useSpendPlanModel(
             stepEveryMonths: 3,
             horizon: 24,
             startMonth: planStart,
+            backtestStartMonth: btStart,
             backtestMonths: btMonths,
             bufferAdjustment: 0,
           };
         });
         if (seedToken === 0) {
           setOverrides(emptyOverrides());
+          setExcludedMonths([]);
           setScenarios(buildDefaultScenarios(ttmYoy));
         } else if (!scenarios) {
           setScenarios(buildDefaultScenarios(ttmYoy));
@@ -196,7 +223,6 @@ export function useSpendPlanModel(
     return () => {
       cancelled = true;
     };
-    // seedToken intentionally omitted from deps — only gates reset after applySeed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientUserId, accountId, label, syncKey]);
 
@@ -207,21 +233,59 @@ export function useSpendPlanModel(
       if (patch.stepEveryMonths !== undefined) {
         next.stepEveryMonths = Math.max(1, Number(patch.stepEveryMonths) || 1);
       }
+      if (patch.backtestStartMonth !== undefined && history) {
+        const start = `${patch.backtestStartMonth}-01`;
+        const idx = history.completeMonths.findIndex(
+          (m) => m.slice(0, 7) === patch.backtestStartMonth
+        );
+        if (idx >= 0) {
+          next.backtestMonths = history.completeMonths.length - idx;
+          next.backtestStartMonth = patch.backtestStartMonth;
+        } else {
+          next.backtestStartMonth = patch.backtestStartMonth;
+        }
+        void start;
+      }
       return next;
     });
-  }, []);
+  }, [history]);
 
   const setScenariosStable = useCallback((next: SpendPlanScenario[]) => {
     setScenarios(next);
   }, []);
 
+  const toggleExcludedMonth = useCallback((ym: string, reason = "") => {
+    setExcludedMonths((prev) => {
+      const key = monthYm(ym);
+      const exists = prev.find((e) => monthYm(e.month) === key);
+      if (exists) return prev.filter((e) => monthYm(e.month) !== key);
+      return [
+        ...prev,
+        {
+          month: key,
+          reason: reason || (key === "2025-12" ? "double pay?" : ""),
+        },
+      ];
+    });
+  }, []);
+
+  const setExcludedReason = useCallback((ym: string, reason: string) => {
+    const key = monthYm(ym);
+    setExcludedMonths((prev) =>
+      prev.map((e) =>
+        monthYm(e.month) === key ? { ...e, reason } : e
+      )
+    );
+  }, []);
+
   const deferredInputs = useDeferredValue(inputs);
   const deferredOverrides = useDeferredValue(overrides);
+  const deferredExcluded = useDeferredValue(excludedMonths);
 
   const snapshotBundle = useMemo(() => {
     if (!history) return null;
-    return computeCurrentSnapshot(history);
-  }, [history]);
+    return computeCurrentSnapshot(history, deferredExcluded);
+  }, [history, deferredExcluded]);
 
   const model = useMemo((): SpendPlanResponse | null => {
     if (!history || !deferredInputs) return null;
@@ -233,9 +297,18 @@ export function useSpendPlanModel(
       history.monthlyOutflows,
       completeMonths
     );
-    const ttmYoy = computeTtmYoyGrowth(filled, completeMonths);
+    const excludedKeys = deferredExcluded.map((e) => e.month);
+    const ttmYoy = computeTtmYoyGrowth(filled, completeMonths, excludedKeys);
     const activeScenarios =
       scenarios ?? buildDefaultScenarios(ttmYoy);
+
+    // Keep history-repeats growth in sync with exclusions when still pulled
+    const syncedScenarios = activeScenarios.map((s) => {
+      if (s.id === "history-repeats" && s.source === "pulled" && ttmYoy != null) {
+        return { ...s, growthPct: ttmYoy };
+      }
+      return s;
+    });
 
     const pulledBuffer = history.buffer?.value ?? 0;
     const bufferOverride = deferredOverrides.buffer;
@@ -244,7 +317,6 @@ export function useSpendPlanModel(
       deferredInputs.bufferAdjustment;
     const bufferAdjusted = bufferOverride != null;
 
-    const btMonths = deferredInputs.backtestMonths;
     let backtest:
       | {
           startMonth: string;
@@ -257,18 +329,38 @@ export function useSpendPlanModel(
         }
       | undefined;
 
-    if (btMonths > 0 && completeMonths.length > 0) {
+    const btStartYm = deferredInputs.backtestStartMonth;
+    if (btStartYm && completeMonths.length > 0) {
+      const btStart = `${btStartYm}-01`;
+      const startIdx = completeMonths.findIndex((m) => m.slice(0, 7) === btStartYm);
+      const fromIdx = startIdx >= 0 ? startIdx : 0;
+      const monthCount = completeMonths.length - fromIdx;
+      const actualDebits: Record<string, number> = {};
+      for (let i = 0; i < monthCount; i++) {
+        const m = addMonths(btStart, i);
+        // Unfiltered actuals — exclusions do not touch the backtest
+        actualDebits[m] = filled[m] ?? history.monthlyOutflows[m] ?? 0;
+      }
+      backtest = {
+        startMonth: completeMonths[fromIdx] ?? btStart,
+        startingBuffer: 0,
+        base: deferredInputs.base,
+        step: deferredInputs.step,
+        stepEveryMonths: deferredInputs.stepEveryMonths,
+        actualDebits,
+        monthCount,
+      };
+    } else if (deferredInputs.backtestMonths > 0 && completeMonths.length > 0) {
+      const btMonths = deferredInputs.backtestMonths;
       const btStart =
         completeMonths.length >= btMonths
           ? completeMonths[completeMonths.length - btMonths]!
           : completeMonths[0] ?? subtractMonths(planStart, btMonths);
-
       const actualDebits: Record<string, number> = {};
       for (let i = 0; i < btMonths; i++) {
         const m = addMonths(btStart, i);
         actualDebits[m] = filled[m] ?? 0;
       }
-
       backtest = {
         startMonth: btStart,
         startingBuffer: 0,
@@ -289,13 +381,14 @@ export function useSpendPlanModel(
       step: deferredInputs.step,
       stepEveryMonths: deferredInputs.stepEveryMonths,
       monthlyDebits: history.monthlyOutflows,
-      scenarios: activeScenarios,
+      scenarios: syncedScenarios,
       fixedL0: deferredOverrides.l0 ?? undefined,
       fixedSeasonalIndices: deferredOverrides.seasonalIndices ?? undefined,
       bufferAdjusted,
+      excludedMonths: excludedKeys,
       backtest,
     });
-  }, [history, deferredInputs, deferredOverrides, scenarios]);
+  }, [history, deferredInputs, deferredOverrides, deferredExcluded, scenarios]);
 
   return {
     model,
@@ -306,6 +399,10 @@ export function useSpendPlanModel(
     setOverrides,
     scenarios,
     setScenarios: setScenariosStable,
+    excludedMonths,
+    setExcludedMonths,
+    toggleExcludedMonth,
+    setExcludedReason,
     currentSnapshot: snapshotBundle?.snapshot ?? null,
     pulledL0: snapshotBundle?.pulledL0 ?? null,
     loading,

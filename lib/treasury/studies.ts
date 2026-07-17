@@ -18,6 +18,11 @@ export type StudyBaselineOverrides = {
   seasonalIndices: Record<number, number> | null;
 };
 
+export type StudyExcludedMonth = {
+  month: string; // YYYY-MM
+  reason: string;
+};
+
 export type StudyParams = {
   base: number;
   step: number;
@@ -26,6 +31,8 @@ export type StudyParams = {
   startMonth: string;
   bufferAdjustment: number;
   overrides: StudyBaselineOverrides;
+  /** Spec 38B — judgment view over the sample; never deletes transactions. */
+  excludedMonths: StudyExcludedMonth[];
   backtest: {
     startMonth: string;
     months: number;
@@ -228,6 +235,7 @@ export function defaultStudyParams(partial: {
   startMonth: string;
   backtestStart: string;
   backtestMonths: number;
+  excludedMonths?: StudyExcludedMonth[];
 }): StudyParams {
   return {
     base: partial.base,
@@ -237,6 +245,7 @@ export function defaultStudyParams(partial: {
     startMonth: partial.startMonth,
     bufferAdjustment: 0,
     overrides: emptyOverrides(),
+    excludedMonths: partial.excludedMonths ?? [],
     backtest: {
       startMonth: partial.backtestStart,
       months: partial.backtestMonths,

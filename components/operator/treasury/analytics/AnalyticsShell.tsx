@@ -130,6 +130,7 @@ export function AnalyticsShell({
         stepEveryMonths: row.params.stepEveryMonths,
         horizon: row.params.horizon,
         startMonth: row.params.startMonth,
+        backtestStartMonth: (row.params.backtest.startMonth ?? "").slice(0, 7),
         backtestMonths: row.params.backtest.months,
         bufferAdjustment: row.params.bufferAdjustment,
       },
@@ -138,6 +139,7 @@ export function AnalyticsShell({
       overrides:
         d.length > 0 ? emptyOverrides() : row.params.overrides ?? emptyOverrides(),
       scenarios: row.scenarios,
+      excludedMonths: row.params.excludedMonths ?? [],
     });
 
     setStudyId(row.id);
@@ -167,15 +169,19 @@ export function AnalyticsShell({
       i.horizon !== p.horizon ||
       i.startMonth !== p.startMonth ||
       i.bufferAdjustment !== p.bufferAdjustment ||
+      i.backtestStartMonth !== (p.backtest.startMonth ?? "").slice(0, 7) ||
       accountId !== savedRow.scope.accountId ||
       JSON.stringify(modelState.overrides) !== JSON.stringify(p.overrides) ||
-      JSON.stringify(modelState.scenarios) !== JSON.stringify(savedRow.scenarios)
+      JSON.stringify(modelState.scenarios) !== JSON.stringify(savedRow.scenarios) ||
+      JSON.stringify(modelState.excludedMonths) !==
+        JSON.stringify(p.excludedMonths ?? [])
     );
   }, [
     savedRow,
     modelState.inputs,
     modelState.overrides,
     modelState.scenarios,
+    modelState.excludedMonths,
     studyName,
     studyId,
     accountId,
@@ -187,6 +193,7 @@ export function AnalyticsShell({
     setDrift(null);
     setStudyName("Untitled spend plan");
     modelState.setOverrides(emptyOverrides());
+    modelState.setExcludedMonths([]);
     modelState.resync();
     setMessage(null);
   };
@@ -228,14 +235,20 @@ export function AnalyticsShell({
       return;
     }
 
+    const btStart =
+      modelState.inputs.backtestStartMonth
+        ? `${modelState.inputs.backtestStartMonth}-01`
+        : modelState.history?.completeMonths.slice(
+            -(modelState.inputs.backtestMonths || 12)
+          )[0] ?? `${modelState.inputs.startMonth}-01`;
+
     const params = {
       ...defaultStudyParams({
         base: modelState.inputs.base,
         startMonth: modelState.inputs.startMonth,
-        backtestStart: modelState.history?.completeMonths.slice(
-          -(modelState.inputs.backtestMonths || 12)
-        )[0] ?? `${modelState.inputs.startMonth}-01`,
+        backtestStart: btStart,
         backtestMonths: modelState.inputs.backtestMonths,
+        excludedMonths: modelState.excludedMonths,
       }),
       base: modelState.inputs.base,
       step: modelState.inputs.step,
@@ -244,11 +257,9 @@ export function AnalyticsShell({
       startMonth: modelState.inputs.startMonth,
       bufferAdjustment: modelState.inputs.bufferAdjustment,
       overrides: modelState.overrides,
+      excludedMonths: modelState.excludedMonths,
       backtest: {
-        startMonth:
-          modelState.history?.completeMonths.slice(
-            -(modelState.inputs.backtestMonths || 12)
-          )[0] ?? `${modelState.inputs.startMonth}-01`,
+        startMonth: btStart,
         months: modelState.inputs.backtestMonths,
         startingBuffer: 0,
       },
