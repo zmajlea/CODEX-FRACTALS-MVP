@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { normalizeMerchant } from "@/lib/treasury/normalize";
 import {
-  lastNPeriodStarts,
+  periodEnd,
   periodStartOf,
   shiftPeriods,
   subtractDays,
@@ -167,6 +167,16 @@ export async function computeTreasuryForecast(
 
   const primaryTxs = txs.filter((t) => (t.iso_currency_code ?? "USD") === currency && t.posted_date);
 
+  let dataFirst: string | null = null;
+  let dataLast: string | null = null;
+  for (const t of primaryTxs) {
+    const d = t.posted_date!;
+    if (!dataFirst || d < dataFirst) dataFirst = d;
+    if (!dataLast || d > dataLast) dataLast = d;
+  }
+  const data_span =
+    dataFirst && dataLast ? { first: dataFirst, last: dataLast } : null;
+
   const historyPeriods = new Set(
     primaryTxs.map((t) => periodStartOf(granularity, t.posted_date!))
   );
@@ -192,6 +202,12 @@ export async function computeTreasuryForecast(
   const unlabeled_share_pct =
     primaryTxs.length > 0 ? Math.round((unlabeled / primaryTxs.length) * 100) : 100;
 
+  const excludedBase = {
+    other_currencies: otherCurrencies,
+    pending_count: pendingCount ?? 0,
+    unlabeled_share_pct,
+  };
+
   if (primaryTxs.length === 0 || historyPeriods.size < 2) {
     return {
       granularity,
@@ -201,13 +217,45 @@ export async function computeTreasuryForecast(
       as_of,
       baseline_periods: baselineK,
       periods: [],
-      excluded: {
-        other_currencies: otherCurrencies,
-        pending_count: pendingCount ?? 0,
-        unlabeled_share_pct,
-      },
+      excluded: excludedBase,
       insufficient_history: true,
       history_days,
+      data_span,
+    };
+  }
+
+  // Trailing N *complete* periods (exclude unfinished current period).
+  const currentPeriod = periodStartOf(granularity, today);
+  const lastCompleteStart = shiftPeriods(granularity, currentPeriod, -1);
+  const baselineStarts: string[] = [];
+  for (let i = baselineK - 1; i >= 0; i--) {
+    baselineStarts.push(shiftPeriods(granularity, lastCompleteStart, -i));
+  }
+
+  const seedFullyInside =
+    dataFirst != null &&
+    dataLast != null &&
+    baselineStarts.every((start) => {
+      const end = periodEnd(granularity, start);
+      return start >= dataFirst && end <= dataLast;
+    });
+
+  if (!seedFullyInside) {
+    return {
+      granularity,
+      horizon,
+      currency,
+      seed_balance,
+      as_of,
+      baseline_periods: baselineK,
+      periods: [],
+      excluded: excludedBase,
+      refuse_projection: true,
+      refuse_reason: dataLast
+        ? `Cannot project — seed window is outside the data span (data through ${dataLast}).`
+        : "Cannot project — no data span.",
+      history_days,
+      data_span,
     };
   }
 
@@ -279,7 +327,6 @@ export async function computeTreasuryForecast(
     }
   }
 
-  const { starts: baselineStarts } = lastNPeriodStarts(granularity, baselineK);
   const residualInflows: number[] = [];
   const residualOutflows: number[] = [];
 
@@ -355,5 +402,6 @@ export async function computeTreasuryForecast(
       unlabeled_share_pct,
     },
     history_days,
+    data_span,
   };
 }

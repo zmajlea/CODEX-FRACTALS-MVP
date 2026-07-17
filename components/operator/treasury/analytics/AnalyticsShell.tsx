@@ -168,9 +168,18 @@ export function AnalyticsShell({
       i.startMonth !== p.startMonth ||
       i.bufferAdjustment !== p.bufferAdjustment ||
       accountId !== savedRow.scope.accountId ||
-      JSON.stringify(modelState.overrides) !== JSON.stringify(p.overrides)
+      JSON.stringify(modelState.overrides) !== JSON.stringify(p.overrides) ||
+      JSON.stringify(modelState.scenarios) !== JSON.stringify(savedRow.scenarios)
     );
-  }, [savedRow, modelState.inputs, modelState.overrides, studyName, studyId, accountId]);
+  }, [
+    savedRow,
+    modelState.inputs,
+    modelState.overrides,
+    modelState.scenarios,
+    studyName,
+    studyId,
+    accountId,
+  ]);
 
   const handleNew = () => {
     setStudyId(null);

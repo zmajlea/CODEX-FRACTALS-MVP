@@ -337,7 +337,15 @@ export function TreasurySummaryPanel({
           </button>
           <span className="text-codex-muted">periods</span>
         </label>
-        {data ? (
+        {data?.data_span ? (
+          <span className="text-xs text-codex-muted ml-auto">
+            Data covers {data.data_span.first} → {data.data_span.last}
+            {data.data_span.last < data.to
+              ? `. No data after ${data.data_span.last}.`
+              : ""}{" "}
+            · {currency}
+          </span>
+        ) : data ? (
           <span className="text-xs text-codex-muted ml-auto">
             {data.from} – {data.to} · {currency}
           </span>
@@ -371,7 +379,12 @@ export function TreasurySummaryPanel({
             onForecastSelect={handleForecastBarClick}
           />
 
-          {forecast?.insufficient_history ? (
+          {forecast?.refuse_projection ? (
+            <p className="text-sm text-codex-muted mt-4">
+              {forecast.refuse_reason ??
+                "Cannot project — seed window is outside the data span."}
+            </p>
+          ) : forecast?.insufficient_history ? (
             <p className="text-sm text-codex-muted mt-4">
               Not enough history to project {granularity}ly yet
               {forecast.history_days != null ? ` — ${forecast.history_days} days synced` : ""}.
@@ -392,9 +405,13 @@ export function TreasurySummaryPanel({
 
               <p className="fc-blurb mt-4">
                 Projected from your recurring items (rules + labels) plus a{" "}
-                {forecast.baseline_periods}-period average of everything else, seeded from
-                balances as of {formatTreasuryAsOf(forecast.as_of)}. An estimate, not a
-                guarantee — one-off items are not predicted.
+                {forecast.baseline_periods}-period average of everything else
+                {forecast.data_span
+                  ? `, using data through ${forecast.data_span.last}`
+                  : forecast.as_of
+                    ? `, seeded from balances as of ${formatTreasuryAsOf(forecast.as_of)}`
+                    : ""}
+                . An estimate, not a guarantee — one-off items are not predicted.
               </p>
 
               <details className="fc-tablewrap mt-4">

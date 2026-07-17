@@ -127,6 +127,7 @@ export type TreasurySummaryResponse = {
   primary_currency: string;
   rows: TreasurySummaryRow[];
   other_rows: TreasurySummaryRow[];
+  data_span?: { first: string; last: string } | null;
 };
 
 export type TreasuryForecastRecurringLine = {
@@ -161,6 +162,10 @@ export type TreasuryForecastResponse = {
     unlabeled_share_pct: number;
   };
   insufficient_history?: boolean;
+  /** Seed window not fully inside dataSpan — refuse projection. */
+  refuse_projection?: boolean;
+  refuse_reason?: string;
+  data_span?: { first: string; last: string } | null;
   history_days?: number;
 };
 
@@ -179,6 +184,7 @@ export type TreasuryRuleRow = {
   active: boolean;
   source_transaction_id: string | null;
   created_at: string;
+  last_applied_at?: string | null;
   matched_count?: number;
 };
 

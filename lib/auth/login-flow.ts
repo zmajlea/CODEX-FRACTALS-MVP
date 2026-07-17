@@ -6,13 +6,16 @@ import {
   isCodexOneEmail,
   type CommercialTier,
 } from "@/lib/auth/rbac";
+import {
+  CLIENT_LOGIN,
+  CLIENT_SIGNUP,
+  PORTAL_LOGIN,
+} from "@/lib/auth/roles";
 import { parseBcnLoginRoute } from "@/lib/bcn/routing";
 
 export type AuthFlow = "portal" | "client";
 
-export const PORTAL_LOGIN = "/portal/login";
-export const CLIENT_LOGIN = "/client/login";
-export const CLIENT_SIGNUP = "/client/signup";
+export { PORTAL_LOGIN, CLIENT_LOGIN, CLIENT_SIGNUP };
 
 const LEGACY_DEFAULTS = new Set(["/switchboard", "/login", ""]);
 

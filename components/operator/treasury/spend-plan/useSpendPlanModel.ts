@@ -46,6 +46,7 @@ export type SpendPlanModelState = {
   overrides: StudyBaselineOverrides;
   setOverrides: (next: StudyBaselineOverrides) => void;
   scenarios: SpendPlanScenario[] | null;
+  setScenarios: (next: SpendPlanScenario[]) => void;
   currentSnapshot: DerivedSnapshot | null;
   /** Pulled L0 from current history (ignores Keep-saved override). */
   pulledL0: number | null;
@@ -200,7 +201,18 @@ export function useSpendPlanModel(
   }, [clientUserId, accountId, label, syncKey]);
 
   const setInputs = useCallback((patch: Partial<SpendPlanModelInputs>) => {
-    setInputsState((prev) => (prev ? { ...prev, ...patch } : prev));
+    setInputsState((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      if (patch.stepEveryMonths !== undefined) {
+        next.stepEveryMonths = Math.max(1, Number(patch.stepEveryMonths) || 1);
+      }
+      return next;
+    });
+  }, []);
+
+  const setScenariosStable = useCallback((next: SpendPlanScenario[]) => {
+    setScenarios(next);
   }, []);
 
   const deferredInputs = useDeferredValue(inputs);
@@ -293,6 +305,7 @@ export function useSpendPlanModel(
     overrides,
     setOverrides,
     scenarios,
+    setScenarios: setScenariosStable,
     currentSnapshot: snapshotBundle?.snapshot ?? null,
     pulledL0: snapshotBundle?.pulledL0 ?? null,
     loading,

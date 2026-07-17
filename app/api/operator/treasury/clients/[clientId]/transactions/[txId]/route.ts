@@ -58,7 +58,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     update.labeled_by = guard.user.id;
     update.labeled_at = now;
     update.suggested_label = null;
-    update.suggested_by_rule_id = null;
+    // Keep suggested_by_rule_id for matched_count handoff after confirm.
     update.suggestion_status = "confirmed";
     update.suggestion_explanation = null;
   } else if (body.label !== undefined) {

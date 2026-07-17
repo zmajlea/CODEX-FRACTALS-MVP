@@ -18,6 +18,8 @@ type PatchBody = {
   direction?: "in" | "out" | null;
   assign_label?: string;
   cadence?: string | null;
+  /** When true, re-run apply for this rule without other field changes. */
+  reapply?: boolean;
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -26,6 +28,18 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (isGuardResponse(guard)) return guard;
 
   const body = (await request.json()) as PatchBody;
+
+  if (body.reapply) {
+    const suggested = await applyRulesForClient(guard.admin, clientId, ruleId);
+    const { data: rule } = await guard.admin
+      .from("treasury_rules")
+      .select("*")
+      .eq("id", ruleId)
+      .eq("client_user_id", clientId)
+      .maybeSingle();
+    return NextResponse.json({ rule, suggested });
+  }
+
   const update: Database["public"]["Tables"]["treasury_rules"]["Update"] = {};
   if (body.active !== undefined) update.active = body.active;
   if (body.name !== undefined) update.name = body.name;
@@ -49,8 +63,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  await applyRulesForClient(guard.admin, clientId, ruleId);
-  return NextResponse.json({ rule });
+  const suggested = await applyRulesForClient(guard.admin, clientId, ruleId);
+  return NextResponse.json({ rule, suggested });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {

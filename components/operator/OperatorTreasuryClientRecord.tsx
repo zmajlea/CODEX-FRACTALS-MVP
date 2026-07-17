@@ -80,6 +80,15 @@ function provenanceLine(data: TreasuryAccountsResponse | null): string | null {
   return parts.join(" · ") || null;
 }
 
+function dataThroughLine(data: TreasuryAccountsResponse | null): string | null {
+  const dates = (data?.transactions ?? [])
+    .map((t) => t.date)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+  if (dates.length === 0) return null;
+  return dates[dates.length - 1] ?? null;
+}
+
 export function OperatorTreasuryClientRecord({
   tenantName,
   clientUserId,
@@ -327,6 +336,13 @@ export function OperatorTreasuryClientRecord({
   }
 
   const prov = provenanceLine(data);
+  const csvOnly =
+    !!data?.institutions.some((i) => i.item_id === "csv-manual") &&
+    !data?.institutions.some((i) => i.item_id !== "csv-manual");
+  const dataThrough = dataThroughLine(data);
+  const asOfLine = csvOnly
+    ? `Imported from CSV${dataThrough ? ` · data through ${dataThrough}` : ""}`
+    : `Last synced ${formatTreasuryAsOf(data?.last_synced_at ?? null)}`;
 
   return (
     <BcnContinuityShell
@@ -355,9 +371,7 @@ export function OperatorTreasuryClientRecord({
             <p className="font-medium font-head text-lg">{clientName}</p>
             <p className="text-sm text-codex-muted">{clientEmail}</p>
             {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
-            <p className="text-xs text-codex-muted mt-1">
-              Last synced {formatTreasuryAsOf(data?.last_synced_at ?? null)}
-            </p>
+            <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
             <button

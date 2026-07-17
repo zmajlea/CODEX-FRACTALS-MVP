@@ -186,5 +186,15 @@ export async function applyRulesForClient(
       `[apply-rules] ${pending.length - applied} suggestion(s) skipped (label set concurrently?)`
     );
   }
+
+  const now = new Date().toISOString();
+  await admin
+    .from("treasury_rules")
+    .update({ last_applied_at: now })
+    .in(
+      "id",
+      typedRules.map((r) => r.id)
+    );
+
   return applied;
 }

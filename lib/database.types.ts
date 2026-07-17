@@ -1537,6 +1537,7 @@ export type Database = {
           created_by: string | null
           direction: string | null
           id: string
+          last_applied_at: string | null
           match_merchant: string
           match_type: string
           name: string
@@ -1554,6 +1555,7 @@ export type Database = {
           created_by?: string | null
           direction?: string | null
           id?: string
+          last_applied_at?: string | null
           match_merchant: string
           match_type?: string
           name: string
@@ -1571,6 +1573,7 @@ export type Database = {
           created_by?: string | null
           direction?: string | null
           id?: string
+          last_applied_at?: string | null
           match_merchant?: string
           match_type?: string
           name?: string

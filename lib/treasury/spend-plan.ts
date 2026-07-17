@@ -667,6 +667,13 @@ export function buildSpendPlanFromHistory(input: {
       editable: true,
     },
     {
+      key: "step_every_months",
+      label: "Step every (months)",
+      value: input.stepEveryMonths ?? 3,
+      provenance: "user-provided",
+      editable: true,
+    },
+    {
       key: "horizon",
       label: "Horizon (months)",
       value: input.horizon,

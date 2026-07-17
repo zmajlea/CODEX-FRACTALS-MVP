@@ -1,10 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
-import {
-  CLIENT_LOGIN,
-  PORTAL_LOGIN,
-} from "@/lib/auth/login-flow";
+import { CLIENT_LOGIN, PORTAL_LOGIN } from "@/lib/auth/roles";
 import {
   ffRouteGuardRedirect,
   isClientPath,
@@ -109,6 +106,15 @@ function protectedLoginPath(pathname: string): string {
 }
 
 export async function updateSession(request: NextRequest) {
+  try {
+    return await updateSessionInner(request);
+  } catch (err) {
+    console.error("[auth] middleware crashed:", err);
+    return NextResponse.next({ request });
+  }
+}
+
+async function updateSessionInner(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   if (!supabaseUrl || !supabaseKey) {

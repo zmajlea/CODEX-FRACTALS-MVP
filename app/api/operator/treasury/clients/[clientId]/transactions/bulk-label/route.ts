@@ -5,15 +5,18 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
+import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 
 type PatchBody = {
   transactionIds?: string[];
   label?: string;
   description?: string;
   confirmSuggestions?: boolean;
+  /** Confirm every suggested row for this client (paginated). Ignores transactionIds. */
+  confirmAllSuggested?: boolean;
 };
 
-const MAX_BULK = 200;
+const MAX_BULK = 500;
 
 export async function PATCH(
   request: Request,
@@ -30,31 +33,64 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const ids = (body.transactionIds ?? []).filter(Boolean);
-  if (ids.length === 0) {
-    return NextResponse.json({ error: "transactionIds required" }, { status: 400 });
-  }
-  if (ids.length > MAX_BULK) {
-    return NextResponse.json({ error: `Maximum ${MAX_BULK} transactions per request` }, { status: 400 });
-  }
-
   const now = new Date().toISOString();
 
-  if (body.confirmSuggestions) {
-    const { data: txs, error: loadErr } = await guard.admin
-      .from("treasury_transactions")
-      .select("id, suggested_label, suggestion_status")
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false)
-      .in("id", ids);
+  if (body.confirmAllSuggested || body.confirmSuggestions) {
+    let ids = (body.transactionIds ?? []).filter(Boolean);
 
-    if (loadErr) {
-      return NextResponse.json({ error: "Failed to load transactions" }, { status: 500 });
+    if (body.confirmAllSuggested) {
+      const rows = await fetchAllRows((from, to) =>
+        guard.admin
+          .from("treasury_transactions")
+          .select("id, suggested_label, suggestion_status")
+          .eq("client_user_id", clientId)
+          .eq("is_removed", false)
+          .eq("suggestion_status", "suggested")
+          .not("suggested_label", "is", null)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      ids = rows.map((r) => r.id);
     }
 
-    const toConfirm = (txs ?? []).filter(
-      (t) => t.suggestion_status === "suggested" && t.suggested_label
-    );
+    if (ids.length === 0) {
+      return NextResponse.json(
+        body.confirmAllSuggested
+          ? { updated: 0 }
+          : { error: "transactionIds required" },
+        body.confirmAllSuggested ? { status: 200 } : { status: 400 }
+      );
+    }
+    if (!body.confirmAllSuggested && ids.length > MAX_BULK) {
+      return NextResponse.json(
+        { error: `Maximum ${MAX_BULK} transactions per request` },
+        { status: 400 }
+      );
+    }
+
+    // Chunk .in() queries for large confirm-all sets
+    const toConfirm: Array<{ id: string; suggested_label: string | null }> = [];
+    for (let i = 0; i < ids.length; i += MAX_BULK) {
+      const chunk = ids.slice(i, i + MAX_BULK);
+      const { data: txs, error: loadErr } = await guard.admin
+        .from("treasury_transactions")
+        .select("id, suggested_label, suggestion_status")
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false)
+        .in("id", chunk);
+
+      if (loadErr) {
+        return NextResponse.json(
+          { error: "Failed to load transactions" },
+          { status: 500 }
+        );
+      }
+      for (const t of txs ?? []) {
+        if (t.suggestion_status === "suggested" && t.suggested_label) {
+          toConfirm.push(t);
+        }
+      }
+    }
 
     if (toConfirm.length === 0) {
       return NextResponse.json({ updated: 0 });
@@ -65,7 +101,7 @@ export async function PATCH(
       labeled_by: guard.user.id,
       labeled_at: now,
       suggested_label: null,
-      suggested_by_rule_id: null,
+      // Keep suggested_by_rule_id so matched_count handoff holds.
       suggestion_status: "confirmed",
       suggestion_explanation: null,
     };
@@ -94,6 +130,17 @@ export async function PATCH(
     });
 
     return NextResponse.json({ updated });
+  }
+
+  const ids = (body.transactionIds ?? []).filter(Boolean);
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "transactionIds required" }, { status: 400 });
+  }
+  if (ids.length > MAX_BULK) {
+    return NextResponse.json(
+      { error: `Maximum ${MAX_BULK} transactions per request` },
+      { status: 400 }
+    );
   }
 
   const label = body.label?.trim();

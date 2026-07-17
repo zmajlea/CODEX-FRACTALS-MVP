@@ -7,6 +7,7 @@ import {
   useSpendPlanModel,
   type SpendPlanModelState,
 } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
+import { SpendPlanScenarioEditor } from "@/components/operator/treasury/spend-plan/SpendPlanScenarioEditor";
 
 type Props = {
   clientUserId: string;
@@ -59,6 +60,9 @@ function SpendPlanPanelBody({
   model,
   inputs,
   setInputs,
+  scenarios,
+  setScenarios,
+  pulledTtmYoy,
   loading,
   error,
   noHistory,
@@ -70,11 +74,17 @@ function SpendPlanPanelBody({
   model: SpendPlanModelState["model"];
   inputs: SpendPlanModelState["inputs"];
   setInputs: SpendPlanModelState["setInputs"];
+  scenarios: SpendPlanModelState["scenarios"];
+  setScenarios: SpendPlanModelState["setScenarios"];
+  pulledTtmYoy: number | null;
   loading: boolean;
   error: string | null;
   noHistory: boolean;
   insufficientHistory: boolean;
 }) {
+  const activeScenarios = scenarios ?? model?.scenarios ?? [];
+  const hasScenarios = activeScenarios.length > 0;
+
   return (
     <div className="spend-plan-panel space-y-6">
       <div className="panel p-4" style={{ border: "1px solid var(--line)" }}>
@@ -121,6 +131,20 @@ function SpendPlanPanelBody({
                 value={inputs.step}
                 onChange={(e) =>
                   setInputs({ step: Number(e.target.value) || 0 })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="treasury-meta">Step every (months)</span>
+              <input
+                className="field-input w-28"
+                type="number"
+                min={1}
+                value={inputs.stepEveryMonths}
+                onChange={(e) =>
+                  setInputs({
+                    stepEveryMonths: Math.max(1, Number(e.target.value) || 1),
+                  })
                 }
               />
             </label>
@@ -237,93 +261,114 @@ function SpendPlanPanelBody({
             </table>
           </div>
 
-          <div
-            className="panel p-4 overflow-x-auto"
-            style={{ border: "1px solid var(--line)" }}
-          >
-            <p className="sec-title mb-2">Scenario results</p>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="treasury-meta text-left border-b border-[var(--line)]">
-                  <th className="pb-2 pr-3">Scenario</th>
-                  <th className="pb-2 pr-3">Deficit months</th>
-                  <th className="pb-2 pr-3">Min cumulative</th>
-                  <th className="pb-2 pr-3">Ending position</th>
-                  <th className="pb-2">First cumul &lt; 0</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.scenarioResults.map((s) => (
-                  <tr
-                    key={s.scenarioId}
-                    className="border-b border-[var(--line)] tabular-nums"
-                  >
-                    <td className="py-2 pr-3 font-medium">
-                      {s.scenarioName}
-                      <span
-                        className={`ml-2 ${provenanceClass(
-                          model.scenarios.find((sc) => sc.id === s.scenarioId)
-                            ?.source ?? "assumed"
-                        )}`}
-                      >
-                        {model.scenarios.find((sc) => sc.id === s.scenarioId)
-                          ?.source ?? "assumed"}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3">{s.deficitMonths}</td>
-                    <td className="py-2 pr-3">{fmtSigned(s.minCumulative)}</td>
-                    <td className="py-2 pr-3">{fmtSigned(s.endingPosition)}</td>
-                    <td className="py-2">{s.firstNegativeMonth ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SpendPlanScenarioEditor
+            scenarios={activeScenarios}
+            setScenarios={setScenarios}
+            pulledTtmYoy={pulledTtmYoy}
+          />
 
-          <div
-            className="panel p-4 overflow-x-auto"
-            style={{ border: "1px solid var(--line)" }}
-          >
-            <p className="sec-title mb-2">
-              Projection ({model.scenarios.length} scenarios)
-            </p>
-            <table className="w-full text-xs sm:text-sm min-w-[800px]">
-              <thead>
-                <tr className="treasury-meta text-left">
-                  <th className="pb-2 pr-2">Month</th>
-                  <th className="pb-2 pr-2">t</th>
-                  <th className="pb-2 pr-2">Alloc</th>
-                  <th className="pb-2 pr-2">Idx</th>
-                  {model.scenarios.map((sc) => (
-                    <th key={sc.id} className="pb-2 pr-2" colSpan={2}>
-                      {sc.name} spend / cumul
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {model.projection.map((row) => (
-                  <tr
-                    key={row.t}
-                    className="border-t border-[var(--line)] tabular-nums"
-                  >
-                    <td className="py-1 pr-2">{row.month.slice(0, 7)}</td>
-                    <td className="py-1 pr-2">{row.t}</td>
-                    <td className="py-1 pr-2">{fmt(row.allocation)}</td>
-                    <td className="py-1 pr-2">
-                      {row.seasonalIndex.toFixed(2)}
-                    </td>
-                    {model.scenarios.map((sc) => (
-                      <td key={sc.id} className="py-1 pr-2" colSpan={2}>
-                        {fmt(row.spendByScenario[sc.id] ?? 0)} /{" "}
-                        {fmtSigned(row.cumulativeByScenario[sc.id] ?? 0)}
-                      </td>
+          {hasScenarios ? (
+            <>
+              <div
+                className="panel p-4 overflow-x-auto"
+                style={{ border: "1px solid var(--line)" }}
+              >
+                <p className="sec-title mb-2">Scenario results</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="treasury-meta text-left border-b border-[var(--line)]">
+                      <th className="pb-2 pr-3">Scenario</th>
+                      <th className="pb-2 pr-3">Deficit months</th>
+                      <th className="pb-2 pr-3">Min cumulative</th>
+                      <th className="pb-2 pr-3">Ending position</th>
+                      <th className="pb-2">First cumul &lt; 0</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {model.scenarioResults.map((s) => (
+                      <tr
+                        key={s.scenarioId}
+                        className="border-b border-[var(--line)] tabular-nums"
+                      >
+                        <td className="py-2 pr-3 font-medium">
+                          {s.scenarioName}
+                          <span
+                            className={`ml-2 ${provenanceClass(
+                              model.scenarios.find(
+                                (sc) => sc.id === s.scenarioId
+                              )?.source ?? "assumed"
+                            )}`}
+                          >
+                            {model.scenarios.find(
+                              (sc) => sc.id === s.scenarioId
+                            )?.source ?? "assumed"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">{s.deficitMonths}</td>
+                        <td className="py-2 pr-3">
+                          {fmtSigned(s.minCumulative)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {fmtSigned(s.endingPosition)}
+                        </td>
+                        <td className="py-2">{s.firstNegativeMonth ?? "—"}</td>
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </tbody>
+                </table>
+              </div>
+
+              <div
+                className="panel p-4 overflow-x-auto"
+                style={{ border: "1px solid var(--line)" }}
+              >
+                <p className="sec-title mb-2">
+                  Projection ({model.scenarios.length} scenarios)
+                </p>
+                <table className="w-full text-xs sm:text-sm min-w-[800px]">
+                  <thead>
+                    <tr className="treasury-meta text-left">
+                      <th className="pb-2 pr-2">Month</th>
+                      <th className="pb-2 pr-2">t</th>
+                      <th className="pb-2 pr-2">Alloc</th>
+                      <th className="pb-2 pr-2">Idx</th>
+                      {model.scenarios.map((sc) => (
+                        <th key={sc.id} className="pb-2 pr-2" colSpan={2}>
+                          {sc.name} spend / cumul
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {model.projection.map((row) => (
+                      <tr
+                        key={row.t}
+                        className="border-t border-[var(--line)] tabular-nums"
+                      >
+                        <td className="py-1 pr-2">{row.month.slice(0, 7)}</td>
+                        <td className="py-1 pr-2">{row.t}</td>
+                        <td className="py-1 pr-2">{fmt(row.allocation)}</td>
+                        <td className="py-1 pr-2">
+                          {row.seasonalIndex.toFixed(2)}
+                        </td>
+                        {model.scenarios.map((sc) => (
+                          <td key={sc.id} className="py-1 pr-2" colSpan={2}>
+                            {fmt(row.spendByScenario[sc.id] ?? 0)} /{" "}
+                            {fmtSigned(row.cumulativeByScenario[sc.id] ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="treasury-meta text-sm">
+              No scenarios — add one to project. Results and projection stay
+              hidden until at least one scenario exists.
+            </p>
+          )}
 
           {model.backtest && model.backtest.length > 0 ? (
             <div
@@ -418,6 +463,9 @@ export function TreasurySpendPlanPanel({
       model={state.model}
       inputs={state.inputs}
       setInputs={state.setInputs}
+      scenarios={state.scenarios}
+      setScenarios={state.setScenarios}
+      pulledTtmYoy={state.currentSnapshot?.ttmYoy ?? null}
       loading={state.loading}
       error={state.error}
       noHistory={state.noHistory}

@@ -1,29 +1,18 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
+import {
+  isCodexOneEmail,
+  isOperatorRole,
+  type CommercialTier,
+} from "@/lib/auth/roles";
 
-export type CommercialTier = "global_admin" | "operator" | "client" | "none";
-
-const CODEXONE_DOMAIN = "@codexone.io";
-
-/** Legacy DB rows may still use distributor until migrations are applied everywhere. */
-export function normalizeCommercialRole(
-  role: string | null | undefined
-): CommercialTier | null {
-  if (role === "global_admin") return "global_admin";
-  if (role === "operator" || role === "distributor") return "operator";
-  if (role === "client") return "client";
-  if (role === "none") return "none";
-  return null;
-}
-
-export function isOperatorRole(role: string | null | undefined): boolean {
-  return role === "operator" || role === "distributor";
-}
-
-export function isCodexOneEmail(email: string | null | undefined): boolean {
-  return Boolean(email?.toLowerCase().endsWith(CODEXONE_DOMAIN));
-}
+export type { CommercialTier } from "@/lib/auth/roles";
+export {
+  isCodexOneEmail,
+  isOperatorRole,
+  normalizeCommercialRole,
+} from "@/lib/auth/roles";
 
 export async function elevateGlobalAdmin(
   supabase: SupabaseClient<Database>

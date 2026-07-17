@@ -1,5 +1,5 @@
 import { isReservedRootSegment } from "@/lib/bcn/subdomain";
-import { normalizeCommercialRole } from "@/lib/auth/rbac";
+import { normalizeCommercialRole } from "@/lib/auth/roles";
 
 export type BcnCommercialRole =
   | "global_admin"

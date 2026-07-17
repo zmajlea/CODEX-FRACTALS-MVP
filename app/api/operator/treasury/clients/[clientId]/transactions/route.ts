@@ -42,6 +42,8 @@ export async function GET(request: Request, context: RouteContext) {
   const accountIds = parseAccountIds(url);
   const label = url.searchParams.get("label") ?? undefined;
   const labeled = url.searchParams.get("labeled");
+  /** status=needs_label | suggested | labeled — siblings; overrides labeled= when set */
+  const status = url.searchParams.get("status") ?? undefined;
   const q = url.searchParams.get("q") ?? undefined;
   const amountMinRaw = url.searchParams.get("amount_min");
   const amountMaxRaw = url.searchParams.get("amount_max");
@@ -61,8 +63,20 @@ export async function GET(request: Request, context: RouteContext) {
   if (to) query = query.lte("posted_date", to);
   if (accountIds.length) query = query.in("account_id", accountIds);
   if (label) query = query.eq("label", label);
-  if (labeled === "true") query = query.not("label", "is", null);
-  if (labeled === "false") query = query.is("label", null);
+
+  if (status === "suggested") {
+    query = query.eq("suggestion_status", "suggested");
+  } else if (status === "labeled") {
+    query = query.not("label", "is", null);
+  } else if (status === "needs_label") {
+    query = query.or(
+      "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
+    );
+  } else {
+    if (labeled === "true") query = query.not("label", "is", null);
+    if (labeled === "false") query = query.is("label", null);
+  }
+
   if (q) {
     const safe = escapeIlike(q);
     query = query.or(
@@ -159,25 +173,41 @@ export async function GET(request: Request, context: RouteContext) {
     },
   }));
 
-  const { count: needsLabel } = await guard.admin
-    .from("treasury_transactions")
-    .select("id", { count: "exact", head: true })
-    .eq("client_user_id", clientId)
-    .eq("is_removed", false)
-    .eq("pending", false)
-    .is("label", null);
+  const baseCount = () =>
+    guard.admin
+      .from("treasury_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false)
+      .eq("pending", false);
 
-  const { count: pendingCount } = await guard.admin
-    .from("treasury_transactions")
-    .select("id", { count: "exact", head: true })
-    .eq("client_user_id", clientId)
-    .eq("is_removed", false)
-    .eq("pending", true);
+  const [{ count: needsLabel }, { count: suggestedTotal }, { count: labeledTotal }, { count: pendingCount }] =
+    await Promise.all([
+      guard.admin
+        .from("treasury_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false)
+        .eq("pending", false)
+        .or(
+          "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
+        ),
+      baseCount().eq("suggestion_status", "suggested"),
+      baseCount().not("label", "is", null),
+      guard.admin
+        .from("treasury_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false)
+        .eq("pending", true),
+    ]);
 
   return NextResponse.json({
     transactions,
     nextCursor,
     needsLabelCount: needsLabel ?? 0,
+    suggestedCount: suggestedTotal ?? 0,
+    labeledCount: labeledTotal ?? 0,
     pendingCount: pendingCount ?? 0,
   });
 }

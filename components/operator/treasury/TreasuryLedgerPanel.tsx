@@ -81,10 +81,13 @@ export function TreasuryLedgerPanel({
 }: Props) {
   const [transactions, setTransactions] = useState<TreasuryTransactionRow[]>([]);
   const [needsLabelCount, setNeedsLabelCount] = useState(0);
+  const [suggestedTotalCount, setSuggestedTotalCount] = useState(0);
+  const [labeledCount, setLabeledCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [needsLabelOnly, setNeedsLabelOnly] = useState(false);
+  type StatusFilter = "all" | "needs_label" | "suggested" | "labeled";
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
@@ -144,7 +147,7 @@ export function TreasuryLedgerPanel({
       setLoading(true);
       setError(null);
       const params = new URLSearchParams({ limit: "50" });
-      if (needsLabelOnly) params.set("labeled", "false");
+      if (statusFilter !== "all") params.set("status", statusFilter);
       params.set("from", effectiveFrom);
       params.set("to", effectiveTo);
       if (debouncedQ) params.set("q", debouncedQ);
@@ -168,6 +171,8 @@ export function TreasuryLedgerPanel({
           transactions: TreasuryTransactionRow[];
           nextCursor: string | null;
           needsLabelCount: number;
+          suggestedCount?: number;
+          labeledCount?: number;
           pendingCount: number;
         };
         setTransactions((prev) =>
@@ -175,6 +180,8 @@ export function TreasuryLedgerPanel({
         );
         setCursor(data.nextCursor);
         setNeedsLabelCount(data.needsLabelCount);
+        setSuggestedTotalCount(data.suggestedCount ?? 0);
+        setLabeledCount(data.labeledCount ?? 0);
         setPendingCount(data.pendingCount);
         onNeedsLabelCount?.(data.needsLabelCount);
       } else {
@@ -186,7 +193,7 @@ export function TreasuryLedgerPanel({
     },
     [
       clientUserId,
-      needsLabelOnly,
+      statusFilter,
       effectiveFrom,
       effectiveTo,
       cursor,
@@ -208,7 +215,7 @@ export function TreasuryLedgerPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset pagination when filters change
   }, [
     clientUserId,
-    needsLabelOnly,
+    statusFilter,
     effectiveFrom,
     effectiveTo,
     debouncedQ,
@@ -245,19 +252,13 @@ export function TreasuryLedgerPanel({
   }
 
   async function confirmAllSuggested() {
-    const suggested = transactions.filter(
-      (t) => t.suggestion_status === "suggested" && t.suggested_label
-    );
-    if (suggested.length === 0) return;
+    if (suggestedTotalCount === 0) return;
     await fetch(
       `/api/operator/treasury/clients/${clientUserId}/transactions/bulk-label`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transactionIds: suggested.map((t) => t.id),
-          confirmSuggestions: true,
-        }),
+        body: JSON.stringify({ confirmAllSuggested: true }),
       }
     );
     void load(false, null);
@@ -314,9 +315,7 @@ export function TreasuryLedgerPanel({
     setSelectedAccounts(new Set());
   }
 
-  const suggestedCount = transactions.filter(
-    (t) => t.suggestion_status === "suggested"
-  ).length;
+  const suggestedCount = suggestedTotalCount;
 
   const allLoadedSelected =
     transactions.length > 0 && transactions.every((t) => selected.has(t.id));
@@ -475,14 +474,30 @@ export function TreasuryLedgerPanel({
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={needsLabelOnly}
-            onChange={(e) => setNeedsLabelOnly(e.target.checked)}
-          />
-          Needs label (posted) ({needsLabelCount})
-        </label>
+        {(
+          [
+            { id: "all" as const, label: `All` },
+            {
+              id: "needs_label" as const,
+              label: `Needs label (${needsLabelCount})`,
+            },
+            {
+              id: "suggested" as const,
+              label: `Suggested (${suggestedTotalCount})`,
+            },
+            { id: "labeled" as const, label: `Labeled (${labeledCount})` },
+          ] as const
+        ).map((opt) => (
+          <label key={opt.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="tx-status-filter"
+              checked={statusFilter === opt.id}
+              onChange={() => setStatusFilter(opt.id)}
+            />
+            {opt.label}
+          </label>
+        ))}
         {drillRange ? (
           <span className="inline-flex items-center gap-2 text-xs bg-sealed-bone/50 rounded px-2 py-1">
             Filtered to {drillRange.label ?? `${drillRange.from} – ${drillRange.to}`}

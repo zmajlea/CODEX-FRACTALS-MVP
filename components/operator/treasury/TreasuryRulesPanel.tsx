@@ -12,6 +12,32 @@ type Props = {
   onRuleSaved?: (suggestedCount: number) => void;
 };
 
+function formatAppliedAt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const then = new Date(iso).getTime();
+    const mins = Math.round((Date.now() - then) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(
+      new Date(iso)
+    );
+  } catch {
+    return iso;
+  }
+}
+
+function matchLine(r: TreasuryRuleRow): string {
+  if (r.last_applied_at == null) {
+    return "Never applied";
+  }
+  const applied = formatAppliedAt(r.last_applied_at);
+  const n = typeof r.matched_count === "number" ? r.matched_count : 0;
+  return `matched ${n} · applied ${applied}`;
+}
+
 export function TreasuryRulesPanel({
   clientUserId,
   draftRule,
@@ -20,6 +46,7 @@ export function TreasuryRulesPanel({
   onRuleSaved,
 }: Props) {
   const [rules, setRules] = useState<TreasuryRuleRow[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(true);
   const [name, setName] = useState("");
   const [matchMerchant, setMatchMerchant] = useState("");
   const [assignLabel, setAssignLabel] = useState("");
@@ -28,8 +55,10 @@ export function TreasuryRulesPanel({
   const [direction, setDirection] = useState<"in" | "out" | "">("");
   const [msg, setMsg] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setRulesLoading(true);
     const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/rules`
     );
@@ -37,6 +66,7 @@ export function TreasuryRulesPanel({
       const data = (await res.json()) as { rules: TreasuryRuleRow[] };
       setRules(data.rules);
     }
+    setRulesLoading(false);
   }, [clientUserId]);
 
   useEffect(() => {
@@ -97,6 +127,28 @@ export function TreasuryRulesPanel({
         body: JSON.stringify({ active: !rule.active }),
       }
     );
+    void load();
+  }
+
+  async function reapplyRule(rule: TreasuryRuleRow) {
+    setBusyRuleId(rule.id);
+    setMsg(null);
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reapply: true }),
+      }
+    );
+    const data = (await res.json()) as { suggested?: number; error?: string };
+    setBusyRuleId(null);
+    if (!res.ok) {
+      setMsg(data.error ?? "Re-apply failed");
+      return;
+    }
+    setMsg(`Applied — ${data.suggested ?? 0} new suggestions.`);
+    onRuleSaved?.(data.suggested ?? 0);
     void load();
   }
 
@@ -229,7 +281,11 @@ export function TreasuryRulesPanel({
               <option value="out">Out</option>
               <option value="in">In</option>
             </select>
-            <button type="button" className="btn btn-secondary" onClick={() => void createRule(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void createRule(false)}
+            >
               Save rule
             </button>
           </div>
@@ -239,31 +295,47 @@ export function TreasuryRulesPanel({
 
       <div className="panel p-4">
         <h3 className="font-head text-lg mb-3">Your rules</h3>
-        {rules.length === 0 ? (
+        {rulesLoading ? (
+          <p className="text-sm text-codex-muted">Loading rules…</p>
+        ) : rules.length === 0 ? (
           <p className="text-sm text-codex-muted">
-            No rules yet — label a transaction and use &quot;Make rule&quot; to get started.
+            No rules yet — label a transaction and use &quot;Make rule&quot; to get
+            started.
           </p>
         ) : (
           <ul className="space-y-3">
             {rules.map((r) => (
-              <li key={r.id} className="flex justify-between gap-4 border-b border-sealed-bone/60 pb-3">
+              <li
+                key={r.id}
+                className="flex justify-between gap-4 border-b border-sealed-bone/60 pb-3"
+              >
                 <div>
                   <p className="text-sm">
-                    When payee contains <strong>&quot;{r.match_merchant}&quot;</strong> → suggest{" "}
-                    <strong>{r.assign_label}</strong>
-                    {typeof r.matched_count === "number" ? (
-                      <span className="text-codex-muted"> · matched {r.matched_count}</span>
-                    ) : null}
+                    When payee contains <strong>&quot;{r.match_merchant}&quot;</strong> →
+                    suggest <strong>{r.assign_label}</strong>
+                    <span className="text-codex-muted"> · {matchLine(r)}</span>
                   </p>
                   <p className="text-xs text-codex-muted mt-1">{r.name}</p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary text-xs shrink-0"
-                  onClick={() => void toggleRule(r)}
-                >
-                  {r.active ? "Active" : "Paused"}
-                </button>
+                <div className="flex flex-col gap-1 shrink-0 items-stretch">
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs"
+                    onClick={() => void toggleRule(r)}
+                  >
+                    {r.active ? "Active" : "Paused"}
+                  </button>
+                  {r.active ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary text-xs"
+                      disabled={busyRuleId === r.id}
+                      onClick={() => void reapplyRule(r)}
+                    >
+                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
