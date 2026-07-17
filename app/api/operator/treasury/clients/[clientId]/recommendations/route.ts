@@ -11,6 +11,7 @@ import {
   computeRecommendationRollup,
   verifyRecommendationAnchor,
 } from "@/lib/server/treasury-recommendations";
+import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
 import {
   isImpactBasis,
   isRecommendationCategory,
@@ -35,7 +36,9 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const recommendations = (data ?? []) as TreasuryRecommendationRow[];
+  const recommendations = (data ?? []).map((row) =>
+    normalizeRecommendationRow(row as Record<string, unknown>)
+  );
   const rollup = computeRecommendationRollup(recommendations);
 
   await writeOperatorTreasuryReadAudit(guard.admin, {

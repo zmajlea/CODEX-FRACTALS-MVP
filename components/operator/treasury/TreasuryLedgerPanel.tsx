@@ -25,6 +25,7 @@ type Props = {
   onOpenRuleQueue?: (ruleId: string) => void;
   ruleBanner?: string | null;
   onDismissBanner?: () => void;
+  onBasketChanged?: () => void;
 };
 
 type AmountMode = "between" | "exact";
@@ -69,6 +70,7 @@ export function TreasuryLedgerPanel({
   onOpenRuleQueue,
   ruleBanner,
   onDismissBanner,
+  onBasketChanged,
 }: Props) {
   const [transactions, setTransactions] = useState<TreasuryTransactionRow[]>([]);
   const [book, setBook] = useState<TreasuryBookStats | null>(null);
@@ -330,6 +332,31 @@ export function TreasuryLedgerPanel({
     }
   }
 
+  async function addToRecommendation() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transaction_ids: [...selected] }),
+        }
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Failed to add to recommendation");
+      }
+      setSelected(new Set());
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to recommendation");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   function toggleAccount(id: string, currentlyChecked: boolean) {
     setDraftAccounts((prev) => {
       if (prev.size === 0) {
@@ -481,6 +508,14 @@ export function TreasuryLedgerPanel({
             onClick={() => void applyBulkLabel()}
           >
             Apply category to {selected.size}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary text-xs"
+            disabled={bulkBusy}
+            onClick={() => void addToRecommendation()}
+          >
+            Add to recommendation
           </button>
           <button
             type="button"

@@ -12,6 +12,7 @@ import {
   formatImpactLine,
   statusBadgeClass,
 } from "@/lib/treasury/recommendation-ui";
+import { formatTreasuryMoney } from "@/lib/treasury/format";
 import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 
 type Props = {
@@ -129,6 +130,44 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                   <span className="ri-v">{formatImpactLine(rec)}</span>
                   <span className="ri-b">Attributed to your treasurer</span>
                 </div>
+                {rec.evidence?.length ? (
+                  <div className="rec-evidence">
+                    <div className="rec-evidence-h">
+                      Evidence · {rec.evidence.length} item
+                      {rec.evidence.length === 1 ? "" : "s"}
+                    </div>
+                    {rec.evidence.map((ev) => {
+                      if (ev.kind !== "transaction") return null;
+                      if (ev.snap) {
+                        const dir = ev.snap.direction;
+                        const abs = formatTreasuryMoney(Math.abs(ev.snap.amount), "USD");
+                        const amt =
+                          dir === "in" ? `+${abs}` : dir === "out" ? `−${abs}` : abs;
+                        return (
+                          <div key={ev.id} className="req-item">
+                            <span className="ri-d">{ev.snap.date || "—"}</span>
+                            <span className="ri-p">
+                              <b>{ev.snap.payee || "—"}</b>
+                              {ev.snap.category ? <em>{ev.snap.category}</em> : null}
+                            </span>
+                            <span className={`ri-a ${dir === "in" ? "in" : "out"}`}>
+                              {amt}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={ev.id} className="req-item req-item-missing">
+                          <span className="ri-d">—</span>
+                          <span className="ri-p">
+                            <b>Item no longer available</b>
+                          </span>
+                          <span className="ri-a">—</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {showLadder ? <ExecLadder status={rec.status} /> : null}
                 {rec.status === "declined" ? (
                   <div className="rec-decline">

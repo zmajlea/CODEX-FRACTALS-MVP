@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { canAccessModule } from "@/lib/auth/rbac";
 import { clientUnreadCount } from "@/lib/server/treasury-recommendations";
-import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
+import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -32,7 +32,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const recommendations = (data ?? []) as TreasuryRecommendationRow[];
+  const recommendations = (data ?? []).map((row) =>
+    normalizeRecommendationRow(row as Record<string, unknown>)
+  );
   let unreadCount = clientUnreadCount(recommendations);
 
   const url = new URL(request.url);

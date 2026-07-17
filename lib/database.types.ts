@@ -1415,6 +1415,7 @@ export type Database = {
           decided_at: string | null
           decline_note: string | null
           decline_reason: string | null
+          evidence: Json
           id: string
           impact_amount: number | null
           impact_basis: string | null
@@ -1440,6 +1441,7 @@ export type Database = {
           decided_at?: string | null
           decline_note?: string | null
           decline_reason?: string | null
+          evidence?: Json
           id?: string
           impact_amount?: number | null
           impact_basis?: string | null
@@ -1465,6 +1467,7 @@ export type Database = {
           decided_at?: string | null
           decline_note?: string | null
           decline_reason?: string | null
+          evidence?: Json
           id?: string
           impact_amount?: number | null
           impact_basis?: string | null

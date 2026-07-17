@@ -1651,6 +1651,72 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 [data-brand="summit"] .rec-ts{ color:var(--mute-ink); }
 [data-brand="summit"] .rec-empty{ color:var(--mute-ink); }
 [data-brand="summit"] .panel-note{ color:var(--mute-ink); }
+
+/* Spec 39 — request/composer overlay (Ana .req-* classes) */
+.txinsp-scrim{ position:fixed; inset:0; z-index:55; background:rgba(16,42,71,.28); }
+.reqmodal{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:60; width:min(560px,92vw); max-height:86vh; overflow:auto;
+  background:var(--paper-2); border:1px solid var(--line); border-radius:14px; box-shadow:0 24px 60px rgba(16,42,71,.28); padding:22px 24px; }
+.req-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:14px; }
+.req-eyebrow{ font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--brand-2); }
+.req-title{ font-size:19px; font-weight:600; color:var(--ink); margin:4px 0 0; }
+.req-list{ display:flex; flex-direction:column; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+.req-item{ display:grid; grid-template-columns:60px 1fr auto; gap:10px; align-items:center; padding:9px 12px; border-top:1px solid var(--line); font-size:12.5px; }
+.req-item:first-child{ border-top:0; }
+.req-item .ri-d{ font-family:var(--font-mono); font-size:11px; color:var(--mute); }
+.req-item .ri-p b{ font-weight:600; color:var(--ink); }
+.req-item .ri-p em{ font-style:normal; font-family:var(--font-mono); font-size:10px; color:var(--mute); margin-left:6px; }
+.req-item .ri-a{ font-family:var(--font-mono); font-weight:600; }
+.req-item .ri-a.out{ color:var(--ink); }
+.req-item .ri-a.in{ color:var(--su-pos); }
+.req-item-missing{ background:color-mix(in srgb,var(--su-warn) 8%, var(--paper-2)); }
+.req-missing-note{ margin:0; padding:8px 12px; font-size:12px; color:var(--su-warn); border-top:1px solid var(--line); }
+.req-to label{ display:block; font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--mute); margin-bottom:6px; }
+.req-input{ width:100%; padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:var(--paper); font:inherit; font-size:13px; color:var(--ink); }
+.req-input:focus{ outline:none; border-color:var(--brand-2); box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 12%, transparent); }
+.req-note{ margin:2px 0 4px; }
+.req-note label{ display:block; font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin-bottom:6px; }
+.req-note .req-opt{ font-family:var(--font-ui,inherit); font-size:10px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--mute); margin-left:6px; }
+.req-textarea{ width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--paper-2); font:inherit; font-size:13px; color:var(--ink); resize:vertical; }
+.req-textarea:focus{ outline:none; border-color:var(--brand-2); box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 12%, transparent); }
+.req-acts{ display:flex; gap:10px; margin-top:18px; }
+.req-foot{ display:flex; align-items:center; gap:7px; margin:14px 0 0; font-size:11px; color:var(--mute); }
+.txi-close{ border:0; background:transparent; color:var(--mute); font:inherit; font-size:12px; cursor:pointer; }
+.txi-close:hover{ color:var(--ink); }
+.btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--slate); }
+.btn.sm{ font-size:12px; padding:7px 12px; }
+
+/* Spec 39 — recommendation draft sidebar */
+.rec-basket{
+  position:fixed; top:72px; right:16px; z-index:40; width:min(340px,92vw); max-height:calc(100vh - 96px);
+  overflow:auto; background:var(--paper-2); border:1px solid var(--line); border-radius:12px;
+  box-shadow:0 12px 40px rgba(16,42,71,.18); padding:14px 16px;
+}
+.rec-basket-eyebrow{ font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--brand-2); }
+.rec-basket-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
+.rec-basket-meta{ font-size:13px; font-weight:600; color:var(--ink); margin-top:4px; }
+.rec-basket-list{ display:flex; flex-direction:column; gap:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:12px; max-height:40vh; overflow-y:auto; }
+.rec-basket-row{ display:grid; grid-template-columns:58px 1fr auto auto; gap:6px; align-items:center; padding:8px 10px; border-top:1px solid var(--line); font-size:12px; }
+.rec-basket-row:first-child{ border-top:0; }
+.rec-basket-row.missing{ grid-template-columns:1fr auto; background:color-mix(in srgb,var(--su-warn) 8%, var(--paper-2)); }
+.rec-basket-row .ri-d{ font-family:var(--font-mono); font-size:10px; color:var(--mute); }
+.rec-basket-row .ri-p{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
+.rec-basket-row .ri-a{ font-family:var(--font-mono); font-weight:600; font-size:11px; white-space:nowrap; }
+.rec-basket-row .ri-a.in{ color:var(--su-pos); }
+.rec-basket-x{ border:0; background:transparent; color:var(--mute); cursor:pointer; font-size:14px; line-height:1; padding:2px 4px; }
+.rec-basket-x:hover{ color:var(--su-neg); }
+.rec-basket-missing{ margin:0; padding:8px 10px; font-size:11px; color:var(--su-warn); border-top:1px solid var(--line); }
+.rec-basket-acts{ display:flex; flex-wrap:wrap; gap:8px; }
+.rec-basket-badge{
+  position:fixed; bottom:24px; right:24px; z-index:40; width:40px; height:40px; border-radius:999px;
+  border:1px solid var(--line); background:var(--brand-2); color:#fff; font-weight:700; font-size:13px;
+  box-shadow:0 8px 24px rgba(16,42,71,.2); cursor:pointer;
+}
+.rec-evidence{ margin-top:12px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.rec-evidence-h{ font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); padding:8px 12px; border-bottom:1px solid var(--line); }
+.rec-evidence .req-item{ font-size:12px; }
+.rec-evidence .req-item-missing{ color:var(--mute); }
+
 @media (max-width:820px){
   [data-brand="summit"] .ct-hero-grid{ grid-template-columns:1fr; }
+  .rec-basket{ top:auto; bottom:16px; right:12px; left:12px; width:auto; max-height:42vh; }
 }

@@ -12,6 +12,7 @@ import { TreasuryConnectionsPanel } from "@/components/operator/treasury/Treasur
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
+import { RecommendationBasketSidebar } from "@/components/operator/treasury/RecommendationBasketSidebar";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
@@ -120,6 +121,7 @@ export function OperatorTreasuryClientRecord({
   const [needsLabelCount, setNeedsLabelCount] = useState(0);
   const [ledgerKey, setLedgerKey] = useState(0);
   const [openRuleQueueId, setOpenRuleQueueId] = useState<string | null>(null);
+  const [basketKey, setBasketKey] = useState(0);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
   const hasSyncedData = (data?.transaction_count ?? 0) > 0;
@@ -253,7 +255,7 @@ export function OperatorTreasuryClientRecord({
           {
             id: "analytics",
             icon: "money",
-            label: "Analytics",
+            label: "Analyzer",
             active: tab === "analytics",
             onClick: () => setTab("analytics"),
           },
@@ -468,6 +470,7 @@ export function OperatorTreasuryClientRecord({
             onOpenRuleQueue={handleOpenRuleQueue}
             ruleBanner={ruleBanner}
             onDismissBanner={() => setRuleBanner(null)}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
 
@@ -504,6 +507,11 @@ export function OperatorTreasuryClientRecord({
           />
         ) : null}
       </div>
+
+      <RecommendationBasketSidebar
+        clientUserId={clientUserId}
+        refreshKey={basketKey}
+      />
     </BcnContinuityShell>
   );
 }
