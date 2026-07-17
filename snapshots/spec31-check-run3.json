@@ -1,0 +1,394 @@
+[
+  {
+    "id": "035bc90f-316e-48a6-941f-3f7fcd41d705",
+    "external_id": "0142105ed69b874eb5a4f1f8d2ffb419",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "0940cb1e-f9f5-45d3-b2a3-6962c91970fd",
+    "external_id": "2b2b7bf2bdf999a352d76601b46d0421",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "121295aa-6e75-4ba6-a1c6-e0e8494fabdc",
+    "external_id": "9ce66020b826f93fabe1ba94d571b42f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "123592cc-ce65-4284-be1f-0fbcebb115f8",
+    "external_id": "7f4bfab86f564db5b677ab38fd21f05f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "15894843-f164-4eb1-a37c-d7c6127875e6",
+    "external_id": "929d95754c18dc19a9670b2e945dd0f6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 302, weekly ±1 day"
+  },
+  {
+    "id": "195e91d2-5f94-4b8c-a866-86803a8e107d",
+    "external_id": "413eae6dd2e5177565ed0e79885f3ba4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "1f956a84-4481-41d3-9930-c871acfc1a01",
+    "external_id": "1a5a359bed6523425cb2b4609739084c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 301, weekly ±1 day"
+  },
+  {
+    "id": "24093d3c-f04f-41ac-8da1-b88e78123394",
+    "external_id": "a940859a43d7f2f21735cf0c707975d4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "2d733a1d-1406-4488-bd55-bdc83ef2aadc",
+    "external_id": "a458d24aae8dfa1e496836a935bfffc9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 270, weekly ±1 day"
+  },
+  {
+    "id": "2f153d72-9a18-4ec8-9fab-c8a2f4caaa29",
+    "external_id": "392acd6ad362ed82894d50c44dae19d1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 241, weekly ±1 day"
+  },
+  {
+    "id": "3406e9a0-ab47-404d-a997-4f0c61316033",
+    "external_id": "04b826c403a55d3583f747299d2871bd",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "342802cb-9202-45a3-8eb5-3fbabc0e2e79",
+    "external_id": "dc4c4bcb207f959af2bc64c557a7fce1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 292, weekly ±1 day"
+  },
+  {
+    "id": "38b6278f-d59d-47b9-95d9-7f5bdf0d5dea",
+    "external_id": "da9cb9b33889f103866bb23dad991c25",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 303, weekly ±1 day"
+  },
+  {
+    "id": "39fbf044-da2c-4cd2-b0b3-e8b152af1758",
+    "external_id": "df423b428f5f16d0218accaf65dd1f4f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 242, weekly ±1 day"
+  },
+  {
+    "id": "424da10f-3f88-4530-922f-c8b4b0e4f954",
+    "external_id": "8805cd52f5acfacff5e02f52fa3b5961",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "4a946e44-b819-4ab1-8004-5460eee31e5b",
+    "external_id": "be445ef48647df3654b3ed2eb85b03dc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "51cb007c-123d-47fb-b5eb-d3d463d1c8e5",
+    "external_id": "0fb34da623e9bd79456dd46c6936b55b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 296, weekly ±1 day"
+  },
+  {
+    "id": "6a75edf6-fc4b-497d-b51b-914a94fb134d",
+    "external_id": "a294cacab71caf5560a73fe0f89d78f9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 326, weekly ±1 day"
+  },
+  {
+    "id": "704b74f0-c390-49c3-b752-6b269ade96eb",
+    "external_id": "13454c1b4d11ea032b6b5b0830a348e3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "70702ea3-befd-4e0a-b498-f6c2bc5b717b",
+    "external_id": "c90a4c5b0ea0d777f32f743fa3353b61",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "72f2c425-7d99-4778-9894-c5d0f8aed506",
+    "external_id": "572c017f8edd66c8ce8474ace46daf44",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "73ebf570-b272-44ca-a869-753889ff94d5",
+    "external_id": "1a872039a58844d44a5e7d61851422e5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "75e233df-b01a-4866-9f55-d82a3347feef",
+    "external_id": "79957bcc71f2c32e038e77cd5c2c8920",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "76cca4d6-95df-4e4c-8cb5-b6ef2a4cfac3",
+    "external_id": "71d718279fee560255ad7c5ca85150f9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 295, weekly ±1 day"
+  },
+  {
+    "id": "82385407-481a-4a8f-b362-e82eb52b0421",
+    "external_id": "78e9c3e6725d89bc49d5689117952468",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 264, weekly ±1 day"
+  },
+  {
+    "id": "928e7357-1866-403a-a7d6-dee421983d49",
+    "external_id": "2ed97162d47e09d9f4777fba687fa7ce",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 177, weekly ±1 day"
+  },
+  {
+    "id": "92c92dda-c11f-4afd-9fb2-22510450827e",
+    "external_id": "8df02b7cf9dbf4012238f00078f9441b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "9e1408ee-f313-40a8-9cd3-14f020b64091",
+    "external_id": "f8a4759963e67585d661b8fbdbd6a3b3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "a0085164-06d6-47c2-9307-0cf681337c84",
+    "external_id": "bbd299c0b261d8d6e6c22f31f59d19d9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "a82f8cee-4162-43a4-8078-76ff2f508acd",
+    "external_id": "cf2cc4a8dae57f3dbe5c14d3ee673ce1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "a876cd6c-c15e-460e-8ff8-450efa5dd743",
+    "external_id": "c14153e6da630dae8a3c9029d05dd837",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ COSTCO CHECKS 800 955 2 WA XXXXXXXXXXXX4591 PURCHASE MERCHANT PURCHASE TERMINAL 469216, weekly ±1 day"
+  },
+  {
+    "id": "ae74a628-f0f2-4635-b32a-56d4ee0621f4",
+    "external_id": "ad5e2bf5efd7ac52c050ef88079bed8f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "b70271bc-fef4-4497-98ea-73b0c5891a05",
+    "external_id": "80c677c03f795c52ec486f68a2bb28c0",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "b7d797f6-0556-4b76-a1ad-71b7f55c221d",
+    "external_id": "26d6d982fb8f3bf15538b7ad01253964",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "ba41e29f-e503-4c09-9ec8-088ba16ae82d",
+    "external_id": "9c06886a68d6d3f5bfa5d0259a46d046",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "bf9f06d0-5ea7-4b18-b593-bef6ef84e33d",
+    "external_id": "06016c919d89cad520200e5bf3407f2e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "c4757807-9ce6-4e31-935a-e2417682029d",
+    "external_id": "361ed0a6cc263e013c8626bce7419ff9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "cb73f9f0-0f78-41f6-89b6-3f8f32f009c1",
+    "external_id": "4fd192ef20394ba2d8f1c170fce30ac4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "d1c2b819-c416-464f-b1bc-f7e74f9c535a",
+    "external_id": "81088bdb49dd64b31d066e07e4958fe1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "d3c9aa33-6b41-4287-9d8b-b63d904ef833",
+    "external_id": "52e788102ff9ae6eda120ab6ecd6aeb2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "d9e876ee-0c9b-4ab3-a374-f7cab67c6e15",
+    "external_id": "a18c6d1c4028d83a99edf10881de8cac",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "dc181d7a-57dc-40f3-bf02-bab0b9b15bf3",
+    "external_id": "bda416025396fe820cfd644e3b0d42ef",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "dee1f5db-2690-4d20-aaf9-bb7dcab26448",
+    "external_id": "b7359c96eb115cc55ff20579a8d1b1cc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "e89c70e1-f2bf-4dd5-9878-1a1333518e8b",
+    "external_id": "5bd5863d6123935012c074c3db5b910a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "e8e22a36-f1ef-4e76-a303-2efea2e1565e",
+    "external_id": "f2004c6a1fdf3c23a4f9c241441f821f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "ea8f43f8-fa30-4e59-b711-26064e4ee3dc",
+    "external_id": "6b89208f3874474e6c404d5bb3cdcce5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "f42ac1cb-923c-42f9-8fe5-505a4ef0b121",
+    "external_id": "6548d7a09a58d47a0a8ddb822dad83e7",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "f6e7f391-4fe7-41f3-8fa6-c6683e4f0271",
+    "external_id": "c6bb6322c52d29f46d028b6efb8c9228",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "f83ff61f-40f2-4d43-ad17-1cd3257e7306",
+    "external_id": "f7d920f3e10357b33ef10dcbf5f391dc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "f97c10f8-77c0-4108-b067-79ce73e6284c",
+    "external_id": "9d9014b3acde4ccaaaf69bbfd9a6f744",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "f98533be-5236-4aa7-85cb-8f7e4c09c393",
+    "external_id": "89200a2e4d9dbc2eb26e07e24b4780e0",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 256, weekly ±1 day"
+  },
+  {
+    "id": "fabc5bd8-237b-4028-b3d7-9d8e90b20a06",
+    "external_id": "1900f45ca1131040f5fd85a30a7ac77f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "fb22f539-3c23-4a84-ba13-d945af74f06f",
+    "external_id": "0203cbcdbe7d163de40e77179b164938",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "fc5faf2e-bd6d-4b2e-b289-d2928308065f",
+    "external_id": "ac1abae8531de4fd3f679f4ff7b1be52",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ OVERDRAFT FEE FOR OVERDRAFT CHECK # 298, weekly ±1 day"
+  },
+  {
+    "id": "fd1c7305-829e-4892-9675-919a63a279dc",
+    "external_id": "a8a3b559e75ab7ba356996330a5ca772",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  },
+  {
+    "id": "fe270419-c830-430b-bf7a-20471810e085",
+    "external_id": "deabf4f87c8f92b5acd96e4bffbc6a7c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "d7dec3e0-8f46-4cbc-a9a1-52ba93d1e9eb",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ CHECK, weekly ±1 day"
+  }
+]

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { normalizeMerchant } from "@/lib/treasury/normalize";
 import {
   lastNPeriodStarts,
@@ -104,16 +105,21 @@ export async function computeTreasuryForecast(
     .select("current_balance, iso_currency_code")
     .eq("client_user_id", clientUserId);
 
-  const { data: allTxs } = await admin
-    .from("treasury_transactions")
-    .select(
-      "posted_date, amount, direction, iso_currency_code, normalized_merchant, raw_name, merchant_name, label"
-    )
-    .eq("client_user_id", clientUserId)
-    .eq("is_removed", false)
-    .eq("pending", false)
-    .gte("posted_date", lookbackFrom)
-    .lte("posted_date", today);
+  const allTxs = await fetchAllRows((from, to) =>
+    admin
+      .from("treasury_transactions")
+      .select(
+        "posted_date, amount, direction, iso_currency_code, normalized_merchant, raw_name, merchant_name, label"
+      )
+      .eq("client_user_id", clientUserId)
+      .eq("is_removed", false)
+      .eq("pending", false)
+      .gte("posted_date", lookbackFrom)
+      .lte("posted_date", today)
+      .order("posted_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
   const { count: pendingCount } = await admin
     .from("treasury_transactions")
@@ -222,7 +228,8 @@ export async function computeTreasuryForecast(
     const normalized =
       tx.normalized_merchant ?? normalizeMerchant(tx.raw_name, tx.merchant_name);
     if (!normalized) continue;
-    const direction = (tx.direction === "in" ? "in" : "out") as "in" | "out";
+    if (tx.direction !== "in" && tx.direction !== "out") continue;
+    const direction = tx.direction;
     const key = groupKey(normalized, direction);
     const g = groups.get(key) ?? {
       key,
@@ -284,13 +291,14 @@ export async function computeTreasuryForecast(
       if (periodStartOf(granularity, tx.posted_date) !== periodStart) continue;
       const normalized =
         tx.normalized_merchant ?? normalizeMerchant(tx.raw_name, tx.merchant_name);
-      const direction = tx.direction === "in" ? "in" : "out";
+      if (tx.direction !== "in" && tx.direction !== "out") continue;
+      const direction = tx.direction;
       if (normalized && recurringGroupKeys.has(groupKey(normalized, direction))) {
         continue;
       }
       const amt = Math.abs(Number(tx.amount));
       if (tx.direction === "in") inflow += amt;
-      else outflow += amt;
+      else if (tx.direction === "out") outflow += amt;
     }
     residualInflows.push(inflow);
     residualOutflows.push(outflow);

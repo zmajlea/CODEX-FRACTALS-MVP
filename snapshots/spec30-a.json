@@ -1,0 +1,1370 @@
+[
+  {
+    "id": "0061838f-a863-45df-9c01-1166347a82b2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24255B1000161428-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "008125ea-7249-443a-9049-94ee99c5dcd3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25115B1000072364-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "02dcfe20-4ecf-4be5-8646-ec31952e1b05",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25304B1000104774-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "02ecd84c-8668-41a3-8113-c92a52ae4999",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24024B1000064327-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "0341ec6a-08cc-4eb3-897b-17f10ba7b3f9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24129B1000158878-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "04945f57-dc75-4d05-b42f-b078933df1be",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25122B1000089650-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "059370f6-2688-4d56-8057-644678ac42ca",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25241B1000082688-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "05b28f4d-32c1-4043-a51e-9292eebcb820",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24250B1000080231-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0630af6f-2393-4dac-94dd-c368def25b47",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24010B1000065577-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "09114c64-3d4b-4917-b0a9-e653b15a9c36",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24271B1000057519-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0982e5a7-5ac1-4587-91c7-c586a700170b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24131B1000028974-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "0ab53619-730e-4b44-ab32-d21220571ebc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25024B1000069646-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0c836008-07c0-466d-9f15-600efd6a2447",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25234B1000125617-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0cc29e21-89e5-464f-b0f3-3edc34225464",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24213B1000145199-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "0eb42bab-25e6-4ca9-b930-c0102773b190",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24101B1000065041-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "0ee6b828-1bf6-4be7-84a0-1cc5968aebec",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24262B1000142808-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0f0c97ee-ba6f-45d2-8deb-5d31c677093a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25113B1000176881-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "0f24f727-fbce-4f7b-8eff-e948f852e715",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24005B1000030266-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "111d8a8b-7d03-478c-8f28-b2ea20d27bcd",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25360B1000204963-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "11f01085-5c6d-4e7c-819f-0a5ad023fdc7",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25150B1000080238-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "1249a0d9-9bed-47ed-8d52-f0cccb7bac78",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24194B1000023515-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "14e6e0f7-b261-4509-ab6e-e95c4a034c31",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25234B1000041951-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "157c9135-4a32-4e84-8fa2-f6bfb78786b2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24110B1000119235-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "15c16deb-a6cf-4ef8-9042-d7ab47b02798",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25318B1000078793-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "15ddb2ee-6c4e-415b-9199-73bdcd2ac270",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24290B1000061717-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "1604689f-5b4a-48c2-a5a4-13012c7494a3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25036B1000082659-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "16c16e35-5d79-4610-86e9-07368a0e3da1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24157B1000076498-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "16e2fdd6-cf81-4d9e-a4ad-23efff99bada",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24003B1000034174-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "1791484c-7bd1-4bec-a7c4-68992eda910d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24019B1000067296-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "1f5036ff-f927-4261-8f39-e501a15c9a3d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24143B1000155751-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "1fcd5b30-598a-4292-9989-76e9919692de",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25346B1000078423-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2010688e-9fb1-4c30-9317-5e8f41ef2c62",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24145B1000037713-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "201b6ed8-5123-45e2-8581-4b99018c2e4b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25106B1000164449-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "207d3360-95cf-4483-b9a5-d1fce8835d69",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25106B1000086716-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "20c8a9a6-d74b-41a0-b9c0-fb0fa6b033f7",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24192B1000068010-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "224e4ef2-d9ed-4367-9fcc-8a113e5414fc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25015B1000153983-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT"
+  },
+  {
+    "id": "22d5bc69-a1bf-4710-8176-194cbfebcd9a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25199B1000077621-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "239b593c-4084-4c05-96ca-6ebf385491ae",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25309B1000169853-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2489f9a6-038b-4d5e-90dc-1674bdc3cfad",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24010B1000130234-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "2585dc43-c624-4392-ad48-2bd63bc8c7e6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25059B1000075804-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2638141f-e12a-46b3-be99-42694b7a4dad",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24257B1000080336-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "27370b0e-fbd5-46e6-8298-002af5ad95ba",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25143B1000080125-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2870d2b1-3a97-41b6-b195-40777cc8a7c4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25227B1000041730-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "28e5ab2d-b349-4a40-b78c-5a8c14967093",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24276B1000074555-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2a481e52-4a9e-4a3d-a5a2-3b7387629d45",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25330B1000145066-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2b8bbe09-6caa-4557-ae89-a7656dddf8a5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24017B1000130916-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "2bcebb0b-0876-4658-a0e4-985db890c54a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24271B1000168265-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2c3b92a4-0faa-491a-99a2-40883ad297e6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25232B1000074274-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2cd98886-93a8-4dc0-aeb8-f3db579aa9f0",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25260B1000140457-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2d1e796d-e943-474e-b68e-34c7c4aae890",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25022B1000147448-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2eafdb31-bb22-43f4-9205-94ef27bca5f8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25239B1000079836-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "2ef26ed2-2897-4a6f-a9e2-a56661d05b2a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24101B1000139270-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "3176948f-ccc9-40c0-bd96-270150808785",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25064B1000170509-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "332e52e1-6409-4018-9708-fa3d97bc303f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24068B1000050615-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "36860386-ac70-4799-a4c3-2e513ab0ec9f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25176B1000071616-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "38eaeaf9-9860-4da7-8afd-ce1ef9f87dbc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25206B1000080503-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "3d9a8640-2d6b-4c00-9480-493244827cd5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24019B1000028537-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "3df14d31-5b8d-4ff1-961c-400c65863182",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24180B1000037528-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "4074a35c-fdfc-45be-a8af-588ad99f455b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24164B1000074705-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "409f626d-402a-4ba2-9303-0e6185d6b0b2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25015B1000075489-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT"
+  },
+  {
+    "id": "411aafaf-9867-4941-a046-b1c40db92b49",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24178B1000080883-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "43916c0f-81ef-4cc6-b585-4ccaab6f1644",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25052B1000039594-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "43c6c8ce-f811-498a-821c-7c466c36d63a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25113B1000092734-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "44aef79c-3cce-4215-a589-79cdab78bbfe",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24297B1000150929-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "46c46d47-44fd-4a29-8c77-8e32b28bc3ff",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25052B1000077956-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "4a50ebb5-d222-4fc4-a4a8-9745e173902d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24124B1000086656-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "4b370e46-cfa5-49f4-b7c9-4949cfae1c56",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25085B1000174762-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "4cd539a0-b55c-4aa4-a98e-cef78faf6314",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24271B1000080252-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "4dac5099-0d9d-4bad-a660-dfcc4f894ded",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25031B1000110763-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "4fb81b2c-a804-4bd8-b441-b5755892d7e6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24045B1000141082-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "50442f89-b280-4fe6-8a66-301f974b43f0",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25057B1000163499-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "5063ab86-cadf-46ce-be69-aa1d1dcc799d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25148B1000103435-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "5462059b-a822-4351-93f9-ad7bb2cbf60c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24236B1000097453-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "55cdaa84-479e-4a65-a4ae-cf43fba17219",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25232B1000096792-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "561fae86-afe9-4fdb-ba9a-b29bfffdb1f8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24201B1000045267-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "58b0262d-ec3c-4ee4-8cce-606fab958bc4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24234B1000150719-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "58ee67a6-1204-4546-b132-f7e0b5063db1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24194B1000066924-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "5bc8bf69-7739-4d74-b784-52f65468698d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24206B1000159559-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "5fa52f1f-1d32-444d-bc55-2027dcead6aa",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25022B1000072046-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "61751e0e-a8e2-4b5d-8e53-40ee96599b3c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24299B1000078160-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "618b5bc8-c28b-4b05-a5be-adba4806a593",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25199B1000026251-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "62a1167e-501c-4957-a527-07fa5150bb73",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25120B1000145611-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "62ac7c81-4218-430a-be90-328f5844a3ea",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25239B1000062371-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "634d076b-172f-4535-a807-3252d30e4548",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24362B1000094689-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT"
+  },
+  {
+    "id": "63801dce-cbc9-45d8-98d3-3ca62dbfaaa5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24297B1000062926-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "65cd69af-a7f5-4498-858e-092bec67b81c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25164B1000031294-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "6614fe44-4036-477c-a922-619aca781541",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24229B1000074715-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "6616bc11-e597-4d82-91c1-4dc86b1b2801",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24208B1000080102-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "66331055-7214-4240-b222-7f0e41e65878",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24220B1000159260-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "66c9f190-cdd9-418c-97b0-8048eb0528ce",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24173B1000029705-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "67194e42-cae6-4c24-a093-5eaf095ea381",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25325B1000041914-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "672c0e1d-6c50-409f-8a03-d7fa896a5ecb",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25190B1000060820-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "673a259c-4956-4376-9ee1-3800ddc8e996",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24159B1000077629-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "67e648f1-4cf8-4ab2-b0b6-5ac36e000d43",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24227B1000082342-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "686c459d-d801-4424-9991-58788cc04ec0",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25143B1000036655-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "6c43c540-0a71-4032-9ca1-9b381570343d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25246B1000141189-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "6d2295dd-ab09-475b-9576-5d23c6f85e6e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24355B1000092792-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "6d9ee04a-7abf-4a30-a2e4-3424366ed09f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25155B1000203665-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "6db105f5-6821-4181-a276-b888046aa8d8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24129B1000079161-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "6dcdc633-396e-46c8-bf17-5562b2023ca8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24166B1000028375-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "72fe6bbf-1680-40f1-9087-ccf81df79a38",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25323B1000160633-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7364b19b-e329-40a7-87f2-40089ae15af2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25304B1000051186-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7437885d-775d-4d1e-b928-4747ab81196e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24003B1000099662-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "77473d8d-eae8-41ee-8ae4-1f0b0db89e5e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25227B1000026859-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7883b457-c9c5-4c67-8cd7-70600d4dc581",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25204B1000158985-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "79532fc2-3d15-4a4b-8ce9-8714c39aa1cc",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25122B1000044437-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7a6027b9-c736-4f01-b090-484559f15c9b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25267B1000055973-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7dd0c739-7c68-4c5d-bda1-7160d8f49046",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25262B1000031006-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "7ec1a389-38b5-4a04-99c0-400f0441af5a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24131B1000059844-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "7f0ed8c4-05fd-4766-90e1-ad7c59e33e75",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25045B1000027798-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "811600cb-0bed-45c9-84a6-19595b9059e2",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24290B1000155752-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "8155c68a-8046-4a76-af60-6bdb69b9537d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24262B1000071705-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "8164f6f7-e9e3-48ff-a782-3804b9fd5aa1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24145B1000079342-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "82cf2545-0211-4589-aa03-e29817a5ce0d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25036B1000154097-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "837576bd-f3d4-4bb8-8b6d-5d6ff55a3593",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24124B1000040747-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "83e53d94-5a15-47f1-8c52-ba710ec0567b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25169B1000073686-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "84380377-adc5-48bf-9425-b65981cb6741",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25255B1000028280-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "874bf745-be3b-4560-83ed-67a7af538fea",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24199B1000172888-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "88305421-c218-4f3c-8f96-3b3bfcbf2884",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25043B1000159989-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "889aa6b3-8bf2-444a-96e8-df2aacf8460a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24213B1000070140-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "89779de1-8226-49e9-8aca-1f982e3b50cf",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25239B1000147576-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "89ef4d9a-4026-477d-9d42-f75ab0878089",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 23363B1000024383-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "8af063e4-4932-459b-8c9e-f868b6eed36a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24150B1000059798-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "8d32adbd-62d5-4ea9-ab7f-2de64b6f5244",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24136B1000177465-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "8e13c762-638a-4a07-987c-f621a8ced3f8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25078B1000194072-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "8ec37778-d715-4795-85cd-739ceb7cd8f1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25325B1000085252-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "90226833-1f79-4fd9-8bb5-c64bd010e8aa",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25029B1000065323-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "90ba1240-ddb9-4d5e-8a9a-c6ca44ec7770",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25178B1000076757-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "91ddc59a-cfe5-4f19-8c2a-8041e67ebfad",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25234B1000059629-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "93043d14-be58-4bf3-a90e-0a8ed71c2e49",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25045B1000078457-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "9391ec0d-f839-4590-829c-bcb79fde8634",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25092B1000165837-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "93a83e02-d73f-4063-8033-7d1599f994c3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24164B1000060066-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "94b2f795-2d25-41ee-a409-ed6dcdc29792",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25353B1000109355-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "9519a380-8890-48b9-85c6-a98b98a4cf01",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24236B1000048260-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "9722a925-5c3c-462b-ad34-0a7498727533",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25134B1000162181-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "97c966eb-47d7-49d7-8301-beb70e04b530",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24185B1000074582-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "97cdcd7e-2056-47ac-96e3-3e467c18bb09",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25169B1000176685-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "99480e70-1385-4a72-9231-d2bdbff81530",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24248B1000132301-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "9be1882f-83f7-4060-90fb-7ae3a87ef1ff",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24157B1000153129-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "9cc6daa6-b198-4d67-9696-ef03fdb2d4db",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24164B1000149333-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "9df8065c-60df-47d4-8c7a-a69cd1033ca1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25344B1000182009-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "9e104365-6b58-4be3-a9d8-603bc9fa164e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24192B1000130875-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "9ec1a662-9fb0-4dad-b0e6-ba783d0c924d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25260B1000078371-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "9ec3922e-3254-4c2e-8aba-cf0751ab878a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24124B1000030991-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "a09f4a59-140c-490d-84bf-18462cc58484",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24222B1000038359-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "a175720b-07c4-44c8-8c62-ee2706cc547b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24096B1000078716-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "a46418e9-b0c4-4951-8acd-459ed3a40019",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25246B1000074685-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "a4d1b22c-5b87-41e3-bd6b-294899fee32a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25199B1000037995-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "a8059546-7ad4-464f-a685-f60a2d8cecbf",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25192B1000042907-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "a965bb4b-70c7-414b-bb0a-b1e61c1ced63",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24241B1000159724-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "a9ecd6f7-7a53-44be-a85b-43f6b508111b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25232B1000178420-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "aa1e9891-2100-4716-8298-ef21c33c993c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25192B1000087887-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "ab05ee2e-62ad-4efc-8eb3-f7e300d0545f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24038B1000081422-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "abc938bc-9ef2-48cc-a912-98b8c134e2f6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24089B1000051502-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "ad51aa9f-981f-4811-a2bb-db8d3aa514f7",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24059B1000084824-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "ad59f6cb-0205-4c18-a6a5-960653ad6512",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24073B1000051622-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "af04f3c7-5b08-41cc-84a3-1b92f1bf921f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24073B1000106991-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "af9f652b-7375-4fea-b13b-0c2c2655d0ad",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25197B1000160835-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b0460c7f-36d6-4c0f-8849-fde0704112ae",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24033B1000159260-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "b18155be-e061-49a9-8679-6586d19b4f4d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25274B1000069424-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b202dc33-8a34-46c9-9133-1b2d45e1e2a7",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25129B1000103087-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b3ac44aa-653b-4762-93f9-757fb93cd2de",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25043B1000086166-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b472cc55-6e14-4738-a66a-c78252b97478",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24285B1000096507-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b4b02954-e7c3-40ac-ae1f-61915db239a4",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25323B1000065194-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b51da107-573e-44ca-b252-1050417e97e8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24362B1000206857-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT"
+  },
+  {
+    "id": "b6626e3a-9b1b-4417-9102-afa58a92bc0c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25267B1000102642-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b69eec6c-4570-4357-a2e8-23a2c0c01782",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24040B1000081783-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "b73e10f2-43a8-41b1-aaa8-4d8b1431d51c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25071B1000185245-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "b7ca81d5-4fcd-4df2-9fd1-53ddb2dae7e6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24024B1000140559-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "bac26172-56fd-4d85-92ea-7b1cc987f77e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25339B1000038180-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "bbd35448-889e-490a-badd-f3524f34e461",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25080B1000092675-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "bcc87596-9590-44bb-8c3b-46454559e84c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25274B1000088381-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "be219063-e737-48b1-b668-2d79ca3c5e19",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24143B1000079292-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "be870734-6d5a-43b8-bff3-ba783e657d7e",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24355B1000034972-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "bec3efcc-c72a-4264-b3f2-2301674c19ac",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25092B1000068703-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "bfd80d01-8a15-4a1f-86a8-556c3c757289",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25029B1000145632-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c00a2231-8c4b-46c4-b8be-72cfc78dc2f6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24243B1000084969-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c26e4af7-9daa-4947-b55b-e08ea8a5fac1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25017B1000073714-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c3103528-eb85-4320-b6dc-1eb6be94c210",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24241B1000066670-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c36616e9-f66f-4251-b0af-40c1d1931d0b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24012B1000091670-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "c407dc9e-d314-43a1-8ca9-25422b77272f",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25080B1000032485-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c50791c6-a961-455e-8395-6bde1b663a6a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24304B1000157226-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "c548a2ab-0f06-42ea-92b0-518821e2fc57",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24201B1000093035-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "c60a3f28-a889-401a-8ac9-3ef7e103936d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24082B1000130763-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "c898f600-c94c-4ade-81fa-5a83669d16b6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24166B1000036986-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "c94b787d-bb5d-4bb5-947a-a42b54d91676",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25325B1000029278-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "ca7c7243-1df8-4dc4-a012-83d7c053449a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25323B1000087310-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "caf87012-209a-4e39-8a16-aec69351ab63",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25141B1000134543-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "cc184c32-53ef-43e6-af47-3e358715a0f6",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24306B1000084901-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "cefec475-7afb-408a-ab9c-da8940a18460",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24122B1000204690-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "cf7f0a03-cd12-4b62-bf9f-0e7af8087ba3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25176B1000133708-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d17764d8-6de0-4a4b-8d78-be224628af67",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25204B1000084668-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d17da895-aefd-4e8e-abe2-c0f6030a30fa",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24026B1000032537-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "d3e5a513-a2d0-4a1f-a4ba-be30968a2cf9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25227B1000083515-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d47d6929-65a9-4904-b2df-019c8730adb8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25339B1000082079-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d7331ea8-8e47-4bbb-9a3c-3fc78e8b6746",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24052B1000083297-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "d766fc4f-5d8f-439c-a1a4-d55c52d72586",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25318B1000037020-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d8317d63-7563-4b62-8fc3-cb5348340305",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24283B1000159045-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "d9581a2b-ab3e-4aa9-a3e9-b6308cc59777",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24033B1000089042-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "dcb829b6-0ab7-4ed4-be35-b2768ac9e602",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24187B1000060054-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "df898acc-46e3-4516-844c-bd12dd2730ca",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25211B1000139610-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e0f1723b-5373-4698-8e56-d57dbd22a3ab",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25353B1000036401-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e225e52f-4d7d-4277-b8f9-4146dddebe1b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24157B1000061054-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "e39b2282-dd20-446f-955a-1060206c46db",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25134B1000067924-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e3a15db2-a880-4dc4-816b-fbc992907338",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25050B1000087473-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e47ac6c4-ac9b-43fb-be43-8cfaa247ac53",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25262B1000065676-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e4a0c381-2ace-4ce4-a04e-2674cbdf4dff",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25031B1000067077-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e54694ee-932f-4a36-b46c-1a777a493a07",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24255B1000079612-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "e7f761b3-1016-4566-bb08-0989abe9345c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24222B1000081486-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "ea6ec30e-318d-430e-adfb-81cd5b067e7a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25183B1000130991-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "ec8ef364-4642-42ca-9967-da2aef380529",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25269B1000026051-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "ed3f3f97-19ad-438a-864e-8642ecb40e0b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24103B1000064775-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "ed909c47-b94b-44a6-850c-11f9c6eddfd9",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24187B1000028004-0 *1870409820*199999 999\\\\, weekly ±1 day"
+  },
+  {
+    "id": "ef592b64-a593-4f01-a6c6-4b6dd4414a5c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24075B1000025489-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "f06b9017-667f-4ae0-8bef-394f71f2d1f8",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24115B1000179304-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "f0704d00-ec0b-4300-98b6-ce01d8390e8d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25078B1000078674-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f08752b7-e299-40c2-b5d1-f880582508f3",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25255B1000040253-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f34ae7a1-c5b7-4e8e-8f3c-91bb5feebb0c",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25255B1000083483-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f435f601-9f07-4070-a97d-8286fd72222d",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24355B1000046735-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f4752de7-ae0e-4f14-b146-6dadbf7d1315",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25136B1000091999-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f4c5e5cf-d705-42be-9c68-37fd97a1130b",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24026B1000074044-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "f72d75e4-22d2-490b-8d6f-e31e37fc4cbf",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 24306B1000040917-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f7f17546-41a2-4376-a485-94fb26102e01",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25108B1000067890-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "f96c35d9-7554-4e59-bbe1-fd1fba86a332",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24047B1000080026-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "fc8354a5-db9e-47d6-9864-cb80a57988f1",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24075B1000062630-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "fd9143eb-55ba-4602-b80f-3572d079f7c5",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24003B1000047356-0 *1870409820*199999 999\\\\"
+  },
+  {
+    "id": "febd3458-18d5-4f43-b7b6-57d11ccd3158",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ SH-SELECTHEALTH, HCCLAIMPMT 25101B1000063342-0 *1870409820*199999 999\\\\ PREAUTHORIZED CREDIT, weekly ±1 day"
+  },
+  {
+    "id": "ff80f527-9f8b-4b42-9178-3c6c571e117a",
+    "suggested_label": "Bench rule label",
+    "suggested_by_rule_id": "956d3bbb-b191-440e-8806-e8f2e55d9f02",
+    "suggestion_explanation": "matched 'Bench rule label', merchant ~ PREAUTHORIZED CREDIT SH-SELECTHEALTH, HCCLAIMPMT 24117B1000046012-0 *1870409820*199999 999\\\\"
+  }
+]

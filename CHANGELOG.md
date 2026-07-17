@@ -24,7 +24,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Client APIs for recommendations, manual accounts, and source disconnect.
 - Transaction `direction` on client accounts payload for honest in/out coloring in activity.
 
-#### Dev and demo
+#### R1 Summit CSV import (Spec 24)
+- Summit FFM import contract: 8 columns, signed amounts, ISO datetimes with UTC date extraction, header normalization + headerless fallback.
+- Import reconcile report in API and operator UI (inflows/outflows/net, skips, duplicates, sign/type mismatches).
+- `account_label` form field for tab-encoded / empty account columns.
+- Test fixtures: `docs/summit-ffm-0625.csv`, `docs/summit-ffm-0617.csv`; verification via `npm run treasury:verify-import`.
+- `docs/r1-import-contract.md` with ready-to-paste Claude normalization prompt.
+
+#### R1 Summit spend plan (Spec 25)
+- Tim's account/label-scoped spend-plan model: allocation ladder, seasonality, four growth scenarios (A/B/C/D), cumulative buffer projection, and historical backtest.
+- Pure engine in `lib/treasury/spend-plan.ts` with server orchestration in `lib/server/treasury-spend-plan.ts` (separate from whole-book `treasury-forecast.ts`).
+- `GET /api/operator/treasury/clients/[clientId]/spend-plan` with grant check and `spend_plan` audit surface.
+- Operator **Spend plan** tab: `TreasurySpendPlanPanel` with method note, provenance chips, seasonal indices, 4-scenario projection, scenario results, and backtest table.
+- Partial-month exclusion for L0, seasonality, and TTM YoY (`excludedPartialMonth` in response).
+- Verification via `npm run treasury:verify-spend-plan` (Tim backtest + projection fixtures).
+
 - Dev-only `POST /api/dev/seed-journey1` for Journey 1 test data (`SEED_SECRET` in `.env.example`).
 - Treasury CSV format docs, templates, and demo datasets under `docs/` and `public/docs/`.
 - `scripts/generate-treasury-csv.ts` and Plaid sandbox custom user fixture.
@@ -34,6 +48,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Single masthead on client treasury; `TreasuryAccountsView` supports `embedded` mode.
 - `continuity.css`: `--mute-ink`, client-treasury tab styles (`.seg`), cash hero / treasurer strip helpers, micro-label legibility fixes.
 - Plaid exchange and sync hardening; operator treasury audit events extended.
+- CSV importer accepts Tim's Summit export shape; legacy MVP unsigned format still supported.
+- Summary, period decomposition, and forecast aggregators exclude `direction === null` (never assume outflow).
 - BCN rail brand foot and topbar continuity tweaks; client shell frame adjustments.
 
 ### Fixed

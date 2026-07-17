@@ -1,5 +1,7 @@
 # Treasury CSV import format
 
+> **R1 canonical format:** Tim's Summit FFM structure (8 columns, signed amounts) is documented in [`r1-import-contract.md`](./r1-import-contract.md). The format below remains supported as the **legacy MVP** import path.
+
 Operator CSV import uses the same column layout as the downloadable template (`docs/treasury-csv-template.csv`).
 
 ## Columns

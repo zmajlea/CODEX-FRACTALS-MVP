@@ -32,6 +32,44 @@ node scripts/seed-journey-test.mjs
 
 **Note:** Test user must exist in Supabase Auth (signup or dashboard). `@codexone.test` emails cannot confirm — use a real email for production testing.
 
+### Operator test user (treasury UI)
+
+```powershell
+npm run test:seed:operator
+```
+
+| Field | Value |
+|-------|-------|
+| Email | `operator-test@codexone.test` |
+| Password | `OperatorTest!2026` |
+| Portal | `http://localhost:14000/portal/login` |
+| Client | journey1-test (treasury grant via `summit-test-op` tenant) |
+
+Creates auth user, operator role, treasury module access, and active grant over journey1-test. Idempotent — safe to re-run.
+
+### Bench import client (Spec 29 A/B)
+
+```powershell
+npm run test:seed:bench-import
+npm run test:wipe:bench-import   # between timing runs
+npm run treasury:bench-import    # scripted import timing (same pipeline as UI route)
+```
+
+| Field | Value |
+|-------|-------|
+| Client email | `bench-import@codexone.test` |
+| Password | `BenchImport!2026` |
+| Operator | `operator-test@codexone.test` (grant via `summit-test-op`) |
+| Data | **None** by default — fresh insert-path benchmarking |
+
+### Summit CSV import (DB round-trip)
+
+```powershell
+npm run treasury:import-summit
+```
+
+Imports `docs/summit-ffm-0625.csv` + `docs/summit-ffm-0617.csv` into journey1-test with batched progress logging and SQL reconcile check.
+
 ### EXAKOM vault (large, ~700+ pulses)
 
 ```powershell

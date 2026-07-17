@@ -35,7 +35,7 @@ export function aggregateByLabel(
     const amt = Math.abs(Number(tx.amount));
     if (tx.direction === "in") {
       receiptMap.set(label, (receiptMap.get(label) ?? 0) + amt);
-    } else {
+    } else if (tx.direction === "out") {
       disbMap.set(label, (disbMap.get(label) ?? 0) + amt);
     }
   }
@@ -70,7 +70,7 @@ export function topContributors(
     const entry = byLabel.get(label) ?? { in: 0, out: 0 };
     const amt = Math.abs(Number(tx.amount));
     if (tx.direction === "in") entry.in += amt;
-    else entry.out += amt;
+    else if (tx.direction === "out") entry.out += amt;
     byLabel.set(label, entry);
   }
 

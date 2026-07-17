@@ -15,13 +15,25 @@
     "test:platform": "node scripts/seed-platform-rls.mjs",
     "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz | Out-File -Encoding utf8 lib/database.types.ts",
     "test:seed": "node scripts/seed-journey-test.mjs",
+    "test:seed:operator": "node scripts/seed-operator-test.mjs",
+    "test:seed:bench-import": "node scripts/seed-bench-import.mjs",
+    "test:wipe:bench-import": "node scripts/wipe-bench-import.mjs",
+    "treasury:bench-import": "npx tsx scripts/bench-import.ts",
+    "treasury:bench-pagination": "npx tsx scripts/bench-pagination.ts",
+    "treasury:bench-rules": "npx tsx scripts/bench-rules.ts",
+    "treasury:snapshot-suggestions": "npx tsx scripts/snapshot-rule-suggestions.ts",
+    "treasury:diff-snapshots": "npx tsx scripts/diff-rule-snapshots.ts",
+    "treasury:import-summit": "npx tsx scripts/import-summit-csvs.ts",
     "test:seed:exakom": "node scripts/seed-exakom-vault.mjs",
     "test:seed:exakom:upload": "node scripts/seed-exakom-vault.mjs --upload-only",
     "test:seed:exakom:file": "node scripts/seed-exakom-vault.mjs --file",
     "supabase": "supabase",
     "supabase:login": "supabase login",
     "auth:config:push": "supabase config push --yes",
-    "treasury:demo-csv": "npx tsx scripts/generate-treasury-csv.ts"
+    "treasury:demo-csv": "npx tsx scripts/generate-treasury-csv.ts",
+    "treasury:verify-import": "npx tsx scripts/verify-summit-import.ts",
+    "treasury:verify-label-survival": "npx tsx scripts/verify-label-survival.ts",
+    "treasury:verify-spend-plan": "npx tsx scripts/verify-spend-plan.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -39,12 +51,14 @@
     "react-dom": "19.2.4",
     "react-force-graph-2d": "^1.29.1",
     "react-plaid-link": "^4.1.1",
+    "server-only": "^0.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.5.0",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
@@ -53,6 +67,7 @@
     "postcss": "^8.5.15",
     "supabase": "^2.102.0",
     "tailwindcss": "^3.4.14",
-    "typescript": "^5"
+    "typescript": "^5",
+    "ws": "^8.18.3"
   }
 }

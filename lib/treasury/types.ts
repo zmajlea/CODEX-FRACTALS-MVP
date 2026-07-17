@@ -235,3 +235,14 @@ export type TreasuryInboxItem = {
   actioned: boolean;
   updatedAt: string;
 };
+
+export type {
+  SpendPlanResponse,
+  SpendPlanMonthRow,
+  SpendPlanBacktestRow,
+  SpendPlanScenarioSummary,
+  SpendPlanInput,
+  SpendPlanScenario,
+  SpendPlanHistoryResponse,
+  InputProvenance,
+} from "@/lib/treasury/spend-plan";
