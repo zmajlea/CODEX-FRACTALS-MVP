@@ -13,6 +13,7 @@ import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedg
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
+import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { formatTreasuryAsOf } from "@/lib/treasury/format";
@@ -29,6 +30,7 @@ import type {
 type Tab =
   | "overview"
   | "summary"
+  | "analytics"
   | "transactions"
   | "rules"
   | "recommendations"
@@ -37,6 +39,7 @@ type Tab =
 const VALID_TABS: Tab[] = [
   "overview",
   "summary",
+  "analytics",
   "transactions",
   "rules",
   "recommendations",
@@ -44,6 +47,7 @@ const VALID_TABS: Tab[] = [
 ];
 
 function parseInitialTab(value: string | undefined): Tab {
+  if (value === "spend-plan") return "analytics";
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
@@ -58,6 +62,7 @@ type Props = {
   clientEmail: string;
   grantId: string | null;
   initialTab?: string;
+  initialStudyId?: string;
 };
 
 const SUMMIT_BRAND = "summit";
@@ -82,6 +87,7 @@ export function OperatorTreasuryClientRecord({
   clientEmail,
   grantId,
   initialTab,
+  initialStudyId,
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
@@ -233,6 +239,13 @@ export function OperatorTreasuryClientRecord({
             label: "Summary",
             active: tab === "summary",
             onClick: () => setTab("summary"),
+          },
+          {
+            id: "analytics",
+            icon: "money",
+            label: "Analytics",
+            active: tab === "analytics",
+            onClick: () => setTab("analytics"),
           },
           {
             id: "recommendations",
@@ -409,6 +422,14 @@ export function OperatorTreasuryClientRecord({
             clientUserId={clientUserId}
             hasSyncedData={hasSyncedData}
             onSelectPeriod={handleSelectPeriod}
+          />
+        ) : null}
+
+        {tab === "analytics" ? (
+          <AnalyticsShell
+            clientUserId={clientUserId}
+            accountsData={data}
+            initialStudyId={initialStudyId}
           />
         ) : null}
 

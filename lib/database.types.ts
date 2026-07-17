@@ -1350,6 +1350,59 @@ export type Database = {
           },
         ]
       }
+      treasury_studies: {
+        Row: {
+          id: string
+          client_user_id: string
+          operator_tenant_id: string | null
+          created_by: string | null
+          name: string
+          type: string
+          scope: Json
+          params: Json
+          scenarios: Json
+          derived_snapshot: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          client_user_id: string
+          operator_tenant_id?: string | null
+          created_by?: string | null
+          name: string
+          type?: string
+          scope: Json
+          params: Json
+          scenarios: Json
+          derived_snapshot: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          client_user_id?: string
+          operator_tenant_id?: string | null
+          created_by?: string | null
+          name?: string
+          type?: string
+          scope?: Json
+          params?: Json
+          scenarios?: Json
+          derived_snapshot?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_studies_operator_tenant_id_fkey"
+            columns: ["operator_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_recommendations: {
         Row: {
           anchor_ref: Json | null

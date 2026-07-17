@@ -8,7 +8,7 @@ import { resolveOperatorTenantContext } from "@/lib/operator/resolve-operator-te
 
 type Props = {
   params: Promise<{ clientId: string }>;
-  searchParams: Promise<{ tenantId?: string; tab?: string }>;
+  searchParams: Promise<{ tenantId?: string; tab?: string; study?: string }>;
 };
 
 export default async function OperatorTreasuryClientPage({
@@ -63,6 +63,7 @@ export default async function OperatorTreasuryClientPage({
       clientEmail={clientEmail}
       grantId={grant.grantId}
       initialTab={query.tab}
+      initialStudyId={query.study}
     />
   );
 }

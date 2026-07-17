@@ -1,0 +1,763 @@
+/**
+ * INVARIANT: no server-only imports. This module runs on BOTH server and client so the
+ * live workbench and the authoritative server compute share one implementation.
+ * Do not add DB/env dependencies.
+ *
+ * spend(t)      = L0 × (1+g)^(t/12) × index(calendarMonth(t))
+ * allocation(t) = base + step × FLOOR((t−1)/stepEveryMonths)
+ * cumulative(t) = startingBuffer + Σ(allocation(i) − spend(i))
+ */
+
+import {
+  addMonths,
+  startOfMonth,
+  subtractMonths,
+} from "@/lib/treasury/period-bounds";
+
+export type SpendPlanScenario = {
+  id: string;
+  name: string;
+  growthPct: number;
+  source: "assumed" | "pulled";
+};
+
+export type InputProvenance = "user-provided" | "assumed" | "pulled" | "adjusted";
+
+export type SpendPlanInput = {
+  key: string;
+  label: string;
+  value: number | string;
+  provenance: InputProvenance;
+  editable?: boolean;
+};
+
+export type SpendPlanMonthRow = {
+  month: string;
+  t: number;
+  allocation: number;
+  seasonalIndex: number;
+  spendByScenario: Record<string, number>;
+  cumulativeByScenario: Record<string, number>;
+};
+
+export type SpendPlanBacktestRow = {
+  month: string;
+  t: number;
+  allocation: number;
+  actualDebits: number;
+  surplus: number;
+  cumulative: number;
+};
+
+export type SpendPlanScenarioSummary = {
+  scenarioId: string;
+  scenarioName: string;
+  deficitMonths: number;
+  minCumulative: number;
+  endingPosition: number;
+  firstNegativeMonth: number | null;
+};
+
+export type SeasonalIndexResult = {
+  indices: Record<number, number>;
+  missingMonths: number[];
+  seasonalityDisabled: boolean;
+  distinctMonthsInWindow: number;
+};
+
+export type SpendPlanHistoryResponse = {
+  accountId: string;
+  label: string | null;
+  asOf: string;
+  monthlyOutflows: Record<string, number>;
+  completeMonths: string[];
+  excludedPartialMonth: string | null;
+  buffer: {
+    value: number | null;
+    source: "available_balance" | "current_balance" | null;
+    asOf: string;
+  } | null;
+  historyMonthCount: number;
+  firstMonth: string | null;
+  lastCompleteMonth: string | null;
+};
+
+export const SPEND_PLAN_METHOD_NOTE =
+  'Projected spend for month t = L0 × (1+g)^(t/12) × seasonal index of that calendar month. Seasonal indices from history. Allocation for month t = base + step × FLOOR((t−1)/stepEveryMonths). Cumulative position = starting buffer + running sum of (allocation − spend).';
+
+/** Tim's published indices for fixture validation (Brass Monkey). */
+export const TIM_SEASONAL_INDICES: Record<number, number> = {
+  1: 1.18,
+  2: 1.05,
+  3: 0.75,
+  4: 1.03,
+  5: 1.01,
+  6: 1.16,
+  7: 0.86,
+  8: 1.15,
+  9: 0.69,
+  10: 1.02,
+  11: 0.97,
+  12: 1.12,
+};
+
+function parseMonthStart(iso: string): string {
+  return startOfMonth(iso.slice(0, 10));
+}
+
+function monthEnd(monthStart: string): string {
+  const d = new Date(monthStart + "T12:00:00Z");
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+  return last.toISOString().slice(0, 10);
+}
+
+function calendarMonthNumber(monthStart: string): number {
+  const d = new Date(monthStart + "T12:00:00Z");
+  return d.getUTCMonth() + 1;
+}
+
+/** Month is complete when its last day is strictly before asOf. */
+export function isCompleteMonth(monthStart: string, asOf: string): boolean {
+  return monthEnd(monthStart) < asOf.slice(0, 10);
+}
+
+export function deriveDataSpan(monthlyOutflows: Record<string, number>): {
+  firstMonth: string | null;
+  lastMonth: string | null;
+} {
+  const keys = Object.keys(monthlyOutflows).sort();
+  if (keys.length === 0) return { firstMonth: null, lastMonth: null };
+  return { firstMonth: keys[0]!, lastMonth: keys[keys.length - 1]! };
+}
+
+/** Complete months within dataSpan only — never calendar ranges outside data. */
+export function deriveCompleteMonths(
+  monthlyOutflows: Record<string, number>,
+  asOf: string
+): string[] {
+  const { firstMonth, lastMonth } = deriveDataSpan(monthlyOutflows);
+  if (!firstMonth || !lastMonth) return [];
+
+  const out: string[] = [];
+  let cur = parseMonthStart(firstMonth);
+  const end = parseMonthStart(lastMonth);
+  while (cur <= end) {
+    if (isCompleteMonth(cur, asOf)) out.push(cur);
+    cur = addMonths(cur, 1);
+  }
+  return out;
+}
+
+export function lastNFromCompleteMonths(
+  completeMonths: string[],
+  n: number
+): string[] {
+  if (n <= 0) return [];
+  return completeMonths.slice(-n);
+}
+
+/** Amounts for complete months; genuine zeros inside dataSpan, never ??0 outside span. */
+export function fillCompleteMonthAmounts(
+  monthlyOutflows: Record<string, number>,
+  completeMonths: string[]
+): Record<string, number> {
+  const filled: Record<string, number> = {};
+  for (const m of completeMonths) {
+    filled[m] = monthlyOutflows[m] ?? 0;
+  }
+  return filled;
+}
+
+export function seasonalWindowFromCompleteMonths(
+  completeMonths: string[],
+  windowMonths = 24
+): string[] {
+  return completeMonths.slice(-windowMonths);
+}
+
+/** Last complete month strictly before plan start (may be partial → excluded). */
+export function excludedPartialMonthBeforeStart(
+  planStartMonth: string,
+  asOf: string
+): string | null {
+  const prior = subtractMonths(parseMonthStart(planStartMonth), 1);
+  if (!isCompleteMonth(prior, asOf)) return prior.slice(0, 7);
+  return null;
+}
+
+/** @deprecated Use deriveCompleteMonths + lastNFromCompleteMonths for L0. */
+export function lastNCompleteMonthsBeforeStart(
+  planStartMonth: string,
+  asOf: string,
+  n: number
+): string[] {
+  const out: string[] = [];
+  let cur = subtractMonths(parseMonthStart(planStartMonth), 1);
+  let guard = 0;
+  while (out.length < n && guard < 120) {
+    if (isCompleteMonth(cur, asOf)) out.unshift(cur);
+    cur = subtractMonths(cur, 1);
+    guard += 1;
+  }
+  return out;
+}
+
+export function defaultPlanStartMonth(asOf: string): string {
+  const d = new Date(asOf.slice(0, 10) + "T12:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return startOfMonth(
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`
+  );
+}
+
+export function roundBaseDefault(l0: number): number {
+  return Math.round(l0 / 1000) * 1000;
+}
+
+export function allocationForMonth(
+  t: number,
+  base: number,
+  step: number,
+  stepEveryMonths = 3
+): number {
+  const interval = Math.max(1, Math.min(12, stepEveryMonths));
+  return base + step * Math.floor((t - 1) / interval);
+}
+
+export function computeL0(
+  monthlyDebits: Record<string, number>,
+  monthKeys: string[]
+): number | null {
+  if (monthKeys.length === 0) return null;
+  const vals = monthKeys.map((k) => monthlyDebits[k] ?? 0);
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+export function computeSeasonalIndices(
+  monthlyDebits: Record<string, number>,
+  monthKeys: string[],
+  asOf: string
+): SeasonalIndexResult {
+  const completeKeys = monthKeys.filter((k) => isCompleteMonth(k, asOf));
+  const distinct = new Set(completeKeys.map((k) => k.slice(0, 7))).size;
+
+  if (distinct < 12) {
+    const indices: Record<number, number> = {};
+    for (let m = 1; m <= 12; m++) indices[m] = 1;
+    return {
+      indices,
+      missingMonths: [],
+      seasonalityDisabled: true,
+      distinctMonthsInWindow: distinct,
+    };
+  }
+
+  const byCalMonth = new Map<number, number[]>();
+  for (const key of completeKeys) {
+    const m = calendarMonthNumber(key);
+    const amt = monthlyDebits[key] ?? 0;
+    const list = byCalMonth.get(m) ?? [];
+    list.push(amt);
+    byCalMonth.set(m, list);
+  }
+
+  const monthlyMeans = completeKeys.map((k) => monthlyDebits[k] ?? 0);
+  const overallMean =
+    monthlyMeans.reduce((s, v) => s + v, 0) / monthlyMeans.length || 1;
+
+  const indices: Record<number, number> = {};
+  const missingMonths: number[] = [];
+
+  for (let m = 1; m <= 12; m++) {
+    const samples = byCalMonth.get(m);
+    if (!samples || samples.length === 0) {
+      indices[m] = 1;
+      missingMonths.push(m);
+    } else {
+      const calMean = samples.reduce((s, v) => s + v, 0) / samples.length;
+      indices[m] = calMean / overallMean;
+    }
+  }
+
+  const indexValues = Object.values(indices);
+  const indexMean =
+    indexValues.reduce((s, v) => s + v, 0) / indexValues.length || 1;
+  for (let m = 1; m <= 12; m++) {
+    indices[m] = indices[m]! / indexMean;
+  }
+
+  return {
+    indices,
+    missingMonths,
+    seasonalityDisabled: false,
+    distinctMonthsInWindow: distinct,
+  };
+}
+
+export function computeTtmYoyGrowth(
+  monthlyDebits: Record<string, number>,
+  completeMonthKeys: string[]
+): number | null {
+  const sorted = [...completeMonthKeys].sort();
+  if (sorted.length < 24) return null;
+  const last12 = sorted.slice(-12);
+  const prior12 = sorted.slice(-24, -12);
+  const sumLast = last12.reduce((s, k) => s + (monthlyDebits[k] ?? 0), 0);
+  const sumPrior = prior12.reduce((s, k) => s + (monthlyDebits[k] ?? 0), 0);
+  if (sumPrior === 0) return null;
+  return sumLast / sumPrior - 1;
+}
+
+export function buildDefaultScenarios(ttmYoy: number | null): SpendPlanScenario[] {
+  const scenarios: SpendPlanScenario[] = [
+    { id: "flat", name: "Flat", growthPct: 0, source: "assumed" },
+    { id: "plus15", name: "+15%", growthPct: 0.15, source: "assumed" },
+    { id: "plus30", name: "+30%", growthPct: 0.3, source: "assumed" },
+  ];
+  if (ttmYoy !== null) {
+    scenarios.push({
+      id: "history-repeats",
+      name: "History repeats",
+      growthPct: ttmYoy,
+      source: "pulled",
+    });
+  }
+  return scenarios;
+}
+
+export type ProjectSpendPlanParams = {
+  startMonth: string;
+  horizon: number;
+  startingBuffer: number;
+  l0: number;
+  base: number;
+  step: number;
+  stepEveryMonths?: number;
+  seasonalIndices: Record<number, number>;
+  scenarios: SpendPlanScenario[];
+};
+
+export function projectSpendPlan(
+  params: ProjectSpendPlanParams
+): SpendPlanMonthRow[] {
+  const start = parseMonthStart(params.startMonth);
+  const stepEveryMonths = params.stepEveryMonths ?? 3;
+  const rows: SpendPlanMonthRow[] = [];
+  const cumulative: Record<string, number> = {};
+
+  for (const sc of params.scenarios) {
+    cumulative[sc.id] = params.startingBuffer;
+  }
+
+  for (let t = 1; t <= params.horizon; t++) {
+    const month = addMonths(start, t - 1);
+    const cal = calendarMonthNumber(month);
+    const idx = params.seasonalIndices[cal] ?? 1;
+    const allocation = allocationForMonth(
+      t,
+      params.base,
+      params.step,
+      stepEveryMonths
+    );
+    const spendByScenario: Record<string, number> = {};
+    const cumulativeByScenario: Record<string, number> = {};
+
+    for (const sc of params.scenarios) {
+      const rawSpend =
+        params.l0 * Math.pow(1 + sc.growthPct, t / 12) * idx;
+      const spend = Math.round(rawSpend);
+      spendByScenario[sc.id] = spend;
+      cumulative[sc.id]! += allocation - spend;
+      cumulativeByScenario[sc.id] = Math.round(cumulative[sc.id]! * 100) / 100;
+    }
+
+    rows.push({
+      month,
+      t,
+      allocation,
+      seasonalIndex: idx,
+      spendByScenario,
+      cumulativeByScenario,
+    });
+  }
+
+  return rows;
+}
+
+export type BacktestSpendPlanParams = {
+  startMonth: string;
+  startingBuffer: number;
+  base: number;
+  step: number;
+  stepEveryMonths?: number;
+  actualDebits: Record<string, number>;
+  monthCount: number;
+};
+
+export function backtestSpendPlan(
+  params: BacktestSpendPlanParams
+): SpendPlanBacktestRow[] {
+  const start = parseMonthStart(params.startMonth);
+  const stepEveryMonths = params.stepEveryMonths ?? 3;
+  const rows: SpendPlanBacktestRow[] = [];
+  let cumulative = params.startingBuffer;
+
+  for (let t = 1; t <= params.monthCount; t++) {
+    const month = addMonths(start, t - 1);
+    const allocation = allocationForMonth(
+      t,
+      params.base,
+      params.step,
+      stepEveryMonths
+    );
+    const actualDebits = params.actualDebits[month] ?? 0;
+    const surplus = allocation - actualDebits;
+    cumulative += surplus;
+    rows.push({
+      month,
+      t,
+      allocation,
+      actualDebits,
+      surplus: Math.round(surplus * 100) / 100,
+      cumulative: Math.round(cumulative * 100) / 100,
+    });
+  }
+
+  return rows;
+}
+
+export function summarizeScenarios(
+  rows: SpendPlanMonthRow[],
+  scenarios: SpendPlanScenario[]
+): SpendPlanScenarioSummary[] {
+  return scenarios.map((scenario) => {
+    let deficitMonths = 0;
+    let minCumulative = Infinity;
+    let endingPosition = 0;
+    let firstNegativeMonth: number | null = null;
+
+    for (const row of rows) {
+      const spend = row.spendByScenario[scenario.id] ?? 0;
+      if (spend > row.allocation) deficitMonths += 1;
+      const cum = row.cumulativeByScenario[scenario.id] ?? 0;
+      if (cum < minCumulative) minCumulative = cum;
+      endingPosition = cum;
+      if (firstNegativeMonth === null && cum < 0) {
+        firstNegativeMonth = row.t;
+      }
+    }
+
+    return {
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
+      deficitMonths,
+      minCumulative: minCumulative === Infinity ? 0 : minCumulative,
+      endingPosition,
+      firstNegativeMonth,
+    };
+  });
+}
+
+export function countNegativeSurplusMonths(rows: SpendPlanBacktestRow[]): number {
+  return rows.filter((r) => r.surplus < 0).length;
+}
+
+export type SpendPlanDeriveInput = {
+  monthlyOutflows: Record<string, number>;
+  asOf: string;
+  planStartMonth: string;
+  horizon: number;
+  startingBuffer: number;
+  base: number;
+  step: number;
+  stepEveryMonths?: number;
+  scenarios: SpendPlanScenario[];
+  fixedSeasonalIndices?: Record<number, number>;
+  /** When set, projection uses this L0 instead of the pulled mean (Keep-saved / override). */
+  fixedL0?: number;
+  backtest?: BacktestSpendPlanParams;
+};
+
+export type SpendPlanDerived = {
+  completeMonths: string[];
+  firstMonth: string | null;
+  lastCompleteMonth: string | null;
+  l0: number;
+  /** Always the mean of the L0 window from data — even when fixedL0 overrides projection. */
+  pulledL0: number;
+  l0WindowMonths: string[];
+  l0ShortWindow: boolean;
+  seasonal: SeasonalIndexResult;
+  ttmYoy: number | null;
+  historyRepeatsUnavailable: boolean;
+  historyRepeatsReason?: string;
+  excludedPartialMonth: string | null;
+  projection: SpendPlanMonthRow[];
+  scenarioResults: SpendPlanScenarioSummary[];
+  backtest?: SpendPlanBacktestRow[];
+  backtestNegativeMonths?: number;
+  filledCompleteAmounts: Record<string, number>;
+};
+
+export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
+  const planStart = parseMonthStart(input.planStartMonth);
+  const stepEveryMonths = input.stepEveryMonths ?? 3;
+  const completeMonths = deriveCompleteMonths(input.monthlyOutflows, input.asOf);
+  const { firstMonth } = deriveDataSpan(input.monthlyOutflows);
+  const lastCompleteMonth =
+    completeMonths.length > 0 ? completeMonths[completeMonths.length - 1]! : null;
+  const filledCompleteAmounts = fillCompleteMonthAmounts(
+    input.monthlyOutflows,
+    completeMonths
+  );
+
+  const l0WindowMonths = lastNFromCompleteMonths(completeMonths, 6);
+  const pulledL0 = computeL0(filledCompleteAmounts, l0WindowMonths) ?? 0;
+  const l0 = input.fixedL0 ?? pulledL0;
+  const l0ShortWindow = l0WindowMonths.length > 0 && l0WindowMonths.length < 6;
+
+  const seasonalKeys = seasonalWindowFromCompleteMonths(completeMonths, 24);
+  const seasonal =
+    input.fixedSeasonalIndices != null
+      ? {
+          indices: input.fixedSeasonalIndices,
+          missingMonths: [] as number[],
+          seasonalityDisabled: false,
+          distinctMonthsInWindow: 24,
+        }
+      : computeSeasonalIndices(
+          filledCompleteAmounts,
+          seasonalKeys,
+          input.asOf
+        );
+
+  const ttmYoy = computeTtmYoyGrowth(filledCompleteAmounts, completeMonths);
+  const hasHistoryRepeats = input.scenarios.some(
+    (s) => s.id === "history-repeats"
+  );
+  const historyRepeatsUnavailable = !hasHistoryRepeats && ttmYoy === null;
+  const historyRepeatsReason = historyRepeatsUnavailable
+    ? completeMonths.length < 24
+      ? `needs 24 complete months; have ${completeMonths.length}`
+      : "TTM YoY could not be computed from history"
+    : undefined;
+
+  const excludedPartialMonth = excludedPartialMonthBeforeStart(
+    planStart,
+    input.asOf
+  );
+
+  const projection = projectSpendPlan({
+    startMonth: planStart,
+    horizon: input.horizon,
+    startingBuffer: input.startingBuffer,
+    l0,
+    base: input.base,
+    step: input.step,
+    stepEveryMonths,
+    seasonalIndices: seasonal.indices,
+    scenarios: input.scenarios,
+  });
+
+  const scenarioResults = summarizeScenarios(projection, input.scenarios);
+
+  let backtestRows: SpendPlanBacktestRow[] | undefined;
+  let backtestNegativeMonths: number | undefined;
+  if (input.backtest) {
+    backtestRows = backtestSpendPlan({
+      ...input.backtest,
+      stepEveryMonths,
+    });
+    backtestNegativeMonths = countNegativeSurplusMonths(backtestRows);
+  }
+
+  return {
+    completeMonths,
+    firstMonth,
+    lastCompleteMonth,
+    l0,
+    pulledL0,
+    l0WindowMonths,
+    l0ShortWindow,
+    seasonal,
+    ttmYoy,
+    historyRepeatsUnavailable,
+    historyRepeatsReason,
+    excludedPartialMonth,
+    projection,
+    scenarioResults,
+    backtest: backtestRows,
+    backtestNegativeMonths,
+    filledCompleteAmounts,
+  };
+}
+
+export type SpendPlanResponse = {
+  methodNote: string;
+  inputs: SpendPlanInput[];
+  seasonalIndices: Record<number, number>;
+  seasonalityDisabled: boolean;
+  missingSeasonalMonths: number[];
+  excludedPartialMonth: string | null;
+  l0WindowMonths: string[];
+  historyRepeatsUnavailable?: boolean;
+  historyRepeatsReason?: string;
+  projection: SpendPlanMonthRow[];
+  scenarioResults: SpendPlanScenarioSummary[];
+  scenarios: SpendPlanScenario[];
+  backtest?: SpendPlanBacktestRow[];
+  backtestNegativeMonths?: number;
+};
+
+export function buildSpendPlanFromHistory(input: {
+  planStartMonth: string;
+  asOf: string;
+  horizon: number;
+  startingBuffer: number;
+  base: number;
+  step: number;
+  stepEveryMonths?: number;
+  monthlyDebits: Record<string, number>;
+  scenarios?: SpendPlanScenario[];
+  fixedSeasonalIndices?: Record<number, number>;
+  fixedL0?: number;
+  /** When true, starting_buffer chip is adjusted (kept-stale), not pulled. */
+  bufferAdjusted?: boolean;
+  backtest?: BacktestSpendPlanParams;
+}): SpendPlanResponse {
+  const planStart = parseMonthStart(input.planStartMonth);
+  const completeMonths = deriveCompleteMonths(input.monthlyDebits, input.asOf);
+  const filled = fillCompleteMonthAmounts(input.monthlyDebits, completeMonths);
+  const ttmYoy = computeTtmYoyGrowth(filled, completeMonths);
+  const scenarios =
+    input.scenarios ?? buildDefaultScenarios(ttmYoy);
+
+  const derived = deriveSpendPlan({
+    monthlyOutflows: input.monthlyDebits,
+    asOf: input.asOf,
+    planStartMonth: planStart,
+    horizon: input.horizon,
+    startingBuffer: input.startingBuffer,
+    base: input.base,
+    step: input.step,
+    stepEveryMonths: input.stepEveryMonths,
+    scenarios,
+    fixedSeasonalIndices: input.fixedSeasonalIndices,
+    fixedL0: input.fixedL0,
+    backtest: input.backtest,
+  });
+
+  const historyScenario = scenarios.find((s) => s.id === "history-repeats");
+  const l0Adjusted = input.fixedL0 != null;
+  const indicesAdjusted = input.fixedSeasonalIndices != null;
+
+  const inputs: SpendPlanInput[] = [
+    {
+      key: "base",
+      label: "Monthly allocation",
+      value: input.base,
+      provenance: "user-provided",
+      editable: true,
+    },
+    {
+      key: "step",
+      label: "Allocation step-up",
+      value: input.step,
+      provenance: "user-provided",
+      editable: true,
+    },
+    {
+      key: "horizon",
+      label: "Horizon (months)",
+      value: input.horizon,
+      provenance: "assumed",
+      editable: true,
+    },
+    {
+      key: "start_month",
+      label: "Plan start month",
+      value: planStart.slice(0, 7),
+      provenance: "assumed",
+      editable: true,
+    },
+    {
+      key: "starting_buffer",
+      label: "Starting cash buffer",
+      value: input.startingBuffer,
+      provenance: input.bufferAdjusted ? "adjusted" : "pulled",
+      editable: false,
+    },
+    {
+      key: "l0",
+      label: "Baseline monthly spend (L0)",
+      value: Math.round(derived.l0),
+      provenance: l0Adjusted ? "adjusted" : "pulled",
+      editable: false,
+    },
+  ];
+
+  if (l0Adjusted) {
+    inputs.push({
+      key: "l0_pulled",
+      label: "L0 (current pulled)",
+      value: Math.round(derived.pulledL0),
+      provenance: "pulled",
+      editable: false,
+    });
+  }
+
+  if (indicesAdjusted) {
+    inputs.push({
+      key: "seasonal_indices",
+      label: "Seasonal indices",
+      value: "kept from save",
+      provenance: "adjusted",
+      editable: false,
+    });
+  }
+
+  if (historyScenario) {
+    inputs.push({
+      key: "history_repeats_growth",
+      label: "History repeats growth (TTM YoY)",
+      value: `${(historyScenario.growthPct * 100).toFixed(1)}%`,
+      provenance: historyScenario.source,
+      editable: false,
+    });
+  }
+
+  return {
+    methodNote: SPEND_PLAN_METHOD_NOTE,
+    inputs,
+    seasonalIndices: derived.seasonal.indices,
+    seasonalityDisabled: derived.seasonal.seasonalityDisabled,
+    missingSeasonalMonths: derived.seasonal.missingMonths,
+    excludedPartialMonth: derived.excludedPartialMonth,
+    l0WindowMonths: derived.l0WindowMonths,
+    historyRepeatsUnavailable: derived.historyRepeatsUnavailable,
+    historyRepeatsReason: derived.historyRepeatsReason,
+    projection: derived.projection,
+    scenarioResults: derived.scenarioResults,
+    scenarios,
+    backtest: derived.backtest,
+    backtestNegativeMonths: derived.backtestNegativeMonths,
+  };
+}
+
+/** @deprecated Use seasonalWindowFromCompleteMonths */
+export function seasonalWindowMonthKeys(
+  planStartMonth: string,
+  asOf: string,
+  windowMonths = 24
+): string[] {
+  const end = lastNCompleteMonthsBeforeStart(planStartMonth, asOf, 1)[0];
+  if (!end) return [];
+  const keys: string[] = [];
+  let cur = subtractMonths(end, windowMonths - 1);
+  const endMonth = end;
+  while (cur <= endMonth) {
+    if (isCompleteMonth(cur, asOf)) keys.push(cur);
+    cur = addMonths(cur, 1);
+  }
+  return keys;
+}

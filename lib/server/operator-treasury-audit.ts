@@ -12,7 +12,7 @@ export async function writeOperatorTreasuryReadAudit(
     clientUserId: string;
     tenantId: string;
     grantId?: string | null;
-    surface?: "accounts" | "summary" | "transactions" | "labels" | "forecast" | "recommendations" | "inbox";
+    surface?: "accounts" | "summary" | "transactions" | "labels" | "forecast" | "spend_plan" | "recommendations" | "inbox" | "analytics";
   }
 ): Promise<void> {
   await writeTreasuryAudit(admin, {

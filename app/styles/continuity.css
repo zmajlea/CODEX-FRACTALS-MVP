@@ -200,6 +200,10 @@
 .chip.sealed .dot{ background:var(--brand); box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 25%, transparent); }
 [data-brand="summit"] .chip.saved{ color:var(--state-proposed-ink,#8a6a1e); border-color:color-mix(in srgb,var(--su-warn) 55%, var(--line)); background:color-mix(in srgb,var(--su-warn) 12%, var(--paper-2)); }
 [data-brand="summit"] .chip.saved .dot{ background:var(--su-warn); box-shadow:0 0 0 2px color-mix(in srgb,var(--su-warn) 26%, transparent); }
+[data-brand="summit"] .chip.prov-pulled{ color:var(--brand); border-color:color-mix(in srgb,var(--foil) 55%, var(--line)); background:color-mix(in srgb,var(--foil) 10%, var(--paper-2)); }
+[data-brand="summit"] .chip.prov-assumed{ color:var(--mute-ink); border-color:var(--line); background:var(--paper-2); }
+[data-brand="summit"] .chip.prov-user{ color:var(--ink); border-color:color-mix(in srgb,var(--brand) 40%, var(--line)); background:color-mix(in srgb,var(--brand) 8%, var(--paper)); }
+[data-brand="summit"] .chip.prov-adjusted{ color:var(--su-warn); border-color:color-mix(in srgb,var(--su-warn) 50%, var(--line)); background:color-mix(in srgb,var(--su-warn) 10%, var(--paper-2)); }
 
 /* bottom brand bar inside the stage: seal + type + palette */
 .brandbar{ margin-top:auto; display:flex; align-items:center; gap:18px; padding-top:12px; border-top:1px solid color-mix(in srgb,var(--on-canvas) 12%, transparent); }
