@@ -7,6 +7,25 @@ export type PostPickResult = {
   draftId?: string;
 };
 
+/** Exported for gate — null/undefined JSON must not throw on `.duplicate`. */
+export function parsePickBody(raw: unknown): {
+  error?: string;
+  duplicate: boolean;
+  draftId?: string;
+} {
+  const body =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const draft =
+    body.draft && typeof body.draft === "object"
+      ? (body.draft as { id?: string })
+      : undefined;
+  return {
+    error: typeof body.error === "string" ? body.error : undefined,
+    duplicate: Boolean(body?.duplicate),
+    draftId: typeof draft?.id === "string" ? draft.id : undefined,
+  };
+}
+
 export async function postPickableToDraft(
   clientUserId: string,
   draftKind: DraftKind,
@@ -20,17 +39,13 @@ export async function postPickableToDraft(
       body: JSON.stringify({ draft_kind: draftKind, pickable }),
     }
   );
-  const body = (await res.json().catch(() => ({}))) as {
-    error?: string;
-    duplicate?: boolean;
-    draft?: { id?: string };
-  };
+  const parsed = parsePickBody(await res.json().catch(() => ({})));
   if (!res.ok) {
-    throw new Error(body.error ?? "Failed to add to draft");
+    throw new Error(parsed.error ?? "Failed to add to draft");
   }
   return {
-    duplicate: Boolean(body.duplicate),
-    draftId: body.draft?.id,
+    duplicate: parsed.duplicate,
+    draftId: parsed.draftId,
   };
 }
 
@@ -50,16 +65,12 @@ export async function postTransactionIdsToDraft(
       }),
     }
   );
-  const body = (await res.json().catch(() => ({}))) as {
-    error?: string;
-    duplicate?: boolean;
-    draft?: { id?: string };
-  };
+  const parsed = parsePickBody(await res.json().catch(() => ({})));
   if (!res.ok) {
-    throw new Error(body.error ?? "Failed to add to draft");
+    throw new Error(parsed.error ?? "Failed to add to draft");
   }
   return {
-    duplicate: Boolean(body.duplicate),
-    draftId: body.draft?.id,
+    duplicate: parsed.duplicate,
+    draftId: parsed.draftId,
   };
 }

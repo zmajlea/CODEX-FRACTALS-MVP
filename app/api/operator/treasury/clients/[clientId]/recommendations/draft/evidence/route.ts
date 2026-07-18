@@ -80,7 +80,7 @@ export async function POST(request: Request, context: RouteContext) {
       }
       const appended = tryAppendEvidenceItem(draft.evidence, item);
       nextEvidence = appended.evidence;
-      duplicate = appended.duplicate;
+      duplicate = Boolean(appended?.duplicate);
       auditKind = item.kind;
       auditDetail = {
         pickable_kind: body.pickable.kind,
@@ -118,7 +118,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const appended = tryAppendTransactionEvidence(draft.evidence, transactionIds);
     nextEvidence = appended.evidence;
-    duplicate = appended.duplicate;
+    duplicate = Boolean(appended?.duplicate);
     auditDetail = { transaction_ids: transactionIds };
   }
 

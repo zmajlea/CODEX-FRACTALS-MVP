@@ -152,7 +152,6 @@ export function OperatorTreasuryClientRecord({
   const {
     pick: sharedPick,
     pickTransactions,
-    optimisticPick,
     pickNotice,
     clearNotice,
   } = useOptimisticPick(clientUserId, bumpBasket);
@@ -645,7 +644,6 @@ export function OperatorTreasuryClientRecord({
       <DraftsRail
         clientUserId={clientUserId}
         refreshKey={basketKey}
-        optimisticPick={optimisticPick}
         pickNotice={pickNotice}
         onClearPickNotice={clearNotice}
         onOpenDraft={(draftId) => {
