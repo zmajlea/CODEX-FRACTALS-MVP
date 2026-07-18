@@ -11,6 +11,7 @@ import { SpendPlanScenarioEditor } from "@/components/operator/treasury/spend-pl
 import { AnalyzerSampleSection } from "@/components/operator/treasury/spend-plan/AnalyzerSampleSection";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { monthYm } from "@/lib/treasury/spend-plan";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 
 type Props = {
@@ -147,22 +148,21 @@ function SpendPlanPanelBody({
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
     try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draft_kind: draftKind, pickable }),
-        }
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to draft");
-      }
+      await postPickableToDraft(clientUserId, draftKind, pickable);
       onBasketChanged?.();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to add to draft");
     }
+  }
+
+  function scenarioPickable(scenarioId: string, name: string, ending: number): Pickable | null {
+    if (!studyId) return null;
+    return {
+      kind: "scenario",
+      params: { studyId, scenarioId },
+      label: name,
+      sublabel: `ending ${fmtSigned(ending)}`,
+    };
   }
 
   return (
@@ -279,6 +279,8 @@ function SpendPlanPanelBody({
           bufferLabel={bufferLabel}
           onToggle={toggleExcludedMonth}
           onReason={setExcludedReason}
+          accountId={accountId}
+          onPick={addPickableToDraft}
         />
       ) : null}
 
@@ -371,10 +373,19 @@ function SpendPlanPanelBody({
                       <th className="pb-2 pr-3">Min cumulative</th>
                       <th className="pb-2 pr-3">Ending position</th>
                       <th className="pb-2">First cumul &lt; 0</th>
+                      {studyId ? (
+                        <th className="pb-2 w-10" aria-label="Add to draft" />
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
-                    {model.scenarioResults.map((s) => (
+                    {model.scenarioResults.map((s) => {
+                      const pick = scenarioPickable(
+                        s.scenarioId,
+                        s.scenarioName,
+                        s.endingPosition
+                      );
+                      return (
                       <tr
                         key={s.scenarioId}
                         className="border-b border-[var(--line)] tabular-nums"
@@ -401,8 +412,20 @@ function SpendPlanPanelBody({
                           {fmtSigned(s.endingPosition)}
                         </td>
                         <td className="py-2">{s.firstNegativeMonth ?? "—"}</td>
+                        {pick ? (
+                          <td className="py-2">
+                            <PickButton
+                              variant="row"
+                              pickable={pick}
+                              onPick={addPickableToDraft}
+                            />
+                          </td>
+                        ) : studyId ? (
+                          <td />
+                        ) : null}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

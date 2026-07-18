@@ -19,7 +19,9 @@ import { AnalyticsShell } from "@/components/operator/treasury/analytics/Analyti
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { formatTreasuryAsOf } from "@/lib/treasury/format";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import { defaultDateRange, periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   SummaryBucket,
   TreasuryAccountsResponse,
@@ -335,6 +337,15 @@ export function OperatorTreasuryClientRecord({
     setDateRange(savedDateRange);
   }
 
+  async function handleOverviewPick(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      await postPickableToDraft(clientUserId, draftKind, pickable);
+      setBasketKey((k) => k + 1);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
+
   function handleRuleSaved(suggestedCount: number, ruleId: string | null) {
     setRuleDraft(null);
     // Spec 36: stay on Rules; open the new rule’s Suggested queue
@@ -426,6 +437,7 @@ export function OperatorTreasuryClientRecord({
               accountCount={accountCount}
               csvOnly={csvOnly}
               transactionCount={data?.transaction_count}
+              onPick={handleOverviewPick}
             />
             <TreasuryAccountsView
               institutions={data?.institutions ?? []}
@@ -487,6 +499,7 @@ export function OperatorTreasuryClientRecord({
             onRuleSaved={handleRuleSaved}
             openRuleQueueId={openRuleQueueId}
             onOpenRuleQueueConsumed={() => setOpenRuleQueueId(null)}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
 
@@ -496,6 +509,7 @@ export function OperatorTreasuryClientRecord({
             institutions={data?.institutions ?? []}
             operatorName={who}
             onUnreadChange={setRecUnread}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
 
@@ -509,6 +523,7 @@ export function OperatorTreasuryClientRecord({
             showSyncFromBank={hasBankConnection}
             onSync={() => void load(true)}
             onImported={() => void load(false)}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
       </div>

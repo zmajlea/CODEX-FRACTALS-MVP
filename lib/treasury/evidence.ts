@@ -308,6 +308,9 @@ export function evidenceFromPickable(pickable: Pickable): Evidence {
     if (!id) {
       throw new Error(`Pickable ${pickable.kind} requires ref`);
     }
+    if (pickable.snap && pickable.kind === "import") {
+      return { kind: "import", id, snap: pickable.snap } as Evidence;
+    }
     return { kind: pickable.kind, id } as Evidence;
   }
 
@@ -591,13 +594,315 @@ export async function resolveEvidenceLive(
       continue;
     }
 
-    // Later batches
+    if (ev.kind === "summary_range") {
+      const from = typeof ev.params.from === "string" ? ev.params.from : null;
+      const to = typeof ev.params.to === "string" ? ev.params.to : null;
+      if (!from || !to) {
+        missingCount += 1;
+        items.push({
+          kind: "summary_range",
+          id: ev.id,
+          available: false,
+          label: "Range unavailable",
+        });
+        continue;
+      }
+      try {
+        const accountId =
+          typeof ev.params.accountId === "string" ? ev.params.accountId : undefined;
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, {
+          from,
+          to,
+          accountIds: accountId ? [accountId] : undefined,
+          status: "all",
+        });
+        const g =
+          typeof ev.params.granularity === "string" ? ev.params.granularity : "range";
+        items.push({
+          kind: "summary_range",
+          id: ev.id,
+          available: true,
+          label: `${g} ${from} → ${to} · ${formatSignedNet(agg.net)}`,
+          sublabel: `${agg.count} tx`,
+          amount: Math.abs(agg.net),
+          direction: agg.net > 0 ? "in" : agg.net < 0 ? "out" : null,
+        });
+      } catch {
+        missingCount += 1;
+        items.push({
+          kind: "summary_range",
+          id: ev.id,
+          available: false,
+          label: "Range unavailable",
+        });
+      }
+      continue;
+    }
+
+    if (ev.kind === "rule") {
+      const { data: rule } = await admin
+        .from("treasury_rules")
+        .select("id, name, match_merchant, assign_label, active")
+        .eq("client_user_id", clientUserId)
+        .eq("id", ev.id)
+        .maybeSingle();
+      if (!rule) {
+        missingCount += 1;
+        items.push({
+          kind: "rule",
+          id: ev.id,
+          available: false,
+          label: "Rule no longer available",
+        });
+        continue;
+      }
+      items.push({
+        kind: "rule",
+        id: ev.id,
+        available: true,
+        label: `"${rule.match_merchant}" → ${rule.assign_label}`,
+        sublabel: rule.active ? "active" : "paused",
+      });
+      continue;
+    }
+
+    if (ev.kind === "account") {
+      const { data: acct } = await admin
+        .from("treasury_accounts")
+        .select("account_id, name, mask, current_balance, iso_currency_code")
+        .eq("client_user_id", clientUserId)
+        .eq("account_id", ev.id)
+        .maybeSingle();
+      if (!acct) {
+        missingCount += 1;
+        items.push({
+          kind: "account",
+          id: ev.id,
+          available: false,
+          label: "Account no longer available",
+        });
+        continue;
+      }
+      const name = acct.name ?? acct.account_id;
+      const mask = acct.mask ? ` · ${acct.mask}` : "";
+      items.push({
+        kind: "account",
+        id: ev.id,
+        available: true,
+        label: `${name}${mask}`,
+        sublabel:
+          acct.current_balance != null
+            ? formatTreasuryMoney(Number(acct.current_balance), acct.iso_currency_code)
+            : undefined,
+      });
+      continue;
+    }
+
+    if (ev.kind === "month") {
+      const month =
+        typeof ev.params.month === "string" ? ev.params.month.slice(0, 7) : null;
+      if (!month) {
+        missingCount += 1;
+        items.push({
+          kind: "month",
+          id: ev.id,
+          available: false,
+          label: "Month unavailable",
+        });
+        continue;
+      }
+      const from = `${month}-01`;
+      const d = new Date(`${from}T12:00:00Z`);
+      const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+      const to = last.toISOString().slice(0, 10);
+      const accountId =
+        typeof ev.params.accountId === "string" ? ev.params.accountId : undefined;
+      try {
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, {
+          from,
+          to,
+          accountIds: accountId ? [accountId] : undefined,
+          status: "all",
+        });
+        items.push({
+          kind: "month",
+          id: ev.id,
+          available: true,
+          label: `Month ${month} · ${formatSignedNet(agg.net)}`,
+          sublabel: `${agg.count} tx · out ${formatTreasuryMoney(agg.outflow, "USD")}`,
+          amount: Math.abs(agg.net),
+          direction: agg.net > 0 ? "in" : agg.net < 0 ? "out" : null,
+        });
+      } catch {
+        missingCount += 1;
+        items.push({
+          kind: "month",
+          id: ev.id,
+          available: false,
+          label: "Month unavailable",
+        });
+      }
+      continue;
+    }
+
+    if (ev.kind === "scenario") {
+      const studyId =
+        typeof ev.params.studyId === "string" ? ev.params.studyId : null;
+      const scenarioId =
+        typeof ev.params.scenarioId === "string" ? ev.params.scenarioId : null;
+      if (!studyId || !scenarioId) {
+        missingCount += 1;
+        items.push({
+          kind: "scenario",
+          id: ev.id,
+          available: false,
+          label: "Scenario unavailable",
+        });
+        continue;
+      }
+      const { data: study } = await admin
+        .from("treasury_studies")
+        .select("id, name, scenarios")
+        .eq("client_user_id", clientUserId)
+        .eq("id", studyId)
+        .maybeSingle();
+      if (!study) {
+        missingCount += 1;
+        items.push({
+          kind: "scenario",
+          id: ev.id,
+          available: false,
+          label: "Scenario study unavailable",
+        });
+        continue;
+      }
+      const scenarios = (study.scenarios ?? []) as {
+        id: string;
+        name: string;
+        growthPct?: number;
+      }[];
+      const sc = scenarios.find((s) => s.id === scenarioId);
+      items.push({
+        kind: "scenario",
+        id: ev.id,
+        available: true,
+        label: sc?.name ?? scenarioId,
+        sublabel: study.name ? `in ${study.name}` : undefined,
+      });
+      continue;
+    }
+
+    if (ev.kind === "forecast") {
+      const asOf =
+        typeof ev.params.asOf === "string"
+          ? ev.params.asOf
+          : typeof ev.params.to === "string"
+            ? ev.params.to
+            : null;
+      const g =
+        typeof ev.params.granularity === "string" ? ev.params.granularity : "month";
+      items.push({
+        kind: "forecast",
+        id: ev.id,
+        available: true,
+        label: asOf ? `Forecast as of ${asOf}` : "Forecast",
+        sublabel: g,
+      });
+      continue;
+    }
+
+    if (ev.kind === "figure") {
+      const metric =
+        typeof ev.params.metric === "string" ? ev.params.metric : "figure";
+      const from = typeof ev.params.from === "string" ? ev.params.from : undefined;
+      const to = typeof ev.params.to === "string" ? ev.params.to : undefined;
+      items.push({
+        kind: "figure",
+        id: ev.id,
+        available: true,
+        label: metric.replace(/_/g, " "),
+        sublabel: [from, to].filter(Boolean).join(" → ") || undefined,
+      });
+      continue;
+    }
+
+    if (ev.kind === "import") {
+      // Prefer frozen snap (reconcile report at pick); else CSV source stub.
+      if (ev.snap && typeof ev.snap === "object" && "label" in (ev.snap as object)) {
+        const snap = ev.snap as { label?: string; sublabel?: string };
+        items.push({
+          kind: "import",
+          id: ev.id,
+          available: true,
+          label: snap.label ?? "Import",
+          sublabel: snap.sublabel,
+        });
+        continue;
+      }
+      const { data: item } = await admin
+        .from("plaid_items")
+        .select("id, institution_name, plaid_item_id")
+        .eq("client_user_id", clientUserId)
+        .or(`id.eq.${ev.id},plaid_item_id.eq.${ev.id}`)
+        .maybeSingle();
+      if (!item && ev.id !== "csv-manual") {
+        missingCount += 1;
+        items.push({
+          kind: "import",
+          id: ev.id,
+          available: false,
+          label: "Import no longer available",
+        });
+        continue;
+      }
+      items.push({
+        kind: "import",
+        id: ev.id,
+        available: true,
+        label: item?.institution_name ?? "CSV import",
+        sublabel:
+          item?.plaid_item_id === "csv-manual" || ev.id === "csv-manual"
+            ? "csv"
+            : "bank",
+      });
+      continue;
+    }
+
+    if (ev.kind === "recommendation") {
+      const { data: rec } = await admin
+        .from("treasury_recommendations")
+        .select("id, title, status, sealed_at, kind")
+        .eq("client_user_id", clientUserId)
+        .eq("id", ev.id)
+        .maybeSingle();
+      if (!rec || !rec.sealed_at) {
+        missingCount += 1;
+        items.push({
+          kind: "recommendation",
+          id: ev.id,
+          available: false,
+          label: "Sealed recommendation unavailable",
+        });
+        continue;
+      }
+      items.push({
+        kind: "recommendation",
+        id: ev.id,
+        available: true,
+        label: rec.title || "Recommendation",
+        sublabel: `sealed · ${rec.status}`,
+      });
+      continue;
+    }
+
+    // All Evidence kinds are handled above; keep a runtime fallback for stale stored rows.
     missingCount += 1;
+    const stale = ev as { kind: string; id?: string };
     items.push({
-      kind: ev.kind,
-      id: "id" in ev ? ev.id : undefined,
+      kind: (stale.kind as Exclude<Evidence["kind"], "transaction">) || "txquery",
+      id: stale.id,
       available: false,
-      label: `${ev.kind} (resolver pending)`,
+      label: `${stale.kind} (resolver pending)`,
     });
   }
 

@@ -869,6 +869,7 @@ export function TreasuryLedgerPanel({
               }}
               onMakeRule={onMakeRule ? () => onMakeRule(tx) : undefined}
               onOpenRuleQueue={onOpenRuleQueue}
+              onPick={addPickableToDraft}
             />
           ))}
         </div>

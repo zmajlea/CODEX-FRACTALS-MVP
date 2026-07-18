@@ -1,6 +1,8 @@
 "use client";
 
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatSuMoney } from "@/lib/treasury/format";
+import type { Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
 
 export function txStatusChip(tx: TreasuryTransactionRow) {
@@ -61,6 +63,7 @@ type Props = {
   onMakeRule?: () => void;
   /** Spec 36 return leg — open the producing rule’s queue */
   onOpenRuleQueue?: (ruleId: string) => void;
+  onPick?: (draftKind: import("@/lib/treasury/pickable").DraftKind, pickable: import("@/lib/treasury/pickable").Pickable) => void;
 };
 
 export function TreasuryTxRow({
@@ -80,7 +83,16 @@ export function TreasuryTxRow({
   onStartEdit,
   onMakeRule,
   onOpenRuleQueue,
+  onPick,
 }: Props) {
+  const payee = tx.merchant_name ?? tx.normalized_merchant ?? "—";
+  const rowPickable: Pickable = {
+    kind: "transaction",
+    ref: tx.id,
+    label: payee,
+    sublabel: tx.posted_date ?? undefined,
+  };
+
   return (
     <div
       className={`txr ${tx.suggestion_status === "suggested" ? "r-review" : ""}`}
@@ -151,6 +163,11 @@ export function TreasuryTxRow({
         {formatSuMoney(Number(tx.amount), tx.direction)}
       </span>
       <span className="txr-status flex flex-col gap-1 items-start">
+        {onPick ? (
+          <span className="txr-pick mb-1" onClick={(e) => e.stopPropagation()}>
+            <PickButton variant="row" pickable={rowPickable} onPick={onPick} />
+          </span>
+        ) : null}
         {txStatusChip(tx)}
         {tx.suggestion_status === "suggested" ? (
           <span className="flex gap-2">

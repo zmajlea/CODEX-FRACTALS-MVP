@@ -5,6 +5,7 @@ import { TreasuryForecastDrillModal } from "@/components/operator/treasury/Treas
 import { TreasuryPeriodDrillModal } from "@/components/operator/treasury/TreasuryPeriodDrillModal";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import {
   listPeriodStarts,
   periodEnd,
@@ -239,18 +240,7 @@ export function TreasurySummaryPanel({
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
     try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draft_kind: draftKind, pickable }),
-        }
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to draft");
-      }
+      await postPickableToDraft(clientUserId, draftKind, pickable);
       onBasketChanged?.();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to add to draft");
@@ -269,6 +259,18 @@ export function TreasurySummaryPanel({
       },
       label: `${periodLabel(granularity, row.period_start)} · ${formatTreasuryMoney(row.net, row.iso_currency_code)}`,
       sublabel: `${row.count} tx`,
+    };
+  }
+
+  function rangePickable(): Pickable | null {
+    const from = data?.from ?? since;
+    const to = data?.to ?? todayIso();
+    if (!from || !to) return null;
+    return {
+      kind: "summary_range",
+      params: { granularity, from, to },
+      label: `Summary ${from} → ${to}`,
+      sublabel: `${granularity} · ${periods} period${periods === 1 ? "" : "s"}`,
     };
   }
 
@@ -344,6 +346,27 @@ export function TreasurySummaryPanel({
     return fps.reduce((min, p) => (p.closing < min.closing ? p : min), fps[0]!);
   }, [forecast?.periods]);
 
+  function forecastPickable(): Pickable | null {
+    if (!forecast || forecast.refuse_projection || forecast.insufficient_history) {
+      return null;
+    }
+    if (!forecast.periods.length) return null;
+    const asOf =
+      forecast.as_of?.slice(0, 10) ??
+      forecast.data_span?.last ??
+      todayIso();
+    return {
+      kind: "forecast",
+      params: { granularity, asOf },
+      label: lowPoint
+        ? `Forecast low · ${periodLabel(granularity, lowPoint.period_start)}`
+        : `Forecast as of ${asOf}`,
+      sublabel: lowPoint
+        ? formatTreasuryMoney(lowPoint.closing, forecast.currency)
+        : `${forecast.periods.length} periods`,
+    };
+  }
+
   function handleForecastBarClick(bar: TreasuryForecastPeriod) {
     const full = forecast?.periods.find((p) => p.period_start === bar.period_start);
     if (full) setForecastDrill(full);
@@ -382,6 +405,13 @@ export function TreasurySummaryPanel({
             since {since} · {periods} {granWord} period{periods === 1 ? "" : "s"}
           </span>
         </label>
+        {rangePickable() ? (
+          <PickButton
+            variant="header"
+            pickable={rangePickable()!}
+            onPick={addPickableToDraft}
+          />
+        ) : null}
         {data?.data_span ? (
           <span className="text-xs text-codex-muted ml-auto">
             Data through {data.data_span.last}
@@ -438,14 +468,23 @@ export function TreasurySummaryPanel({
           ) : forecast && forecast.periods.length > 0 ? (
             <>
               {lowPoint ? (
-                <div className="fc-stat trough mt-4 p-3 rounded border border-sealed-bone">
-                  <p className="fcs-k">Projected low point</p>
-                  <p className="fcs-v">
-                    {formatTreasuryMoney(lowPoint.closing, forecast.currency)}
-                  </p>
-                  <p className="fcs-n">
-                    {periodLabel(granularity, lowPoint.period_start)}
-                  </p>
+                <div className="fc-stat trough mt-4 p-3 rounded border border-sealed-bone flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="fcs-k">Projected low point</p>
+                    <p className="fcs-v">
+                      {formatTreasuryMoney(lowPoint.closing, forecast.currency)}
+                    </p>
+                    <p className="fcs-n">
+                      {periodLabel(granularity, lowPoint.period_start)}
+                    </p>
+                  </div>
+                  {forecastPickable() ? (
+                    <PickButton
+                      variant="header"
+                      pickable={forecastPickable()!}
+                      onPick={addPickableToDraft}
+                    />
+                  ) : null}
                 </div>
               ) : null}
 

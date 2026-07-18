@@ -1,5 +1,6 @@
 "use client";
 
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { SpendPlanHistoryResponse } from "@/lib/treasury/spend-plan";
 import {
   monthYm,
@@ -7,6 +8,7 @@ import {
   meanOfMonths,
   fillCompleteMonthAmounts,
 } from "@/lib/treasury/spend-plan";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { StudyExcludedMonth } from "@/lib/treasury/studies";
 
 type Props = {
@@ -19,6 +21,8 @@ type Props = {
   bufferLabel: string;
   onToggle: (monthYm: string) => void;
   onReason: (monthYm: string, reason: string) => void;
+  accountId?: string;
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 function fmt(n: number): string {
@@ -42,6 +46,8 @@ export function AnalyzerSampleSection({
   bufferLabel,
   onToggle,
   onReason,
+  accountId,
+  onPick,
 }: Props) {
   const months = Object.keys(history.monthlyOutflows).sort();
   const excludedSet = new Set(excludedMonths.map((e) => monthYm(e.month)));
@@ -60,6 +66,20 @@ export function AnalyzerSampleSection({
     ...months.map((m) => history.monthlyOutflows[m] ?? 0)
   );
   const l6 = new Set(l0WindowMonths.map((m) => monthYm(m)));
+
+  function monthPickable(ym: string, debits: number, idx: number | undefined): Pickable {
+    const params: Record<string, unknown> = { month: ym };
+    if (accountId) params.accountId = accountId;
+    return {
+      kind: "month",
+      params,
+      label: `Month ${ym}`,
+      sublabel:
+        idx != null
+          ? `$${fmt(debits)} · index ${idx.toFixed(2)}`
+          : `$${fmt(debits)}`,
+    };
+  }
 
   return (
     <section className="space-y-4">
@@ -128,6 +148,7 @@ export function AnalyzerSampleSection({
                 <th className="pb-2 pr-2 text-right">Index</th>
                 <th className="pb-2 pr-2 text-center">In</th>
                 <th className="pb-2">Reason</th>
+                {onPick ? <th className="pb-2 w-10" aria-label="Add to draft" /> : null}
               </tr>
             </thead>
             <tbody>
@@ -170,6 +191,19 @@ export function AnalyzerSampleSection({
                         />
                       ) : null}
                     </td>
+                    {onPick ? (
+                      <td className="py-1.5" onClick={(e) => e.stopPropagation()}>
+                        <PickButton
+                          variant="row"
+                          pickable={monthPickable(
+                            ym,
+                            history.monthlyOutflows[m] ?? 0,
+                            off ? undefined : idx
+                          )}
+                          onPick={onPick}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}

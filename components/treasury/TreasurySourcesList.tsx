@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { BcnIcon } from "@/components/bcn/BcnIcon";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { TreasuryManualAccountForm } from "@/components/treasury/TreasuryManualAccountForm";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryAccountView, TreasuryInstitutionView } from "@/lib/treasury/types";
 
 type Props = {
@@ -13,6 +15,7 @@ type Props = {
   csvImportedBy?: string | null;
   onDisconnect?: (sourceId: string, sourceName: string) => Promise<void>;
   onAccountsChanged?: () => void;
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 export function TreasurySourcesList({
@@ -22,6 +25,7 @@ export function TreasurySourcesList({
   csvImportedBy,
   onDisconnect,
   onAccountsChanged,
+  onPick,
 }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<TreasuryAccountView | null>(null);
@@ -164,6 +168,21 @@ export function TreasurySourcesList({
                           <span className="src-account-balance tabular-nums">
                             {formatTreasuryMoney(acct.current_balance, acct.iso_currency_code)}
                           </span>
+                          {onPick ? (
+                            <PickButton
+                              variant="row"
+                              pickable={{
+                                kind: "account",
+                                ref: acct.account_id,
+                                label: `${acct.name ?? "Account"}${acct.mask ? ` · ${acct.mask}` : ""}`,
+                                sublabel: formatTreasuryMoney(
+                                  acct.current_balance,
+                                  acct.iso_currency_code
+                                ),
+                              }}
+                              onPick={onPick}
+                            />
+                          ) : null}
                           {canEditAccounts ? (
                             <span className="flex gap-1 ml-2">
                               <button

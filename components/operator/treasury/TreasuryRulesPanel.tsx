@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryRuleRow, TreasuryTransactionRow } from "@/lib/treasury/types";
 
 type Props = {
@@ -15,6 +18,7 @@ type Props = {
   /** Open this rule’s Suggested queue (ledger return leg) */
   openRuleQueueId?: string | null;
   onOpenRuleQueueConsumed?: () => void;
+  onBasketChanged?: () => void;
 };
 
 type QueueTab = "suggested" | "confirmed";
@@ -54,6 +58,7 @@ export function TreasuryRulesPanel({
   onRuleSaved,
   openRuleQueueId,
   onOpenRuleQueueConsumed,
+  onBasketChanged,
 }: Props) {
   const [rules, setRules] = useState<TreasuryRuleRow[]>([]);
   const [rulesLoading, setRulesLoading] = useState(true);
@@ -74,6 +79,26 @@ export function TreasuryRulesPanel({
   const [queuePage, setQueuePage] = useState(0);
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
+
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      await postPickableToDraft(clientUserId, draftKind, pickable);
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
+
+  function rulePickable(r: TreasuryRuleRow): Pickable {
+    const suggested = r.suggested_count ?? 0;
+    const confirmed = r.confirmed_count ?? 0;
+    return {
+      kind: "rule",
+      ref: r.id,
+      label: `"${r.match_merchant}" → ${r.assign_label}`,
+      sublabel: `${suggested} suggested · ${confirmed} confirmed`,
+    };
+  }
 
   const load = useCallback(async () => {
     setRulesLoading(true);
@@ -468,6 +493,11 @@ export function TreasuryRulesPanel({
                       <p className="text-xs text-codex-muted mt-1">{r.name}</p>
                     </button>
                     <div className="flex flex-col gap-1 shrink-0 items-stretch">
+                      <PickButton
+                        variant="row"
+                        pickable={rulePickable(r)}
+                        onPick={addPickableToDraft}
+                      />
                       <button
                         type="button"
                         className="btn btn-secondary text-xs"

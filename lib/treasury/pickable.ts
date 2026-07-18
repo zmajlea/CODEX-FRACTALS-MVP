@@ -30,6 +30,11 @@ export type Pickable = {
   label: string;
   /** One line — the number that matters */
   sublabel?: string;
+  /**
+   * Optional frozen payload for refs with no durable row (e.g. CSV reconcile).
+   * Not params — not re-validated as absolute dates.
+   */
+  snap?: Record<string, unknown>;
 };
 
 export type DraftKind = "recommendation" | "question";
@@ -77,7 +82,13 @@ const ENUM_ALLOW: Record<string, readonly string[]> = {
 };
 
 /** Free-text search / human description — still reject relative range tokens. */
-const FREE_TEXT_KEYS = new Set(["q", "description", "label", "sublabel"]);
+const FREE_TEXT_KEYS = new Set([
+  "q",
+  "description",
+  "label",
+  "sublabel",
+  "metric",
+]);
 
 function looksLikeRelativeRangeToken(value: string): boolean {
   const lower = value.toLowerCase().trim();

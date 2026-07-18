@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import {
   IMPACT_BASIS_LABELS,
   RECOMMENDATION_CATEGORIES,
@@ -23,6 +26,7 @@ type Props = {
   institutions: TreasuryInstitutionView[];
   operatorName?: string | null;
   onUnreadChange?: (count: number) => void;
+  onBasketChanged?: () => void;
 };
 
 const STATUS_ORDER: Record<RecommendationStatus, number> = {
@@ -58,6 +62,7 @@ export function TreasuryRecommendationsPanel({
   institutions,
   operatorName,
   onUnreadChange,
+  onBasketChanged,
 }: Props) {
   const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
   const [rollup, setRollup] = useState<TreasuryRecommendationRollup | null>(null);
@@ -65,6 +70,15 @@ export function TreasuryRecommendationsPanel({
   const [error, setError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [sending, setSending] = useState(false);
+
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      await postPickableToDraft(clientUserId, draftKind, pickable);
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<RecommendationCategory>("liquidity");
@@ -334,6 +348,18 @@ export function TreasuryRecommendationsPanel({
                     <span className="rec-bdot" />
                     {RECOMMENDATION_STATUS_LABELS[rec.status]}
                   </span>
+                  {sealed ? (
+                    <PickButton
+                      variant="row"
+                      pickable={{
+                        kind: "recommendation",
+                        ref: rec.id,
+                        label: rec.title || "Recommendation",
+                        sublabel: `sealed · ${formatTreasuryAsOf(rec.sealed_at)}`,
+                      }}
+                      onPick={addPickableToDraft}
+                    />
+                  ) : null}
                 </div>
                 <h3 className="rec-title">{rec.title}</h3>
                 <p className="rec-why">

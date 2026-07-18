@@ -1,11 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { TreasuryImportReconcile } from "@/lib/treasury/csv-import";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 
 type Props = {
   clientUserId: string;
   onImported?: () => void;
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 function fmtMoney(n: number): string {
@@ -15,7 +18,7 @@ function fmtMoney(n: number): string {
   });
 }
 
-export function TreasuryCsvImport({ clientUserId, onImported }: Props) {
+export function TreasuryCsvImport({ clientUserId, onImported, onPick }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [importingRows, setImportingRows] = useState<number | null>(null);
@@ -116,7 +119,34 @@ export function TreasuryCsvImport({ clientUserId, onImported }: Props) {
 
       {report ? (
         <div className="panel mt-4 p-4 text-sm" style={{ border: "1px solid var(--line)" }}>
-          <p className="sec-title mb-2">Import reconcile</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p className="sec-title mb-0">Import reconcile</p>
+            {onPick ? (
+              <PickButton
+                variant="header"
+                pickable={{
+                  kind: "import",
+                  ref: "csv-manual",
+                  label: "CSV import reconcile",
+                  sublabel: `${report.imported} imported · net $${fmtMoney(report.net)}`,
+                  snap: {
+                    label: "CSV import reconcile",
+                    sublabel: `${report.imported} imported · ${report.dateMin ?? "—"} → ${report.dateMax ?? "—"} · net $${fmtMoney(report.net)}`,
+                    rowsRead: report.rowsRead,
+                    imported: report.imported,
+                    skipped: report.skipped,
+                    inflowSum: report.inflowSum,
+                    outflowSum: report.outflowSum,
+                    net: report.net,
+                    dateMin: report.dateMin,
+                    dateMax: report.dateMax,
+                    signConvention: report.signConvention?.kind ?? null,
+                  },
+                }}
+                onPick={onPick}
+              />
+            ) : null}
+          </div>
           <dl className="grid gap-1 treasury-meta">
             <div>
               <strong>{report.rowsRead}</strong> rows read · <strong>{report.imported}</strong>{" "}
