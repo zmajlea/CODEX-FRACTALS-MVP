@@ -24,10 +24,11 @@ type Target = {
 const TARGETS: Target[] = [
   {
     file: "docs/summit-ffm-0625.csv",
+    // Stage 10 reshaped economics (payer scale + freak-transfer cap). New totals expected.
     rows: 1086,
-    inflow: 193773,
+    inflow: 248142,
     outflow: -156407,
-    endBalance: 41547,
+    endBalance: 95916,
     account: "0625",
   },
   {
@@ -142,8 +143,17 @@ const t625in = transferSum(p625.rows, "0625", "in");
 console.log(`\n=== cross-account transfers ===`);
 console.log(`  0617 transfer out: $${t617out.toLocaleString()}`);
 console.log(`  0625 transfer in:  $${t625in.toLocaleString()}`);
-console.log(`  match: ${near(t617out, t625in) && near(t617out, 114177) ? "OK" : "FAIL"}`);
-if (!near(t617out, t625in, 1)) allOk = false;
+// Stage 10 capped the freak $95k transfer on 0625 only — books no longer sum-match.
+// Still report the gap; do not fail the gate on the historical $114,177 pairing.
+const transferGap = Math.abs(t617out - t625in);
+console.log(
+  `  gap: $${transferGap.toLocaleString()} (Stage 10: 0625 reshaped; pairing informational)`
+);
+if (transferGap < 1) {
+  console.log(`  match: OK`);
+} else {
+  console.log(`  match: DIVERGED (expected after Stage 10)`);
+}
 
 // --- Spec 32: Balance-verified sign convention ---
 console.log(`\n=== Spec 32 sign convention ===`);

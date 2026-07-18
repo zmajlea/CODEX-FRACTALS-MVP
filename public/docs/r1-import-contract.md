@@ -63,7 +63,7 @@ Use this to verify against your source spreadsheet.
 
 | File | Account | Rows | Inflows | Outflows | End balance |
 |------|---------|------|---------|----------|-------------|
-| `docs/summit-ffm-0625.csv` | 0625 | 1,086 | $193,773 | −$156,407 | $41,547 |
+| `docs/summit-ffm-0625.csv` | 0625 | 1,086 | $248,142 | −$156,407 | $95,916 |
 | `docs/summit-ffm-0617.csv` | 0617 | 1,121 | $118,409 | −$117,669 | $3,000 |
 
 Cross-account internal transfers net to $0 (0617 transfer out ≈ 0625 transfer in ≈ $114,177).
