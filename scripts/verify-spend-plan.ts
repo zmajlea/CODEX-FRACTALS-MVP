@@ -205,9 +205,18 @@ check(
 
 const fullPrecisionSum = Object.values(seasonal.indices).reduce((s, v) => s + v, 0);
 check(
-  "full-precision indices sum ≈ 12 (self-normalising)",
+  "full-precision indices sum ≈ 12 (self-normalising, full sample)",
   Math.abs(fullPrecisionSum - 12) < 1e-9,
   `sum ${fullPrecisionSum}`
+);
+check(
+  "full sample: each calendar month n=2",
+  ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const).every(
+    (m) => seasonal.sampleCounts[m] === 2
+  ),
+  Object.entries(seasonal.sampleCounts)
+    .map(([m, n]) => `${m}:n=${n}`)
+    .join(" ")
 );
 
 const historyG = computeTtmYoyGrowth(filled, complete);
@@ -391,6 +400,23 @@ check(
   Math.abs((exclDec.indices[12] ?? 0) - (seasonal.indices[12] ?? 0)) > 1e-6 ||
     Math.abs((exclDec.indices[6] ?? 0) - (seasonal.indices[6] ?? 0)) > 1e-6,
   `Dec idx ${exclDec.indices[12]} vs ${seasonal.indices[12]}`
+);
+check(
+  "excluding Dec drops Dec sample count to n=1",
+  exclDec.sampleCounts[12] === 1,
+  `n=${exclDec.sampleCounts[12]}`
+);
+check(
+  "excluding Dec does not keep other months at n=2",
+  ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const).every(
+    (m) => exclDec.sampleCounts[m] === 2
+  )
+);
+const exclSum = Object.values(exclDec.indices).reduce((s, v) => s + v, 0);
+check(
+  "excluding Dec: Σ indices ≠ 12 (no silent renormalise)",
+  Math.abs(exclSum - 12) > 1e-6,
+  `sum ${exclSum}`
 );
 const l0ExclMar = computeL0(
   filled,

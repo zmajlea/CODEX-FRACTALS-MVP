@@ -17,6 +17,7 @@ type Props = {
   l0: number;
   l0WindowMonths: string[];
   seasonalIndices: Record<number, number>;
+  seasonalSampleCounts?: Record<number, number>;
   ttmYoy: number | null;
   bufferLabel: string;
   onToggle: (monthYm: string) => void;
@@ -42,6 +43,7 @@ export function AnalyzerSampleSection({
   l0,
   l0WindowMonths,
   seasonalIndices,
+  seasonalSampleCounts,
   ttmYoy,
   bufferLabel,
   onToggle,
@@ -170,7 +172,13 @@ export function AnalyzerSampleSection({
                       ${fmt(history.monthlyOutflows[m] ?? 0)}
                     </td>
                     <td className="py-1.5 pr-2 text-right">
-                      {off || idx == null ? "—" : idx.toFixed(2)}
+                      {off || idx == null
+                        ? "—"
+                        : `${idx.toFixed(2)}${
+                            seasonalSampleCounts?.[cal] != null
+                              ? ` (n=${seasonalSampleCounts[cal]})`
+                              : ""
+                          }`}
                     </td>
                     <td className="py-1.5 pr-2 text-center">
                       <button

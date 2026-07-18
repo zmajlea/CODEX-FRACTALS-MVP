@@ -275,6 +275,7 @@ function SpendPlanPanelBody({
           l0={Number(model.inputs.find((i) => i.key === "l0")?.value ?? 0)}
           l0WindowMonths={model.l0WindowMonths}
           seasonalIndices={model.seasonalIndices}
+          seasonalSampleCounts={model.seasonalSampleCounts}
           ttmYoy={pulledTtmYoy}
           bufferLabel={bufferLabel}
           onToggle={toggleExcludedMonth}
@@ -330,6 +331,10 @@ function SpendPlanPanelBody({
             style={{ border: "1px solid var(--line)" }}
           >
             <p className="sec-title mb-2">Seasonal indices</p>
+            <p className="treasury-meta-fine mb-2">
+              n = years in the sample for that calendar month. Excluding a month
+              can leave an index on a single observation — that is intentional.
+            </p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="treasury-meta text-left">
@@ -342,11 +347,30 @@ function SpendPlanPanelBody({
               </thead>
               <tbody>
                 <tr className="tabular-nums">
-                  {MONTH_NAMES.map((_, i) => (
-                    <td key={i} className="pr-2">
-                      {(model.seasonalIndices[i + 1] ?? 1).toFixed(2)}
-                    </td>
-                  ))}
+                  {MONTH_NAMES.map((_, i) => {
+                    const month = i + 1;
+                    const idx = model.seasonalIndices[month] ?? 1;
+                    const n = model.seasonalSampleCounts?.[month] ?? 0;
+                    const missing = model.missingSeasonalMonths?.includes(month);
+                    if (model.seasonalityDisabled || missing) {
+                      return (
+                        <td key={i} className="pr-2">
+                          1.00
+                          <span className="treasury-meta-fine block">no data</span>
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={i} className="pr-2">
+                        {idx.toFixed(2)}
+                        <span
+                          className={`treasury-meta-fine block ${n <= 1 ? "text-[var(--su-neg,#E67E50)]" : ""}`}
+                        >
+                          (n={n})
+                        </span>
+                      </td>
+                    );
+                  })}
                 </tr>
               </tbody>
             </table>

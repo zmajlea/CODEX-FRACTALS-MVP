@@ -60,6 +60,8 @@ export type SpendPlanScenarioSummary = {
 
 export type SeasonalIndexResult = {
   indices: Record<number, number>;
+  /** Observations per calendar month (block ratios averaged). Spec 28 / Stage 6. */
+  sampleCounts: Record<number, number>;
   missingMonths: number[];
   seasonalityDisabled: boolean;
   distinctMonthsInWindow: number;
@@ -301,9 +303,14 @@ export function computeSeasonalIndices(
 
   if (distinct < 12) {
     const indices: Record<number, number> = {};
-    for (let m = 1; m <= 12; m++) indices[m] = 1;
+    const sampleCounts: Record<number, number> = {};
+    for (let m = 1; m <= 12; m++) {
+      indices[m] = 1;
+      sampleCounts[m] = 0;
+    }
     return {
       indices,
+      sampleCounts,
       missingMonths: [],
       seasonalityDisabled: true,
       distinctMonthsInWindow: distinct,
@@ -312,6 +319,7 @@ export function computeSeasonalIndices(
 
   const blocks = partitionIntoYearBlocks(completeKeys);
   const indices: Record<number, number> = {};
+  const sampleCounts: Record<number, number> = {};
   const missingMonths: number[] = [];
 
   for (let m = 1; m <= 12; m++) {
@@ -324,6 +332,7 @@ export function computeSeasonalIndices(
       if (!key || excluded.has(monthYm(key))) continue;
       ratios.push((monthlyDebits[key] ?? 0) / blockMean);
     }
+    sampleCounts[m] = ratios.length;
     if (ratios.length === 0) {
       indices[m] = 1;
       missingMonths.push(m);
@@ -334,6 +343,7 @@ export function computeSeasonalIndices(
 
   return {
     indices,
+    sampleCounts,
     missingMonths,
     seasonalityDisabled: false,
     distinctMonthsInWindow: distinct,
@@ -597,20 +607,24 @@ export function deriveSpendPlan(input: SpendPlanDeriveInput): SpendPlanDerived {
   const l0ShortWindow = l0WindowMonths.length > 0 && l0WindowMonths.length < 6;
 
   const seasonalKeys = seasonalWindowFromCompleteMonths(completeMonths, 24);
-  const seasonal =
+  // Always compute live indices + sample counts. Exclusions change n by design;
+  // never renormalise Σ indices back to 12 (Stage 6).
+  const liveSeasonal = computeSeasonalIndices(
+    filledCompleteAmounts,
+    seasonalKeys,
+    input.asOf,
+    excluded
+  );
+  const seasonal: SeasonalIndexResult =
     input.fixedSeasonalIndices != null
       ? {
+          ...liveSeasonal,
           indices: input.fixedSeasonalIndices,
-          missingMonths: [] as number[],
+          // Kept indices may disagree with live missingMonths; counts stay live.
+          missingMonths: [],
           seasonalityDisabled: false,
-          distinctMonthsInWindow: 24,
         }
-      : computeSeasonalIndices(
-          filledCompleteAmounts,
-          seasonalKeys,
-          input.asOf,
-          excluded
-        );
+      : liveSeasonal;
 
   const ttmYoy = computeTtmYoyGrowth(
     filledCompleteAmounts,
@@ -682,6 +696,8 @@ export type SpendPlanResponse = {
   methodNote: string;
   inputs: SpendPlanInput[];
   seasonalIndices: Record<number, number>;
+  /** Observations per calendar month used to form each index. */
+  seasonalSampleCounts: Record<number, number>;
   seasonalityDisabled: boolean;
   missingSeasonalMonths: number[];
   excludedPartialMonth: string | null;
@@ -829,6 +845,7 @@ export function buildSpendPlanFromHistory(input: {
     methodNote: SPEND_PLAN_METHOD_NOTE,
     inputs,
     seasonalIndices: derived.seasonal.indices,
+    seasonalSampleCounts: derived.seasonal.sampleCounts,
     seasonalityDisabled: derived.seasonal.seasonalityDisabled,
     missingSeasonalMonths: derived.seasonal.missingMonths,
     excludedPartialMonth: derived.excludedPartialMonth,
