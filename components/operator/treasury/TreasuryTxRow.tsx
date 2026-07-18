@@ -1,6 +1,6 @@
 "use client";
 
-import { formatTreasuryMoney } from "@/lib/treasury/format";
+import { formatSuMoney } from "@/lib/treasury/format";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
 
 export function txStatusChip(tx: TreasuryTransactionRow) {
@@ -147,8 +147,8 @@ export function TreasuryTxRow({
           </>
         )}
       </span>
-      <span className={`txr-amt ta-r ${tx.direction === "in" ? "in" : "out"}`}>
-        {formatTreasuryMoney(Math.abs(Number(tx.amount)), tx.iso_currency_code)}
+      <span className={`txr-amt rtx-amt ta-r ${tx.direction === "in" ? "in" : "out"}`}>
+        {formatSuMoney(Number(tx.amount), tx.direction)}
       </span>
       <span className="txr-status flex flex-col gap-1 items-start">
         {txStatusChip(tx)}

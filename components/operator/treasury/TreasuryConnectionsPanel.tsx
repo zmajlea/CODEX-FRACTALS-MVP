@@ -10,6 +10,8 @@ type Props = {
   institutions: TreasuryInstitutionView[];
   lastSyncedAt: string | null;
   syncing?: boolean;
+  /** Spec 35: hide Sync on CSV-only clients — meaningless without a bank link. */
+  showSyncFromBank?: boolean;
   onSync?: () => void;
   onImported?: () => void;
 };
@@ -20,6 +22,7 @@ export function TreasuryConnectionsPanel({
   institutions,
   lastSyncedAt,
   syncing = false,
+  showSyncFromBank = true,
   onSync,
   onImported,
 }: Props) {
@@ -43,7 +46,7 @@ export function TreasuryConnectionsPanel({
           >
             Request (re)connect
           </a>
-          {onSync ? (
+          {showSyncFromBank && onSync ? (
             <button
               type="button"
               className="btn btn-secondary"

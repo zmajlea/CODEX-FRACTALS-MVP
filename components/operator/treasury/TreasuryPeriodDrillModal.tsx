@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TreasuryCashflowDecomposition } from "@/components/operator/treasury/TreasuryCashflowDecomposition";
-import { formatTreasuryMoney } from "@/lib/treasury/format";
+import { formatSuMoney, formatTreasuryMoney } from "@/lib/treasury/format";
 import { periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
 import { aggregateByLabel, topContributors } from "@/lib/treasury/period-decomposition";
 import type { SummaryBucket, TreasurySummaryRow, TreasuryTransactionRow } from "@/lib/treasury/types";
@@ -173,9 +173,9 @@ export function TreasuryPeriodDrillModal({
                   </span>
                   <span className="tx-drill-label">{tx.label ?? "—"}</span>
                   <span
-                    className={`tx-drill-amt tabular-nums ${tx.direction === "in" ? "in" : "out"}`}
+                    className={`tx-drill-amt rtx-amt tabular-nums ${tx.direction === "in" ? "in" : "out"}`}
                   >
-                    {formatTreasuryMoney(Math.abs(Number(tx.amount)), tx.iso_currency_code)}
+                    {formatSuMoney(Number(tx.amount), tx.direction)}
                   </span>
                 </li>
               ))}

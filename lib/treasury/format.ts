@@ -18,6 +18,28 @@ export function formatTreasuryMoney(
   }
 }
 
+/**
+ * Ana's ledger money (Spec 35-2): always an explicit sign.
+ * Minus is U+2212 MINUS SIGN. Out → ink; in → --su-pos (via class).
+ * `suMoney(n)` in the demo used signed amount; we take absolute magnitude + direction.
+ */
+export function formatSuMoney(
+  amount: number | null | undefined,
+  direction?: "in" | "out" | null
+): string {
+  if (amount == null || !Number.isFinite(Number(amount))) return "—";
+  const abs = Math.abs(Number(amount)).toLocaleString(TREASURY_DISPLAY_LOCALE, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  if (direction === "in") return `+$${abs}`;
+  if (direction === "out") return `\u2212$${abs}`;
+  const n = Number(amount);
+  if (n < 0) return `\u2212$${abs}`;
+  if (n > 0) return `+$${abs}`;
+  return `$${abs}`;
+}
+
 export function formatTreasuryAsOf(iso: string | null): string {
   if (!iso) return "Not synced yet";
   try {

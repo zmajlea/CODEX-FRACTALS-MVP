@@ -5,7 +5,13 @@ import { TreasuryForecastDrillModal } from "@/components/operator/treasury/Treas
 import { TreasuryPeriodDrillModal } from "@/components/operator/treasury/TreasuryPeriodDrillModal";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
-import { periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
+import {
+  listPeriodStarts,
+  periodEnd,
+  periodLabel,
+  subtractMonths,
+  todayIso,
+} from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   SummaryBucket,
@@ -218,13 +224,18 @@ export function TreasurySummaryPanel({
   onBasketChanged,
 }: Props) {
   const [granularity, setGranularity] = useState<SummaryGranularity>("month");
-  const [periods, setPeriods] = useState(12);
+  const [since, setSince] = useState(() => subtractMonths(todayIso(), 12));
   const [data, setData] = useState<TreasurySummaryResponse | null>(null);
   const [forecast, setForecast] = useState<TreasuryForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillRow, setDrillRow] = useState<TreasurySummaryRow | null>(null);
   const [forecastDrill, setForecastDrill] = useState<TreasuryForecastPeriod | null>(null);
+
+  const periods = useMemo(() => {
+    const starts = listPeriodStarts(granularity, since, todayIso());
+    return Math.min(60, Math.max(1, starts.length || 1));
+  }, [granularity, since]);
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
     try {
@@ -296,15 +307,15 @@ export function TreasurySummaryPanel({
     void load();
   }, [load]);
 
-  function setGranularityWithDefault(g: SummaryGranularity) {
-    const def = GRANULARITIES.find((x) => x.id === g)?.defaultPeriods ?? 12;
+  function setGranularityKeepSince(g: SummaryGranularity) {
     setGranularity(g);
-    setPeriods(def);
   }
 
   const rows = data?.rows ?? [];
   const otherRows = data?.other_rows ?? [];
   const currency = data?.primary_currency ?? forecast?.currency ?? "USD";
+  const granWord =
+    granularity === "day" ? "daily" : granularity === "week" ? "weekly" : "monthly";
 
   const chartBars = useMemo((): ChartBar[] => {
     const history = [...rows]
@@ -341,48 +352,40 @@ export function TreasurySummaryPanel({
   return (
     <div className="panel p-4">
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <div className="flex flex-wrap gap-1">
+        <div className="lens-row">
           {GRANULARITIES.map((g) => (
             <button
               key={g.id}
               type="button"
-              className={`btn btn-secondary text-xs ${granularity === g.id ? "on" : ""}`}
-              onClick={() => setGranularityWithDefault(g.id)}
+              className={`lens-btn${granularity === g.id ? " on" : ""}`}
+              onClick={() => setGranularityKeepSince(g.id)}
             >
               {g.label}
             </button>
           ))}
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-codex-muted">Last</span>
-          <button
-            type="button"
-            className="btn btn-secondary text-xs px-2"
-            disabled={periods <= 1}
-            onClick={() => setPeriods((p) => Math.max(1, p - 1))}
-            aria-label="Fewer periods"
-          >
-            −
-          </button>
-          <span className="tabular-nums font-medium min-w-[2ch] text-center">{periods}</span>
-          <button
-            type="button"
-            className="btn btn-secondary text-xs px-2"
-            disabled={periods >= 60}
-            onClick={() => setPeriods((p) => Math.min(60, p + 1))}
-            aria-label="More periods"
-          >
-            +
-          </button>
-          <span className="text-codex-muted">periods</span>
+          <span className="text-codex-muted font-mono text-[10px] uppercase tracking-wide">
+            Since
+          </span>
+          <input
+            type="date"
+            className="field-input text-sm"
+            value={since}
+            max={todayIso()}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) setSince(v);
+            }}
+          />
+          <span className="text-xs text-codex-muted">
+            since {since} · {periods} {granWord} period{periods === 1 ? "" : "s"}
+          </span>
         </label>
         {data?.data_span ? (
           <span className="text-xs text-codex-muted ml-auto">
-            Data covers {data.data_span.first} → {data.data_span.last}
-            {data.data_span.last < data.to
-              ? `. No data after ${data.data_span.last}.`
-              : ""}{" "}
-            · {currency}
+            Data through {data.data_span.last}
+            {data.data_span.first ? ` · from ${data.data_span.first}` : ""} · {currency}
           </span>
         ) : data ? (
           <span className="text-xs text-codex-muted ml-auto">
@@ -419,9 +422,13 @@ export function TreasurySummaryPanel({
           />
 
           {forecast?.refuse_projection ? (
-            <p className="text-sm text-codex-muted mt-4">
+            <p className="text-sm text-codex-muted mt-4" role="status">
               {forecast.refuse_reason ??
-                "Cannot project — seed window is outside the data span."}
+                `Cannot project — seed window is outside the data span${
+                  forecast.data_span?.last
+                    ? ` (data through ${forecast.data_span.last})`
+                    : ""
+                }.`}
             </p>
           ) : forecast?.insufficient_history ? (
             <p className="text-sm text-codex-muted mt-4">

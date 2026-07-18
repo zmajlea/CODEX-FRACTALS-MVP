@@ -11,6 +11,7 @@ import { TreasuryAccountsView } from "@/components/treasury/TreasuryAccountsView
 import { TreasuryConnectionsPanel } from "@/components/operator/treasury/TreasuryConnectionsPanel";
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
+import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
 import { DraftsRail } from "@/components/operator/treasury/DraftsRail";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
@@ -29,6 +30,7 @@ import type {
 } from "@/lib/treasury/types";
 
 type Tab =
+  | "profile"
   | "overview"
   | "summary"
   | "analytics"
@@ -38,6 +40,7 @@ type Tab =
   | "connections";
 
 const VALID_TABS: Tab[] = [
+  "profile",
   "overview",
   "summary",
   "analytics",
@@ -52,7 +55,7 @@ function parseInitialTab(value: string | undefined): Tab {
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
-  return "overview";
+  return "profile";
 }
 
 type Props = {
@@ -71,14 +74,12 @@ const SUMMIT_BRAND = "summit";
 function provenanceLine(data: TreasuryAccountsResponse | null): string | null {
   if (!data?.institutions.length) return null;
   const plaid = data.institutions.filter((i) => i.item_id !== "csv-manual");
-  const csv = data.institutions.find((i) => i.item_id === "csv-manual");
-  const parts: string[] = [];
+  const names = plaid.map((i) => i.institution_name).filter(Boolean).join(", ");
+  // Spec 35: do not push "Imported from CSV" here — asOfLine already states it with data-through.
   if (plaid.length) {
-    const names = plaid.map((i) => i.institution_name).filter(Boolean).join(", ");
-    parts.push(`Synced from Plaid${names ? ` · ${names}` : ""}`);
+    return `Synced from Plaid${names ? ` · ${names}` : ""}`;
   }
-  if (csv) parts.push("Imported from CSV");
-  return parts.join(" · ") || null;
+  return null;
 }
 
 function dataThroughLine(data: TreasuryAccountsResponse | null): string | null {
@@ -217,6 +218,13 @@ export function OperatorTreasuryClientRecord({
         reveal: "unlocked",
         items: [
           {
+            id: "profile",
+            icon: "building",
+            label: "Profile",
+            active: tab === "profile",
+            onClick: () => setTab("profile"),
+          },
+          {
             id: "overview",
             icon: "home",
             label: "Overview",
@@ -347,10 +355,21 @@ export function OperatorTreasuryClientRecord({
   const csvOnly =
     !!data?.institutions.some((i) => i.item_id === "csv-manual") &&
     !data?.institutions.some((i) => i.item_id !== "csv-manual");
+  const hasBankConnection = !!data?.institutions.some((i) => i.item_id !== "csv-manual");
+  const accountCount =
+    data?.institutions.reduce((n, inst) => n + (inst.accounts?.length ?? 0), 0) ?? 0;
   const dataThrough = dataThroughLine(data);
   const asOfLine = csvOnly
     ? `Imported from CSV${dataThrough ? ` · data through ${dataThrough}` : ""}`
     : `Last synced ${formatTreasuryAsOf(data?.last_synced_at ?? null)}`;
+
+  const primaryBanksLabel = (() => {
+    if (!data?.institutions.length) return null;
+    const names = data.institutions
+      .map((i) => i.institution_name)
+      .filter((n): n is string => Boolean(n));
+    return names.length ? names.join("; ") : null;
+  })();
 
   return (
     <BcnContinuityShell
@@ -374,46 +393,27 @@ export function OperatorTreasuryClientRecord({
           <span className="text-ink">{clientName}</span>
         </nav>
 
-        <div className="panel p-4 mb-4 flex flex-wrap gap-3 items-center justify-between">
-          <div>
-            <p className="font-medium font-head text-lg">{clientName}</p>
-            <p className="text-sm text-codex-muted">{clientEmail}</p>
-            {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
-            <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
-          </div>
-          <div className="flex flex-wrap gap-2 items-center">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={syncing || loading}
-              onClick={() => void load(true)}
-            >
-              {syncing ? "Syncing…" : "Sync from bank"}
-            </button>
-            {grantId ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={busyAction !== null}
-                  onClick={() => void suspendAccess()}
-                >
-                  Suspend
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={busyAction !== null}
-                  onClick={() => void revokeAccess()}
-                >
-                  Revoke
-                </button>
-              </>
-            ) : null}
-          </div>
+        {/* Spec 35: record header = identity only. Sync → Connections; Suspend/Revoke → Profile. */}
+        <div className="panel p-4 mb-4">
+          <p className="font-medium font-head text-lg">{clientName}</p>
+          <p className="text-sm text-codex-muted">{clientEmail}</p>
+          {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
+          <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
         </div>
 
         {actionMsg ? <p className="panel-note mb-4">{actionMsg}</p> : null}
+
+        {tab === "profile" ? (
+          <TreasuryProfilePanel
+            clientName={clientName}
+            clientEmail={clientEmail}
+            grantId={grantId}
+            busyAction={busyAction}
+            onSuspend={() => void suspendAccess()}
+            onRevoke={() => void revokeAccess()}
+            primaryBanks={primaryBanksLabel}
+          />
+        ) : null}
 
         {tab === "overview" ? (
           <>
@@ -423,6 +423,8 @@ export function OperatorTreasuryClientRecord({
               needsLabelCount={needsLabelCount}
               onNeedsReviewClick={() => setTab("transactions")}
               sourceCount={data?.institutions.length ?? 0}
+              accountCount={accountCount}
+              csvOnly={csvOnly}
               transactionCount={data?.transaction_count}
             />
             <TreasuryAccountsView
@@ -504,6 +506,7 @@ export function OperatorTreasuryClientRecord({
             institutions={data?.institutions ?? []}
             lastSyncedAt={data?.last_synced_at ?? null}
             syncing={syncing}
+            showSyncFromBank={hasBankConnection}
             onSync={() => void load(true)}
             onImported={() => void load(false)}
           />

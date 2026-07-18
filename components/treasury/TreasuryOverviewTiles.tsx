@@ -10,6 +10,9 @@ type Props = {
   needsLabelCount?: number;
   onNeedsReviewClick?: () => void;
   sourceCount?: number;
+  /** Spec 35-5 — prefer account count when CSV has no real institution. */
+  accountCount?: number;
+  csvOnly?: boolean;
   transactionCount?: number;
   showMetaTiles?: boolean;
 };
@@ -20,6 +23,8 @@ export function TreasuryOverviewTiles({
   needsLabelCount,
   onNeedsReviewClick,
   sourceCount,
+  accountCount,
+  csvOnly = false,
   transactionCount,
   showMetaTiles = true,
 }: Props) {
@@ -28,6 +33,13 @@ export function TreasuryOverviewTiles({
   const showNeedsReview = needsLabelCount !== undefined && onNeedsReviewClick;
 
   if (totals.length === 0 && !showNeedsReview && !showMetaTiles) return null;
+
+  const sourcesLabel = csvOnly
+    ? `${accountCount ?? 0} account${(accountCount ?? 0) === 1 ? "" : "s"} · CSV import`
+    : "linked institutions";
+  const sourcesValue = csvOnly
+    ? (accountCount ?? 0)
+    : (sourceCount ?? institutions.length);
 
   return (
     <div className="dash-tiles">
@@ -53,11 +65,11 @@ export function TreasuryOverviewTiles({
         </button>
       ) : null}
 
-      {showMetaTiles && sourceCount !== undefined ? (
+      {showMetaTiles && (sourceCount !== undefined || csvOnly) ? (
         <div className="dtile">
-          <span className="dt-k">Sources</span>
-          <span className="dt-v">{sourceCount}</span>
-          <span className="dt-s">linked institutions</span>
+          <span className="dt-k">{csvOnly ? "Accounts" : "Sources"}</span>
+          <span className="dt-v">{sourcesValue}</span>
+          <span className="dt-s">{sourcesLabel}</span>
         </div>
       ) : null}
 
