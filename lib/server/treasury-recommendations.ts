@@ -13,24 +13,62 @@ import type { Database } from "@/lib/database.types";
 type AdminClient = SupabaseClient<Database>;
 
 export function computeRecommendationRollup(
-  rows: Pick<TreasuryRecommendationRow, "status">[]
+  rows: Pick<
+    TreasuryRecommendationRow,
+    | "status"
+    | "kind"
+    | "client_response"
+    | "operator_seen_at"
+    | "responded_at"
+  >[]
 ): TreasuryRecommendationRollup {
   const rollup: TreasuryRecommendationRollup = {
     awaiting: 0,
     accepted: 0,
     in_progress: 0,
+    answeredReview: 0,
     done: 0,
     declined: 0,
     draft: 0,
   };
   for (const row of rows) {
     const s = row.status as RecommendationStatus;
-    if (s === "sent") rollup.awaiting += 1;
-    else if (s === "accepted") rollup.accepted += 1;
-    else if (s === "in_progress") rollup.in_progress += 1;
-    else if (s === "done") rollup.done += 1;
-    else if (s === "declined") rollup.declined += 1;
-    else if (s === "draft") rollup.draft += 1;
+    if (s === "sent") {
+      rollup.awaiting += 1;
+      continue;
+    }
+    if (s === "accepted") {
+      rollup.accepted += 1;
+      continue;
+    }
+    if (s === "in_progress") {
+      rollup.in_progress += 1;
+      continue;
+    }
+    if (s === "declined") {
+      rollup.declined += 1;
+      continue;
+    }
+    if (s === "draft") {
+      rollup.draft += 1;
+      continue;
+    }
+    if (s === "done") {
+      const answered =
+        row.kind === "question" &&
+        typeof row.client_response === "string" &&
+        row.client_response.trim().length > 0;
+      if (answered) {
+        const unread =
+          row.operator_seen_at == null ||
+          (row.responded_at != null &&
+            new Date(row.operator_seen_at) < new Date(row.responded_at));
+        if (unread) rollup.answeredReview += 1;
+        else rollup.done += 1;
+      } else {
+        rollup.done += 1;
+      }
+    }
   }
   return rollup;
 }

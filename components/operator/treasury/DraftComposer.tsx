@@ -16,6 +16,7 @@ import {
   RULE_CONTEXT_MAX_N,
   RULE_CONTEXT_MIN_N,
 } from "@/lib/treasury/evidence";
+import { ExpandableTxQueryEvidence } from "@/components/treasury/ExpandableTxQueryEvidence";
 import type { DraftKind } from "@/lib/treasury/pickable";
 import type {
   ResolvedEvidenceItem,
@@ -235,6 +236,50 @@ export function DraftComposer({
                   <span className={`ri-a ${item.direction === "in" ? "in" : "out"}`}>
                     {formatEvidenceAmount(item.amount, item.direction)}
                   </span>
+                  {"id" in item && item.id ? (
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      disabled={busy}
+                      onClick={() => void removeItem(item.id!, item.kind)}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              );
+            }
+            if (
+              item.kind === "txquery" &&
+              item.available === true &&
+              "rows" in item &&
+              Array.isArray(item.rows) &&
+              item.rows.length > 0
+            ) {
+              return (
+                <div key={key} className="req-draft-txquery">
+                  <ExpandableTxQueryEvidence
+                    label={item.label}
+                    sublabel={item.sublabel}
+                    net={
+                      typeof item.amount === "number"
+                        ? item.direction === "out"
+                          ? -item.amount
+                          : item.amount
+                        : undefined
+                    }
+                    rows={item.rows}
+                  />
+                  {"id" in item && item.id ? (
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      disabled={busy}
+                      onClick={() => void removeItem(item.id!, item.kind)}
+                    >
+                      ×
+                    </button>
+                  ) : null}
                 </div>
               );
             }

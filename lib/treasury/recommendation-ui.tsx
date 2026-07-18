@@ -1,3 +1,4 @@
+import { ExpandableTxQueryEvidence } from "@/components/treasury/ExpandableTxQueryEvidence";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
   IMPACT_BASIS_LABELS,
@@ -5,13 +6,70 @@ import {
   type ImpactBasis,
   type RecommendationStatus,
 } from "@/lib/treasury/recommendation-status";
-import type { RecommendationEvidence, TreasuryRecommendationRow } from "@/lib/treasury/types";
+import type { TxQuerySnap } from "@/lib/treasury/evidence";
+import type {
+  RecommendationEvidence,
+  TreasuryRecommendationRow,
+} from "@/lib/treasury/types";
 
-export const EXEC_STEPS: RecommendationStatus[] = ["sent", "accepted", "in_progress", "done"];
+export const EXEC_STEPS: RecommendationStatus[] = [
+  "sent",
+  "accepted",
+  "in_progress",
+  "done",
+];
 
-export function statusBadgeClass(status: RecommendationStatus): string {
+/** Spec 45 — question answered (status done + client_response). */
+export function isAnsweredQuestion(
+  rec: Pick<
+    TreasuryRecommendationRow,
+    "kind" | "status" | "client_response"
+  >
+): boolean {
+  return (
+    rec.kind === "question" &&
+    rec.status === "done" &&
+    typeof rec.client_response === "string" &&
+    rec.client_response.trim().length > 0
+  );
+}
+
+/** Unread for operator: never seen, or seen before the answer landed. */
+export function isAnsweredUnread(
+  rec: Pick<
+    TreasuryRecommendationRow,
+    "kind" | "status" | "client_response" | "operator_seen_at" | "responded_at"
+  >
+): boolean {
+  if (!isAnsweredQuestion(rec)) return false;
+  if (rec.operator_seen_at == null) return true;
+  if (!rec.responded_at) return true;
+  return new Date(rec.operator_seen_at) < new Date(rec.responded_at);
+}
+
+export function displayStatusLabel(
+  rec: Pick<
+    TreasuryRecommendationRow,
+    "kind" | "status" | "client_response"
+  >
+): string {
+  if (isAnsweredQuestion(rec)) return "Answered";
+  return RECOMMENDATION_STATUS_LABELS[rec.status];
+}
+
+export function statusBadgeClass(
+  status: RecommendationStatus,
+  opts?: { answered?: boolean; answeredUnread?: boolean }
+): string {
+  if (opts?.answered) {
+    return opts.answeredUnread
+      ? "k-answered unread"
+      : "k-answered read";
+  }
   if (status === "sent") return "k-proposed";
-  if (status === "accepted" || status === "in_progress" || status === "done") return "k-accepted";
+  if (status === "accepted" || status === "in_progress" || status === "done") {
+    return "k-accepted";
+  }
   if (status === "declined") return "k-declined";
   return "k-muted";
 }
@@ -20,13 +78,21 @@ export function formatImpactLine(rec: TreasuryRecommendationRow): string {
   if (rec.impact_amount == null) return "—";
   const currency = rec.impact_unit ?? "USD";
   const money = formatTreasuryMoney(rec.impact_amount, currency);
-  const basis = rec.impact_basis ? IMPACT_BASIS_LABELS[rec.impact_basis as ImpactBasis] : "";
+  const basis = rec.impact_basis
+    ? IMPACT_BASIS_LABELS[rec.impact_basis as ImpactBasis]
+    : "";
   return basis ? `${money} ${basis}` : money;
 }
 
 export function ExecLadder({ status }: { status: RecommendationStatus }) {
   const reached =
-    status === "done" ? 3 : status === "in_progress" ? 2 : status === "accepted" ? 1 : 0;
+    status === "done"
+      ? 3
+      : status === "in_progress"
+        ? 2
+        : status === "accepted"
+          ? 1
+          : 0;
   return (
     <div className="rec-ladder">
       {EXEC_STEPS.map((step, i) => (
@@ -51,7 +117,7 @@ function formatSigned(amount: number, direction?: "in" | "out" | null): string {
 }
 
 /**
- * Spec 40 §7 — client evidence is frozen. Render from snap only; never re-resolve.
+ * Spec 40 §7 / Spec 45 — client evidence is frozen. Render from snap only; never re-resolve.
  */
 export function FrozenEvidenceList({
   evidence,
@@ -97,13 +163,20 @@ export function FrozenEvidenceList({
         }
 
         if (ev.kind === "txquery" && ev.snap && typeof ev.snap === "object") {
-          const snap = ev.snap as {
-            description?: string;
-            count?: number;
-            net?: number;
-            from?: string;
-            to?: string;
-          };
+          const snap = ev.snap as TxQuerySnap;
+          if (snap.rows && snap.rows.length > 0) {
+            return (
+              <ExpandableTxQueryEvidence
+                key={key}
+                label={snap.description ?? "Filtered view"}
+                sublabel={
+                  [snap.from, snap.to].filter(Boolean).join(" → ") || undefined
+                }
+                net={snap.net}
+                rows={snap.rows}
+              />
+            );
+          }
           return (
             <div key={key} className="req-item">
               <span className="ri-d">view</span>
@@ -146,9 +219,13 @@ export function FrozenEvidenceList({
           );
         }
 
-        // Other kinds: prefer snap.label if present; never live-resolve
         const snap = ev.snap as
-          | { label?: string; sublabel?: string; amount?: number; direction?: "in" | "out" | null }
+          | {
+              label?: string;
+              sublabel?: string;
+              amount?: number;
+              direction?: "in" | "out" | null;
+            }
           | undefined;
         if (snap && typeof snap === "object" && snap.label) {
           return (

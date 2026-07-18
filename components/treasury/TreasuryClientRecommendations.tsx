@@ -4,13 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DECLINE_REASONS,
   RECOMMENDATION_CATEGORY_LABELS,
-  RECOMMENDATION_STATUS_LABELS,
   type DeclineReason,
 } from "@/lib/treasury/recommendation-status";
 import {
+  displayStatusLabel,
   ExecLadder,
   formatImpactLine,
   FrozenEvidenceList,
+  isAnsweredQuestion,
   statusBadgeClass,
 } from "@/lib/treasury/recommendation-ui";
 import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
@@ -137,11 +138,14 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                     </span>
                   )}
                   {!pending && rec.status !== "draft" ? (
-                    <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
+                    <span
+                      className={`rec-badge ${statusBadgeClass(rec.status, {
+                        answered: isAnsweredQuestion(rec),
+                        answeredUnread: false,
+                      })}`}
+                    >
                       <span className="rec-bdot" />
-                      {isQuestion && rec.status === "done"
-                        ? "Answered"
-                        : RECOMMENDATION_STATUS_LABELS[rec.status]}
+                      {displayStatusLabel(rec)}
                     </span>
                   ) : null}
                 </div>

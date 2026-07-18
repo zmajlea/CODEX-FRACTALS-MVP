@@ -9,10 +9,15 @@ import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import {
   IMPACT_BASIS_LABELS,
   RECOMMENDATION_CATEGORY_LABELS,
-  RECOMMENDATION_STATUS_LABELS,
   type ImpactBasis,
-  type RecommendationStatus,
 } from "@/lib/treasury/recommendation-status";
+import {
+  displayStatusLabel,
+  FrozenEvidenceList,
+  isAnsweredQuestion,
+  isAnsweredUnread,
+  statusBadgeClass,
+} from "@/lib/treasury/recommendation-ui";
 import type {
   ResolvedEvidenceItem,
   TreasuryInstitutionView,
@@ -22,6 +27,7 @@ import type {
 
 type Props = {
   clientUserId: string;
+  clientName?: string;
   institutions: TreasuryInstitutionView[];
   operatorName?: string | null;
   onUnreadChange?: (count: number) => void;
@@ -41,15 +47,6 @@ type OpenDraft = {
   items: ResolvedEvidenceItem[];
   missingCount: number;
 };
-
-function statusBadgeClass(status: RecommendationStatus): string {
-  if (status === "sent") return "k-proposed";
-  if (status === "accepted" || status === "in_progress" || status === "done") {
-    return "k-accepted";
-  }
-  if (status === "declined") return "k-declined";
-  return "k-muted";
-}
 
 function formatImpactLine(rec: TreasuryRecommendationRow): string | null {
   if (rec.impact_amount == null) return null;
@@ -71,8 +68,21 @@ function isAwaitingClient(rec: TreasuryRecommendationRow): boolean {
   return true; // recommendation awaiting accept/decline
 }
 
+function operatorDeskUnread(recs: TreasuryRecommendationRow[]): number {
+  return recs.filter((r) => {
+    if (
+      (r.status === "accepted" || r.status === "declined") &&
+      r.operator_seen_at == null
+    ) {
+      return true;
+    }
+    return isAnsweredUnread(r);
+  }).length;
+}
+
 export function TreasuryRecommendationsPanel({
   clientUserId,
+  clientName = "Client",
   operatorName,
   onUnreadChange,
   onPick,
@@ -110,12 +120,7 @@ export function TreasuryRecommendationsPanel({
       };
       setRecommendations(data.recommendations);
       setRollup(data.rollup);
-      const unread = data.recommendations.filter(
-        (r) =>
-          (r.status === "accepted" || r.status === "declined") &&
-          r.operator_seen_at == null
-      ).length;
-      onUnreadChange?.(unread);
+      onUnreadChange?.(operatorDeskUnread(data.recommendations));
     } else {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       setError(body.error ?? "Failed to load recommendations");
@@ -138,6 +143,9 @@ export function TreasuryRecommendationsPanel({
     return recommendations
       .filter((r) => r.status !== "draft")
       .sort((a, b) => {
+        const aUnread = isAnsweredUnread(a) ? 1 : 0;
+        const bUnread = isAnsweredUnread(b) ? 1 : 0;
+        if (aUnread !== bUnread) return bUnread - aUnread;
         const at = a.sent_at ?? a.sealed_at ?? a.created_at;
         const bt = b.sent_at ?? b.sealed_at ?? b.created_at;
         return bt.localeCompare(at);
@@ -245,6 +253,12 @@ export function TreasuryRecommendationsPanel({
           <span className="rr-i">
             <b>{rollup.awaiting}</b> awaiting response
           </span>
+          {(rollup.answeredReview ?? 0) > 0 ? (
+            <span className="rr-i rr-answered">
+              <span className="rr-adot" aria-hidden />
+              <b>{rollup.answeredReview}</b> answered — review
+            </span>
+          ) : null}
           <span className="rr-i">
             <b>{rollup.accepted}</b> accepted
           </span>
@@ -358,7 +372,18 @@ export function TreasuryRecommendationsPanel({
             return (
               <article
                 key={rec.id}
-                className={`rec-card${isAwaitingClient(rec) ? " awaiting" : ""}`}
+                className={`rec-card${isAwaitingClient(rec) ? " awaiting" : ""}${
+                  isAnsweredQuestion(rec)
+                    ? isAnsweredUnread(rec)
+                      ? " answered unread"
+                      : " answered read"
+                    : ""
+                }`}
+                onClick={() => {
+                  if (isAnsweredUnread(rec)) {
+                    void patchAction(rec.id, "mark_seen");
+                  }
+                }}
               >
                 <div className="rec-top">
                   <span className="rec-kind">{kindLabel}</span>
@@ -373,9 +398,14 @@ export function TreasuryRecommendationsPanel({
                       Awaiting client
                     </span>
                   ) : (
-                    <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
+                    <span
+                      className={`rec-badge ${statusBadgeClass(rec.status, {
+                        answered: isAnsweredQuestion(rec),
+                        answeredUnread: isAnsweredUnread(rec),
+                      })}`}
+                    >
                       <span className="rec-bdot" />
-                      {RECOMMENDATION_STATUS_LABELS[rec.status]}
+                      {displayStatusLabel(rec)}
                     </span>
                   )}
                   {sealed && onPick ? (
@@ -391,21 +421,46 @@ export function TreasuryRecommendationsPanel({
                     />
                   ) : null}
                 </div>
-                <h3 className="rec-title">{rec.title}</h3>
-                <p className="rec-why">
-                  <span className="rw-l">
-                    {rec.kind === "question" ? "Question" : "Why"}
-                  </span>
-                  {rec.why}
-                </p>
-                {rec.kind === "question" && rec.client_response ? (
-                  <div className="rec-decline">
-                    <b>Client answer:</b> {rec.client_response}
-                    {rec.responded_at
-                      ? ` · ${formatTreasuryAsOf(rec.responded_at)}`
-                      : ""}
-                  </div>
+
+                {isAnsweredQuestion(rec) ? (
+                  <>
+                    <p className="rec-asked-ctx">
+                      You asked · {rec.title?.trim() || "Untitled"}
+                      {rec.sent_at
+                        ? ` · Sent ${formatTreasuryAsOf(rec.sent_at)}`
+                        : ""}
+                    </p>
+                    <div
+                      className={`rec-answer-hero${
+                        isAnsweredUnread(rec) ? " unread" : " read"
+                      }`}
+                    >
+                      <div className="rec-answer-label">Client answer</div>
+                      <p className="rec-answer-body">{rec.client_response}</p>
+                      <p className="rec-answer-attr">
+                        {clientName}
+                        {rec.responded_at
+                          ? ` · ${formatTreasuryAsOf(rec.responded_at)}`
+                          : ""}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="rec-title">{rec.title}</h3>
+                    <p className="rec-why">
+                      <span className="rw-l">
+                        {rec.kind === "question" ? "Question" : "Why"}
+                      </span>
+                      {rec.why}
+                    </p>
+                  </>
+                )}
+
+                {rec.evidence?.length ? (
+                  <FrozenEvidenceList evidence={rec.evidence} />
                 ) : null}
+
                 {impact ? (
                   <div className="rec-impact">
                     <span className="ri-l">Estimated impact</span>
@@ -427,7 +482,7 @@ export function TreasuryRecommendationsPanel({
                       Sealed by {operatorName ?? "you"} ·{" "}
                       {formatTreasuryAsOf(rec.sealed_at)}
                     </span>
-                  ) : rec.sent_at ? (
+                  ) : rec.sent_at && !isAnsweredQuestion(rec) ? (
                     <span className="rec-seal-line">
                       Sent · {formatTreasuryAsOf(rec.sent_at)}
                     </span>
@@ -439,7 +494,10 @@ export function TreasuryRecommendationsPanel({
                     {rec.decline_note ? ` — ${rec.decline_note}` : ""}
                   </div>
                 ) : null}
-                <div className="rec-acts">
+                <div
+                  className="rec-acts"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {rec.status === "accepted" ? (
                     <button
                       type="button"

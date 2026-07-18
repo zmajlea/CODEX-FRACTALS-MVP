@@ -28,6 +28,13 @@ export type RecommendationTxSnap = {
   direction: "in" | "out" | null;
 };
 
+export type TxQuerySnapRow = {
+  date: string;
+  payee: string | null;
+  amount: number;
+  direction: "in" | "out" | null;
+};
+
 export type TxQuerySnap = {
   count: number;
   in: number;
@@ -36,6 +43,8 @@ export type TxQuerySnap = {
   from?: string;
   to?: string;
   description: string;
+  /** Spec 45 — present only when params.limit is bounded (1–25). */
+  rows?: TxQuerySnapRow[];
 };
 
 export type SummaryPeriodSnap = {
@@ -125,7 +134,24 @@ export type ResolvedEvidenceItem =
       label: string;
     }
   | {
-      kind: Exclude<Evidence["kind"], "transaction">;
+      kind: "txquery";
+      id?: string;
+      available: true;
+      label: string;
+      sublabel?: string;
+      amount?: number;
+      direction?: "in" | "out" | null;
+      /** Spec 45 — live rows when bounded (draft preview). */
+      rows?: TxQuerySnapRow[];
+    }
+  | {
+      kind: "txquery";
+      id?: string;
+      available: false;
+      label: string;
+    }
+  | {
+      kind: Exclude<Evidence["kind"], "transaction" | "txquery">;
       id?: string;
       available: boolean;
       label: string;
@@ -273,6 +299,77 @@ function txQueryLimitFromParams(
   return undefined;
 }
 
+/** Spec 45 — freeze rows only when limit is 1–25. */
+export function isBoundedTxQueryLimit(
+  limit: number | undefined
+): limit is number {
+  return (
+    limit != null &&
+    Number.isInteger(limit) &&
+    limit >= RULE_CONTEXT_MIN_N &&
+    limit <= RULE_CONTEXT_MAX_N
+  );
+}
+
+function aggregateFromSnapRows(rows: TxQuerySnapRow[]): {
+  count: number;
+  inflow: number;
+  outflow: number;
+  net: number;
+} {
+  let inflow = 0;
+  let outflow = 0;
+  for (const row of rows) {
+    const amt = Math.abs(Number(row.amount) || 0);
+    if (row.direction === "in") inflow += amt;
+    else if (row.direction === "out") outflow += amt;
+  }
+  return {
+    count: rows.length,
+    inflow,
+    outflow,
+    net: inflow - outflow,
+  };
+}
+
+/** Spec 45 — bounded txquery rows via buildTxPredicate (same WHERE as aggregate). */
+export async function fetchBoundedTxQueryRows(
+  admin: AdminClient,
+  clientUserId: string,
+  filters: TxFilterInput,
+  limit: number
+): Promise<TxQuerySnapRow[]> {
+  const capped = Math.min(
+    Math.max(Math.floor(limit), RULE_CONTEXT_MIN_N),
+    RULE_CONTEXT_MAX_N
+  );
+  const { data, error } = await buildTxPredicate(
+    admin
+      .from("treasury_transactions")
+      .select(
+        "posted_date, merchant_name, normalized_merchant, raw_name, amount, direction"
+      )
+      .eq("client_user_id", clientUserId)
+      .eq("is_removed", false)
+      .order("posted_date", { ascending: false })
+      .order("id", { ascending: false }),
+    filters
+  ).range(0, capped - 1);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const direction =
+      row.direction === "in" || row.direction === "out" ? row.direction : null;
+    return {
+      date: String(row.posted_date ?? "").slice(0, 10),
+      payee: payeeFromRow(row),
+      amount: Math.abs(Number(row.amount) || 0),
+      direction,
+    };
+  });
+}
+
 /** Map frozen txquery params → TxFilterInput for buildTxPredicate. */
 export function txQueryParamsToFilters(
   params: Record<string, unknown>
@@ -353,7 +450,8 @@ async function aggregateViaTxPredicate(
 
 function txQueryDescription(
   params: Record<string, unknown>,
-  agg: { count: number; net: number }
+  agg: { count: number; net: number },
+  opts?: { bounded?: boolean }
 ): string {
   if (
     typeof params.contextForRuleId === "string" &&
@@ -371,7 +469,12 @@ function txQueryDescription(
     parts.push(params.description.trim());
   }
   parts.push(formatSignedNet(agg.net));
-  return parts.join(" · ");
+  let label = parts.join(" · ");
+  // Spec 45 — unbounded views are aggregate-only; say so honestly
+  if (!opts?.bounded && !/summary only/i.test(label)) {
+    label = `${label} · summary only`;
+  }
+  return label;
 }
 
 export function parseEvidence(raw: unknown): Evidence[] {
@@ -638,10 +741,21 @@ export async function resolveEvidenceLive(
       try {
         const filters = txQueryParamsToFilters(ev.params);
         const limit = txQueryLimitFromParams(ev.params);
-        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters, {
-          limit,
-        });
-        const description = txQueryDescription(ev.params, agg);
+        const bounded = isBoundedTxQueryLimit(limit);
+        let agg: { count: number; inflow: number; outflow: number; net: number };
+        let rows: TxQuerySnapRow[] | undefined;
+        if (bounded) {
+          rows = await fetchBoundedTxQueryRows(
+            admin,
+            clientUserId,
+            filters,
+            limit
+          );
+          agg = aggregateFromSnapRows(rows);
+        } else {
+          agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        }
+        const description = txQueryDescription(ev.params, agg, { bounded });
         items.push({
           kind: "txquery",
           id: ev.id,
@@ -652,6 +766,7 @@ export async function resolveEvidenceLive(
             undefined,
           amount: Math.abs(agg.net),
           direction: agg.net > 0 ? "in" : agg.net < 0 ? "out" : null,
+          ...(rows ? { rows } : {}),
         });
       } catch {
         missingCount += 1;
@@ -1119,9 +1234,26 @@ export async function snapshotEvidence(
       if (ev.kind === "txquery" && live?.available && live.kind === "txquery") {
         const filters = txQueryParamsToFilters(ev.params);
         const limit = txQueryLimitFromParams(ev.params);
-        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters, {
-          limit,
-        });
+        const bounded = isBoundedTxQueryLimit(limit);
+        let agg: { count: number; inflow: number; outflow: number; net: number };
+        let rows: TxQuerySnapRow[] | undefined;
+        if (bounded) {
+          rows =
+            "rows" in live && Array.isArray(live.rows) && live.rows.length
+              ? live.rows
+              : await fetchBoundedTxQueryRows(
+                  admin,
+                  clientUserId,
+                  filters,
+                  limit
+                );
+          agg = aggregateFromSnapRows(rows);
+        } else {
+          agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        }
+        const description =
+          live.label ||
+          txQueryDescription(ev.params, agg, { bounded });
         const snap: TxQuerySnap = {
           count: agg.count,
           in: agg.inflow,
@@ -1129,7 +1261,8 @@ export async function snapshotEvidence(
           net: agg.net,
           from: typeof ev.params.from === "string" ? ev.params.from : undefined,
           to: typeof ev.params.to === "string" ? ev.params.to : undefined,
-          description: live.label,
+          description,
+          ...(rows ? { rows } : {}),
         };
         return { ...ev, snap };
       }

@@ -610,6 +610,7 @@ export function OperatorTreasuryClientRecord({
         {tab === "recommendations" ? (
           <TreasuryRecommendationsPanel
             clientUserId={clientUserId}
+            clientName={clientName}
             institutions={data?.institutions ?? []}
             operatorName={who}
             onUnreadChange={setRecUnread}

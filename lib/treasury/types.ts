@@ -218,6 +218,8 @@ export type {
   Evidence as RecommendationEvidence,
   RecommendationTxSnap,
   ResolvedEvidenceItem,
+  TxQuerySnap,
+  TxQuerySnapRow,
 } from "@/lib/treasury/evidence";
 export type { DraftKind } from "@/lib/treasury/pickable";
 
@@ -257,6 +259,8 @@ export type TreasuryRecommendationRollup = {
   awaiting: number;
   accepted: number;
   in_progress: number;
+  /** Spec 45 — answered questions still unread by operator */
+  answeredReview: number;
   done: number;
   declined: number;
   draft: number;
