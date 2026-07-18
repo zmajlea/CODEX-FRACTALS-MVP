@@ -35,6 +35,27 @@ try {
   fail(`absolute params should pass: ${e instanceof Error ? e.message : e}`);
 }
 
+// Namespaced / short account ids (csv:EU-Supplier, csv:0625, csv:1, plaid:uuid.with.dots)
+for (const accountId of [
+  "csv:EU-Supplier",
+  "csv:0625",
+  "csv:1",
+  "plaid:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+]) {
+  try {
+    assertAbsolutePickParams({
+      month: "2025-06",
+      accountId,
+      from: "2025-06-01",
+      to: "2025-06-30",
+    });
+  } catch (e) {
+    fail(
+      `namespaced accountId should pass (${accountId}): ${e instanceof Error ? e.message : e}`
+    );
+  }
+}
+
 // One filtered view → one evidence item (not N transaction refs)
 const pickable = {
   kind: "txquery" as const,

@@ -41,8 +41,12 @@ export type DraftKind = "recommendation" | "question";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_MONTH = /^\d{4}-\d{2}$/;
-/** UUID or opaque row id (hex/uuid-ish / cuid-ish) — not a relative preset word. */
-const ID_SHAPE = /^[A-Za-z0-9_-]{8,128}$/;
+/**
+ * Opaque system ids — namespaced (`csv:EU-Supplier`, `plaid:<uuid>`) or short (`csv:1`).
+ * Allowlist only blocks relative-range tokens (via looksLikeRelativeRangeToken); R2 should
+ * drop character-shape checks entirely for id-keys (non-empty + not a relative token).
+ */
+const ID_SHAPE = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 const DATE_KEYS = new Set([
   "from",
