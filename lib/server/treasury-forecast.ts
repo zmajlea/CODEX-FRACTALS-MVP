@@ -23,7 +23,9 @@ import { getLastTransactionsSyncedAt } from "@/lib/server/treasury-sync";
 
 type AdminClient = SupabaseClient<Database>;
 
-const LOOKBACK_DAYS = 180;
+/** Recent window for detecting recurrence patterns — independent of baseline length. */
+const RECURRING_LOOKBACK_DAYS = 180;
+
 const HORIZON: Record<SummaryGranularity, number> = { day: 15, week: 13, month: 4 };
 const BASELINE_PERIODS: Record<SummaryGranularity, number> = {
   day: 30,
@@ -88,17 +90,82 @@ function projectFutureDates(
   return dates;
 }
 
+function minIso(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+function maxIso(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/** Full-book posted_date span — a fact about the book, never a query window. */
+async function fetchBookDataSpan(
+  admin: AdminClient,
+  clientUserId: string
+): Promise<{ first: string; last: string } | null> {
+  const { data: firstRow } = await admin
+    .from("treasury_transactions")
+    .select("posted_date")
+    .eq("client_user_id", clientUserId)
+    .eq("is_removed", false)
+    .eq("pending", false)
+    .not("posted_date", "is", null)
+    .order("posted_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: lastRow } = await admin
+    .from("treasury_transactions")
+    .select("posted_date")
+    .eq("client_user_id", clientUserId)
+    .eq("is_removed", false)
+    .eq("pending", false)
+    .not("posted_date", "is", null)
+    .order("posted_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const first = firstRow?.posted_date ?? null;
+  const last = lastRow?.posted_date ?? null;
+  if (!first || !last) return null;
+  return { first, last };
+}
+
 export async function computeTreasuryForecast(
   admin: AdminClient,
   clientUserId: string,
   granularity: SummaryGranularity
 ): Promise<TreasuryForecastResponse> {
   const today = todayIso();
-  const lookbackFrom = subtractDays(today, LOOKBACK_DAYS);
   const horizon = HORIZON[granularity];
   const baselineK = BASELINE_PERIODS[granularity];
   const anchor = periodStartOf(granularity, today);
   const horizonEnd = shiftPeriods(granularity, anchor, horizon);
+
+  // Baseline window: trailing N *complete* periods (exclude unfinished current).
+  const currentPeriod = periodStartOf(granularity, today);
+  const lastCompleteStart = shiftPeriods(granularity, currentPeriod, -1);
+  const baselineStarts: string[] = [];
+  for (let i = baselineK - 1; i >= 0; i--) {
+    baselineStarts.push(shiftPeriods(granularity, lastCompleteStart, -i));
+  }
+  const earliestBaselineStart = baselineStarts[0]!;
+
+  // Two different questions — name them separately so they cannot drift apart again.
+  const recurringLookbackStart = subtractDays(today, RECURRING_LOOKBACK_DAYS);
+  const lookbackStartUnclamped = minIso(recurringLookbackStart, earliestBaselineStart);
+
+  const data_span = await fetchBookDataSpan(admin, clientUserId);
+
+  // Query window covers both recurrence lookback and full baseline periods, clamped to the book.
+  let lookbackFrom = lookbackStartUnclamped;
+  if (data_span) {
+    lookbackFrom = maxIso(lookbackFrom, data_span.first);
+    if (lookbackFrom > data_span.last) {
+      lookbackFrom = data_span.first;
+    }
+  }
+  const lookbackTo = data_span ? minIso(today, data_span.last) : today;
 
   const { data: accounts } = await admin
     .from("treasury_accounts")
@@ -115,7 +182,7 @@ export async function computeTreasuryForecast(
       .eq("is_removed", false)
       .eq("pending", false)
       .gte("posted_date", lookbackFrom)
-      .lte("posted_date", today)
+      .lte("posted_date", lookbackTo)
       .order("posted_date", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to)
@@ -165,38 +232,28 @@ export async function computeTreasuryForecast(
 
   const as_of = await getLastTransactionsSyncedAt(admin, clientUserId);
 
-  const primaryTxs = txs.filter((t) => (t.iso_currency_code ?? "USD") === currency && t.posted_date);
+  const primaryTxs = txs.filter(
+    (t) => (t.iso_currency_code ?? "USD") === currency && t.posted_date
+  );
 
-  let dataFirst: string | null = null;
-  let dataLast: string | null = null;
-  for (const t of primaryTxs) {
-    const d = t.posted_date!;
-    if (!dataFirst || d < dataFirst) dataFirst = d;
-    if (!dataLast || d > dataLast) dataLast = d;
-  }
-  const data_span =
-    dataFirst && dataLast ? { first: dataFirst, last: dataLast } : null;
+  const bookFirst = data_span?.first ?? null;
+  const bookLast = data_span?.last ?? null;
 
   const historyPeriods = new Set(
     primaryTxs.map((t) => periodStartOf(granularity, t.posted_date!))
   );
 
-  let firstDate: string | null = null;
-  for (const t of primaryTxs) {
-    if (t.posted_date && (!firstDate || t.posted_date < firstDate)) {
-      firstDate = t.posted_date;
-    }
-  }
-  const history_days = firstDate
-    ? Math.max(
-        0,
-        Math.round(
-          (new Date(today + "T12:00:00Z").getTime() -
-            new Date(firstDate + "T12:00:00Z").getTime()) /
-            (1000 * 60 * 60 * 24)
+  const history_days =
+    bookFirst != null
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(today + "T12:00:00Z").getTime() -
+              new Date(bookFirst + "T12:00:00Z").getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
         )
-      )
-    : 0;
+      : 0;
 
   const unlabeled = primaryTxs.filter((t) => !t.label).length;
   const unlabeled_share_pct =
@@ -224,20 +281,13 @@ export async function computeTreasuryForecast(
     };
   }
 
-  // Trailing N *complete* periods (exclude unfinished current period).
-  const currentPeriod = periodStartOf(granularity, today);
-  const lastCompleteStart = shiftPeriods(granularity, currentPeriod, -1);
-  const baselineStarts: string[] = [];
-  for (let i = baselineK - 1; i >= 0; i--) {
-    baselineStarts.push(shiftPeriods(granularity, lastCompleteStart, -i));
-  }
-
+  // Seed window vs the book — never vs a lookback slice.
   const seedFullyInside =
-    dataFirst != null &&
-    dataLast != null &&
+    bookFirst != null &&
+    bookLast != null &&
     baselineStarts.every((start) => {
       const end = periodEnd(granularity, start);
-      return start >= dataFirst && end <= dataLast;
+      return start >= bookFirst && end <= bookLast;
     });
 
   if (!seedFullyInside) {
@@ -251,8 +301,8 @@ export async function computeTreasuryForecast(
       periods: [],
       excluded: excludedBase,
       refuse_projection: true,
-      refuse_reason: dataLast
-        ? `Cannot project — seed window is outside the data span (data through ${dataLast}).`
+      refuse_reason: bookLast
+        ? `Cannot project — seed window is outside the data span (data through ${bookLast}).`
         : "Cannot project — no data span.",
       history_days,
       data_span,
