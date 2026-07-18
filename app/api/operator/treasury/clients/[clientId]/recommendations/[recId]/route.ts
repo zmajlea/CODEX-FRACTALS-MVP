@@ -36,6 +36,38 @@ type PatchBody = {
   evidence_id?: string;
 };
 
+/** Resolve a recommendation (or draft) with live evidence for the desk composer. */
+export async function GET(_request: Request, context: RouteContext) {
+  const { clientId, recId } = await context.params;
+  const guard = await requireOperatorTreasuryGrant(clientId);
+  if (isGuardResponse(guard)) return guard;
+
+  const { data: rec, error: loadErr } = await guard.admin
+    .from("treasury_recommendations")
+    .select("*")
+    .eq("id", recId)
+    .eq("client_user_id", clientId)
+    .maybeSingle();
+
+  if (loadErr || !rec) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const row = normalizeRecommendationRow(rec as Record<string, unknown>);
+  const { items, missingCount } = await resolveEvidenceLive(
+    guard.admin,
+    clientId,
+    row.evidence
+  );
+
+  return NextResponse.json({
+    recommendation: row,
+    draft: row,
+    items,
+    missingCount,
+  });
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   const { clientId, recId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -81,6 +113,33 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({
       recommendation: normalizeRecommendationRow(updated as Record<string, unknown>),
     });
+  }
+
+  if (action === "discard_draft") {
+    if (current.status !== "draft") {
+      return NextResponse.json({ error: "Only drafts can be discarded" }, { status: 409 });
+    }
+    if (current.created_by !== guard.user.id) {
+      return NextResponse.json({ error: "Not your draft" }, { status: 403 });
+    }
+    const { error } = await guard.admin
+      .from("treasury_recommendations")
+      .delete()
+      .eq("id", recId)
+      .eq("client_user_id", clientId);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    await writeTreasuryAudit(guard.admin, {
+      actorUserId: guard.user.id,
+      eventType: "treasury_draft_discarded",
+      payload: {
+        client_user_id: clientId,
+        recommendation_id: recId,
+        kind: current.kind,
+      },
+    });
+    return NextResponse.json({ ok: true });
   }
 
   if (

@@ -69,6 +69,8 @@ type Props = {
   grantId: string | null;
   initialTab?: string;
   initialStudyId?: string;
+  /** Stage 8 — deep-link into Recommendations draft composer. */
+  initialDraftId?: string;
 };
 
 const SUMMIT_BRAND = "summit";
@@ -101,12 +103,16 @@ export function OperatorTreasuryClientRecord({
   grantId,
   initialTab,
   initialStudyId,
+  initialDraftId,
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const wordmark = defaultWordmark(SUMMIT_BRAND);
   const [who, setWho] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(() => parseInitialTab(initialTab));
+  const [focusDraftId, setFocusDraftId] = useState<string | null>(
+    () => initialDraftId ?? null
+  );
   const [recUnread, setRecUnread] = useState(0);
   const [data, setData] = useState<TreasuryAccountsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -511,6 +517,14 @@ export function OperatorTreasuryClientRecord({
             operatorName={who}
             onUnreadChange={setRecUnread}
             onBasketChanged={() => setBasketKey((k) => k + 1)}
+            initialDraftId={focusDraftId}
+            onDraftDeepLinkConsumed={() => {
+              setFocusDraftId(null);
+              router.replace(
+                `/operator/treasury/clients/${clientUserId}?tab=recommendations`,
+                { scroll: false }
+              );
+            }}
           />
         ) : null}
 
@@ -529,7 +543,18 @@ export function OperatorTreasuryClientRecord({
         ) : null}
       </div>
 
-      <DraftsRail clientUserId={clientUserId} refreshKey={basketKey} />
+      <DraftsRail
+        clientUserId={clientUserId}
+        refreshKey={basketKey}
+        onOpenDraft={(draftId) => {
+          setTab("recommendations");
+          setFocusDraftId(draftId);
+          router.replace(
+            `/operator/treasury/clients/${clientUserId}?tab=recommendations&draft=${draftId}`,
+            { scroll: false }
+          );
+        }}
+      />
     </BcnContinuityShell>
   );
 }

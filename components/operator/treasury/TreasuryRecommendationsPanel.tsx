@@ -1,21 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/utils/supabase/client";
+import { DraftComposer } from "@/components/operator/treasury/DraftComposer";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
 import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import {
   IMPACT_BASIS_LABELS,
-  RECOMMENDATION_CATEGORIES,
   RECOMMENDATION_CATEGORY_LABELS,
   RECOMMENDATION_STATUS_LABELS,
   type ImpactBasis,
-  type RecommendationCategory,
   type RecommendationStatus,
 } from "@/lib/treasury/recommendation-status";
 import type {
-  TreasuryAccountView,
+  ResolvedEvidenceItem,
   TreasuryInstitutionView,
   TreasuryRecommendationRollup,
   TreasuryRecommendationRow,
@@ -27,20 +27,24 @@ type Props = {
   operatorName?: string | null;
   onUnreadChange?: (count: number) => void;
   onBasketChanged?: () => void;
+  /** Deep-link `?draft=<id>` — open this draft in the composer. */
+  initialDraftId?: string | null;
+  onDraftDeepLinkConsumed?: () => void;
 };
 
-const STATUS_ORDER: Record<RecommendationStatus, number> = {
-  draft: 0,
-  sent: 1,
-  accepted: 2,
-  in_progress: 3,
-  done: 4,
-  declined: 5,
+type DeskTab = "draft" | "sent";
+
+type OpenDraft = {
+  draft: TreasuryRecommendationRow;
+  items: ResolvedEvidenceItem[];
+  missingCount: number;
 };
 
 function statusBadgeClass(status: RecommendationStatus): string {
   if (status === "sent") return "k-proposed";
-  if (status === "accepted" || status === "in_progress" || status === "done") return "k-accepted";
+  if (status === "accepted" || status === "in_progress" || status === "done") {
+    return "k-accepted";
+  }
   if (status === "declined") return "k-declined";
   return "k-muted";
 }
@@ -48,28 +52,34 @@ function statusBadgeClass(status: RecommendationStatus): string {
 function formatImpactLine(rec: TreasuryRecommendationRow): string | null {
   if (rec.impact_amount == null) return null;
   const money = formatTreasuryMoney(rec.impact_amount, "USD");
-  const basis = rec.impact_basis ? IMPACT_BASIS_LABELS[rec.impact_basis as ImpactBasis] : "";
+  const basis = rec.impact_basis
+    ? IMPACT_BASIS_LABELS[rec.impact_basis as ImpactBasis]
+    : "";
   return basis ? `${money} ${basis}` : money;
 }
 
-function accountLabel(acct: TreasuryAccountView): string {
-  const name = acct.name ?? "Account";
-  return acct.mask ? `${name} ····${acct.mask}` : name;
+function isEmptyDraft(rec: TreasuryRecommendationRow): boolean {
+  return !rec.title?.trim() && (rec.evidence?.length ?? 0) === 0;
 }
 
 export function TreasuryRecommendationsPanel({
   clientUserId,
-  institutions,
   operatorName,
   onUnreadChange,
   onBasketChanged,
+  initialDraftId,
+  onDraftDeepLinkConsumed,
 }: Props) {
-  const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
+  const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>(
+    []
+  );
   const [rollup, setRollup] = useState<TreasuryRecommendationRollup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [desk, setDesk] = useState<DeskTab>("draft");
+  const [operatorId, setOperatorId] = useState<string | null>(null);
+  const [open, setOpen] = useState<OpenDraft | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
     try {
@@ -80,18 +90,11 @@ export function TreasuryRecommendationsPanel({
     }
   }
 
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<RecommendationCategory>("liquidity");
-  const [why, setWhy] = useState("");
-  const [impactAmount, setImpactAmount] = useState("");
-  const [impactBasis, setImpactBasis] = useState<ImpactBasis | "">("");
-  const [generalAnchor, setGeneralAnchor] = useState(true);
-  const [accountId, setAccountId] = useState("");
-
-  const accounts = useMemo(
-    () => institutions.flatMap((inst) => inst.accounts),
-    [institutions]
-  );
+  useEffect(() => {
+    void createClient()
+      .auth.getUser()
+      .then(({ data }) => setOperatorId(data.user?.id ?? null));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,7 +111,8 @@ export function TreasuryRecommendationsPanel({
       setRollup(data.rollup);
       const unread = data.recommendations.filter(
         (r) =>
-          (r.status === "accepted" || r.status === "declined") && r.operator_seen_at == null
+          (r.status === "accepted" || r.status === "declined") &&
+          r.operator_seen_at == null
       ).length;
       onUnreadChange?.(unread);
     } else {
@@ -122,60 +126,95 @@ export function TreasuryRecommendationsPanel({
     void load();
   }, [load]);
 
-  const sorted = useMemo(
-    () =>
-      [...recommendations].sort(
-        (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
-      ),
-    [recommendations]
+  const drafts = useMemo(() => {
+    return recommendations
+      .filter((r) => r.status === "draft")
+      .filter((r) => !operatorId || r.created_by === operatorId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [recommendations, operatorId]);
+
+  const sent = useMemo(() => {
+    return recommendations
+      .filter((r) => r.status !== "draft")
+      .sort((a, b) => {
+        const at = a.sent_at ?? a.sealed_at ?? a.created_at;
+        const bt = b.sent_at ?? b.sealed_at ?? b.created_at;
+        return bt.localeCompare(at);
+      });
+  }, [recommendations]);
+
+  const openDraftById = useCallback(
+    async (recId: string) => {
+      setOpeningId(recId);
+      setError(null);
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/${recId}`
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        recommendation?: TreasuryRecommendationRow;
+        items?: ResolvedEvidenceItem[];
+        missingCount?: number;
+      };
+      setOpeningId(null);
+      if (!res.ok || !data.recommendation) {
+        setError(data.error ?? "Failed to open draft");
+        return;
+      }
+      if (data.recommendation.status !== "draft") {
+        setDesk("sent");
+        setError("That item is no longer a draft.");
+        return;
+      }
+      setDesk("draft");
+      setOpen({
+        draft: data.recommendation,
+        items: data.items ?? [],
+        missingCount: data.missingCount ?? 0,
+      });
+    },
+    [clientUserId]
   );
 
-  async function sendRecommendation() {
-    if (!title.trim() || !why.trim()) {
-      setError("Title and why are required");
-      return;
-    }
-    if (
-      !confirm(
-        "Send to client? This seals the recommendation — it becomes immutable and attributed to you."
-      )
-    ) {
-      return;
-    }
+  useEffect(() => {
+    if (!initialDraftId) return;
+    void openDraftById(initialDraftId).then(() => onDraftDeepLinkConsumed?.());
+  }, [initialDraftId, openDraftById, onDraftDeepLinkConsumed]);
 
-    setSending(true);
-    setError(null);
+  async function refreshOpenEvidence() {
+    if (!open) return;
     const res = await fetch(
-      `/api/operator/treasury/clients/${clientUserId}/recommendations`,
+      `/api/operator/treasury/clients/${clientUserId}/recommendations/${open.draft.id}`
+    );
+    if (!res.ok) return;
+    const data = (await res.json()) as OpenDraft & {
+      recommendation: TreasuryRecommendationRow;
+    };
+    setOpen({
+      draft: data.recommendation,
+      items: data.items,
+      missingCount: data.missingCount,
+    });
+    onBasketChanged?.();
+  }
+
+  async function discardDraft(recId: string) {
+    if (!confirm("Delete this empty draft?")) return;
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/recommendations/${recId}`,
       {
-        method: "POST",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          category,
-          why: why.trim(),
-          impact_amount: impactAmount ? Number(impactAmount) : null,
-          impact_basis: impactBasis || null,
-          anchor_type: generalAnchor ? "general" : "account",
-          anchor_ref: generalAnchor ? null : { account_id: accountId },
-          send: true,
-        }),
+        body: JSON.stringify({ action: "discard_draft" }),
       }
     );
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {
-      setError(data.error ?? "Failed to send");
-      setSending(false);
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(data.error ?? "Delete failed");
       return;
     }
-    setTitle("");
-    setWhy("");
-    setImpactAmount("");
-    setImpactBasis("");
-    setGeneralAnchor(true);
-    setAccountId("");
-    setComposerOpen(false);
-    setSending(false);
+    if (open?.draft.id === recId) setOpen(null);
+    onBasketChanged?.();
     void load();
   }
 
@@ -196,6 +235,8 @@ export function TreasuryRecommendationsPanel({
     void load();
   }
 
+  const list = desk === "draft" ? drafts : sent;
+
   return (
     <div>
       {rollup ? (
@@ -215,12 +256,31 @@ export function TreasuryRecommendationsPanel({
           <span className="rr-i muted">
             <b>{rollup.declined}</b> declined
           </span>
-          <span className="flex-1" />
-          <button type="button" className="btn" onClick={() => setComposerOpen((o) => !o)}>
-            New recommendation
-          </button>
         </div>
       ) : null}
+
+      <div className="rec-desk-tabs" role="tablist" aria-label="Recommendations desk">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={desk === "draft"}
+          className={`rec-desk-tab${desk === "draft" ? " on" : ""}`}
+          onClick={() => setDesk("draft")}
+        >
+          Draft
+          {drafts.length > 0 ? <span className="rec-desk-n">{drafts.length}</span> : null}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={desk === "sent"}
+          className={`rec-desk-tab${desk === "sent" ? " on" : ""}`}
+          onClick={() => setDesk("sent")}
+        >
+          Sent
+          {sent.length > 0 ? <span className="rec-desk-n">{sent.length}</span> : null}
+        </button>
+      </div>
 
       {error ? (
         <p className="panel-note text-cinnabar mb-4" role="alert">
@@ -228,122 +288,81 @@ export function TreasuryRecommendationsPanel({
         </p>
       ) : null}
 
-      {composerOpen ? (
-        <div className="rec-composer">
-          <div className="rc-h">Compose recommendation</div>
-          <label className="rc-check">
-            <input
-              type="checkbox"
-              checked={generalAnchor}
-              onChange={(e) => setGeneralAnchor(e.target.checked)}
-            />
-            General, not tied to a specific line
-          </label>
-          {!generalAnchor ? (
-            <div className="rc-f">
-              <span>Anchor</span>
-              <select
-                className="rec-select"
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-              >
-                <option value="">Select account…</option>
-                {accounts.map((a) => (
-                  <option key={a.account_id} value={a.account_id}>
-                    {accountLabel(a)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <p className="rc-note">Unanchored recommendations show a visible General flag.</p>
-          )}
-          <div className="rc-f">
-            <span>Title</span>
-            <input
-              className="rec-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Short headline for the client"
-            />
-          </div>
-          <div className="rc-f">
-            <span>Category</span>
-            <select
-              className="rec-select"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as RecommendationCategory)}
-            >
-              {RECOMMENDATION_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {RECOMMENDATION_CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="rc-f">
-            <span>Why</span>
-            <textarea
-              className="rec-input"
-              rows={4}
-              value={why}
-              onChange={(e) => setWhy(e.target.value)}
-              placeholder="Explain the change and why it matters"
-            />
-          </div>
-          <div className="rc-imp">
-            <div className="rc-f">
-              <span>Impact amount (optional)</span>
-              <input
-                className="rec-input"
-                type="number"
-                step="0.01"
-                value={impactAmount}
-                onChange={(e) => setImpactAmount(e.target.value)}
-                placeholder="Operator estimate only"
-              />
-            </div>
-            <div className="rc-f">
-              <span>Basis</span>
-              <select
-                className="rec-select"
-                value={impactBasis}
-                onChange={(e) => setImpactBasis(e.target.value as ImpactBasis | "")}
-              >
-                <option value="">—</option>
-                {(Object.keys(IMPACT_BASIS_LABELS) as ImpactBasis[]).map((b) => (
-                  <option key={b} value={b}>
-                    {IMPACT_BASIS_LABELS[b]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <p className="rc-note">Impact is your estimate — the platform does not compute it.</p>
-          <div className="rec-acts">
-            <button type="button" className="btn" disabled={sending} onClick={() => void sendRecommendation()}>
-              {sending ? "Sending…" : "Send to client"}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setComposerOpen(false)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {loading ? (
-        <p className="text-sm text-codex-muted">Loading recommendations…</p>
-      ) : sorted.length === 0 ? (
-        <p className="rec-empty">No recommendations yet. Compose one to send to this client.</p>
+        <p className="text-sm text-codex-muted">Loading…</p>
+      ) : list.length === 0 ? (
+        <p className="rec-empty">
+          {desk === "draft"
+            ? "No drafts yet. Pick evidence into the basket, then open a draft here."
+            : "Nothing sent yet."}
+        </p>
       ) : (
         <div className="rec-grid">
-          {sorted.map((rec) => {
+          {list.map((rec) => {
+            const empty = desk === "draft" && isEmptyDraft(rec);
             const impact = formatImpactLine(rec);
             const sealed = rec.sealed_at != null;
+            const kindLabel =
+              rec.kind === "question" ? "Question" : "Recommendation";
+
+            if (desk === "draft") {
+              return (
+                <article
+                  key={rec.id}
+                  className={`rec-card rec-card-draft${empty ? " empty" : ""}`}
+                >
+                  <div className="rec-top">
+                    <span className="rec-kind">{kindLabel}</span>
+                    {!empty ? (
+                      <span className="rec-ev-n">
+                        {rec.evidence.length} item
+                        {rec.evidence.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <h3 className="rec-title">
+                    {empty ? "Empty draft" : rec.title?.trim() || "Untitled draft"}
+                  </h3>
+                  {!empty && rec.why?.trim() ? (
+                    <p className="rec-why">
+                      <span className="rw-l">
+                        {rec.kind === "question" ? "Question" : "Why"}
+                      </span>
+                      {rec.why}
+                    </p>
+                  ) : null}
+                  <div className="rec-acts">
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={openingId === rec.id}
+                      onClick={() => void openDraftById(rec.id)}
+                    >
+                      {openingId === rec.id ? "Opening…" : "Open"}
+                    </button>
+                    {empty ? (
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => void discardDraft(rec.id)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            }
+
             return (
               <article key={rec.id} className="rec-card">
                 <div className="rec-top">
-                  <span className="rec-cat">{RECOMMENDATION_CATEGORY_LABELS[rec.category]}</span>
+                  <span className="rec-kind">{kindLabel}</span>
+                  {rec.kind === "recommendation" ? (
+                    <span className="rec-cat">
+                      {RECOMMENDATION_CATEGORY_LABELS[rec.category]}
+                    </span>
+                  ) : null}
                   <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
                     <span className="rec-bdot" />
                     {RECOMMENDATION_STATUS_LABELS[rec.status]}
@@ -363,9 +382,19 @@ export function TreasuryRecommendationsPanel({
                 </div>
                 <h3 className="rec-title">{rec.title}</h3>
                 <p className="rec-why">
-                  <span className="rw-l">Why</span>
+                  <span className="rw-l">
+                    {rec.kind === "question" ? "Question" : "Why"}
+                  </span>
                   {rec.why}
                 </p>
+                {rec.kind === "question" && rec.client_response ? (
+                  <div className="rec-decline">
+                    <b>Client answer:</b> {rec.client_response}
+                    {rec.responded_at
+                      ? ` · ${formatTreasuryAsOf(rec.responded_at)}`
+                      : ""}
+                  </div>
+                ) : null}
                 {impact ? (
                   <div className="rec-impact">
                     <span className="ri-l">Estimated impact</span>
@@ -384,7 +413,12 @@ export function TreasuryRecommendationsPanel({
                   ) : null}
                   {sealed ? (
                     <span className="rec-seal-line">
-                      Sealed by {operatorName ?? "you"} · {formatTreasuryAsOf(rec.sealed_at)}
+                      Sealed by {operatorName ?? "you"} ·{" "}
+                      {formatTreasuryAsOf(rec.sealed_at)}
+                    </span>
+                  ) : rec.sent_at ? (
+                    <span className="rec-seal-line">
+                      Sent · {formatTreasuryAsOf(rec.sent_at)}
                     </span>
                   ) : null}
                 </div>
@@ -429,6 +463,24 @@ export function TreasuryRecommendationsPanel({
           })}
         </div>
       )}
+
+      {open ? (
+        <DraftComposer
+          clientUserId={clientUserId}
+          draftKind={open.draft.kind}
+          draft={open.draft}
+          items={open.items}
+          missingCount={open.missingCount}
+          onClose={() => setOpen(null)}
+          onSent={() => {
+            setOpen(null);
+            setDesk("sent");
+            onBasketChanged?.();
+            void load();
+          }}
+          onEvidenceChanged={() => void refreshOpenEvidence()}
+        />
+      ) : null}
     </div>
   );
 }
