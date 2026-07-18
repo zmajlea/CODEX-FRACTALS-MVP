@@ -1410,6 +1410,7 @@ export type Database = {
           category: string
           client_seen_at: string | null
           client_user_id: string
+          client_response: string | null
           created_at: string
           created_by: string | null
           decided_at: string | null
@@ -1423,6 +1424,7 @@ export type Database = {
           kind: string
           operator_seen_at: string | null
           operator_tenant_id: string | null
+          responded_at: string | null
           sealed_at: string | null
           sealed_by: string | null
           sent_at: string | null
@@ -1437,6 +1439,7 @@ export type Database = {
           category: string
           client_seen_at?: string | null
           client_user_id: string
+          client_response?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -1450,6 +1453,7 @@ export type Database = {
           kind?: string
           operator_seen_at?: string | null
           operator_tenant_id?: string | null
+          responded_at?: string | null
           sealed_at?: string | null
           sealed_by?: string | null
           sent_at?: string | null
@@ -1464,6 +1468,7 @@ export type Database = {
           category?: string
           client_seen_at?: string | null
           client_user_id?: string
+          client_response?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -1477,6 +1482,7 @@ export type Database = {
           kind?: string
           operator_seen_at?: string | null
           operator_tenant_id?: string | null
+          responded_at?: string | null
           sealed_at?: string | null
           sealed_by?: string | null
           sent_at?: string | null

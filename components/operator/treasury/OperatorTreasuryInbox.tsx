@@ -91,7 +91,7 @@ export function OperatorTreasuryInbox({ tenantId }: Props) {
               }}
             >
               <span className="ibx-ic">
-                <BcnIcon name={item.kind === "Declined" ? "compass" : "shield"} />
+                <BcnIcon name={item.kind === "Declined" ? "compass" : item.kind === "Answered" ? "out" : "shield"} />
               </span>
               <span className="ibx-b">
                 <span className="ibx-k">{item.kind}</span>

@@ -10,9 +10,9 @@ import {
 import {
   ExecLadder,
   formatImpactLine,
+  FrozenEvidenceList,
   statusBadgeClass,
 } from "@/lib/treasury/recommendation-ui";
-import { formatTreasuryMoney } from "@/lib/treasury/format";
 import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 
 type Props = {
@@ -25,6 +25,8 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [acceptId, setAcceptId] = useState<string | null>(null);
   const [declineId, setDeclineId] = useState<string | null>(null);
+  const [answerId, setAnswerId] = useState<string | null>(null);
+  const [answerText, setAnswerText] = useState("");
   const [declineReason, setDeclineReason] = useState<DeclineReason>(DECLINE_REASONS[0]!);
   const [declineNote, setDeclineNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,8 +61,13 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
 
   const acceptRec = sorted.find((r) => r.id === acceptId);
   const declineRec = sorted.find((r) => r.id === declineId);
+  const answerRec = sorted.find((r) => r.id === answerId);
 
-  async function patchAction(recId: string, action: string, extra?: Record<string, string>) {
+  async function patchAction(
+    recId: string,
+    action: string,
+    extra?: Record<string, string>
+  ) {
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/treasury/recommendations/${recId}`, {
@@ -76,6 +83,8 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
     }
     setAcceptId(null);
     setDeclineId(null);
+    setAnswerId(null);
+    setAnswerText("");
     setDeclineNote("");
     setBusy(false);
     void load();
@@ -85,7 +94,7 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
   return (
     <div>
       <div className="lens-banner mb-4">
-        These are the changes your treasurer has proposed. Read each one, then accept or decline.
+        Recommendations from your treasurer, and questions that need your answer.
       </div>
 
       {error ? (
@@ -95,79 +104,60 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
       ) : null}
 
       {loading ? (
-        <p className="treasury-muted">Loading recommendations…</p>
+        <p className="treasury-muted">Loading…</p>
       ) : sorted.length === 0 ? (
         <p className="rec-empty">
-          No recommendations yet. When your treasurer proposes a change, it will appear here.
+          Nothing here yet. When your treasurer sends a recommendation or a question, it will
+          appear here.
         </p>
       ) : (
         <div className="rec-grid">
           {sorted.map((rec) => {
+            const isQuestion = rec.kind === "question";
             const pending = rec.status === "sent";
             const showLadder =
-              rec.status === "accepted" || rec.status === "in_progress" || rec.status === "done";
+              !isQuestion &&
+              (rec.status === "accepted" ||
+                rec.status === "in_progress" ||
+                rec.status === "done");
+
             return (
               <article
                 key={rec.id}
-                className={`rec-card client${pending ? " pending" : ""}`}
+                className={`rec-card client${pending ? " pending" : ""}${
+                  isQuestion ? " question" : ""
+                }`}
               >
                 <div className="rec-top">
-                  <span className="rec-cat">{RECOMMENDATION_CATEGORY_LABELS[rec.category]}</span>
+                  {isQuestion ? (
+                    <span className="rec-cat rec-cat-q">Question</span>
+                  ) : (
+                    <span className="rec-cat">
+                      {RECOMMENDATION_CATEGORY_LABELS[rec.category]}
+                    </span>
+                  )}
                   {!pending && rec.status !== "draft" ? (
                     <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
                       <span className="rec-bdot" />
-                      {RECOMMENDATION_STATUS_LABELS[rec.status]}
+                      {isQuestion && rec.status === "done"
+                        ? "Answered"
+                        : RECOMMENDATION_STATUS_LABELS[rec.status]}
                     </span>
                   ) : null}
                 </div>
                 <h3 className="rec-title">{rec.title}</h3>
                 <p className="rec-why">
-                  <span className="rw-l">Why</span>
+                  <span className="rw-l">{isQuestion ? "The question" : "Why"}</span>
                   {rec.why}
                 </p>
-                <div className="rec-impact">
-                  <span className="ri-l">Estimated impact</span>
-                  <span className="ri-v">{formatImpactLine(rec)}</span>
-                  <span className="ri-b">Attributed to your treasurer</span>
-                </div>
-                {rec.evidence?.length ? (
-                  <div className="rec-evidence">
-                    <div className="rec-evidence-h">
-                      Evidence · {rec.evidence.length} item
-                      {rec.evidence.length === 1 ? "" : "s"}
-                    </div>
-                    {rec.evidence.map((ev) => {
-                      if (ev.kind !== "transaction") return null;
-                      if (ev.snap) {
-                        const dir = ev.snap.direction;
-                        const abs = formatTreasuryMoney(Math.abs(ev.snap.amount), "USD");
-                        const amt =
-                          dir === "in" ? `+${abs}` : dir === "out" ? `−${abs}` : abs;
-                        return (
-                          <div key={ev.id} className="req-item">
-                            <span className="ri-d">{ev.snap.date || "—"}</span>
-                            <span className="ri-p">
-                              <b>{ev.snap.payee || "—"}</b>
-                              {ev.snap.category ? <em>{ev.snap.category}</em> : null}
-                            </span>
-                            <span className={`ri-a ${dir === "in" ? "in" : "out"}`}>
-                              {amt}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={ev.id} className="req-item req-item-missing">
-                          <span className="ri-d">—</span>
-                          <span className="ri-p">
-                            <b>Item no longer available</b>
-                          </span>
-                          <span className="ri-a">—</span>
-                        </div>
-                      );
-                    })}
+                {!isQuestion ? (
+                  <div className="rec-impact">
+                    <span className="ri-l">Estimated impact</span>
+                    <span className="ri-v">{formatImpactLine(rec)}</span>
+                    <span className="ri-b">Attributed to your treasurer</span>
                   </div>
                 ) : null}
+                <FrozenEvidenceList evidence={rec.evidence ?? []} />
                 {showLadder ? <ExecLadder status={rec.status} /> : null}
                 {rec.status === "declined" ? (
                   <div className="rec-decline">
@@ -175,9 +165,19 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                     {rec.decline_reason ? `: ${rec.decline_reason.toLowerCase()}` : ""}.
                   </div>
                 ) : null}
-                {pending ? (
+                {isQuestion && rec.status === "done" && rec.client_response ? (
+                  <div className="rec-answer">
+                    <span className="rw-l">Your answer</span>
+                    {rec.client_response}
+                  </div>
+                ) : null}
+                {pending && !isQuestion ? (
                   <div className="rec-acts">
-                    <button type="button" className="btn text-xs" onClick={() => setAcceptId(rec.id)}>
+                    <button
+                      type="button"
+                      className="btn text-xs"
+                      onClick={() => setAcceptId(rec.id)}
+                    >
                       Accept
                     </button>
                     <button
@@ -192,6 +192,20 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                     </button>
                   </div>
                 ) : null}
+                {pending && isQuestion ? (
+                  <div className="rec-acts">
+                    <button
+                      type="button"
+                      className="btn text-xs"
+                      onClick={() => {
+                        setAnswerText("");
+                        setAnswerId(rec.id);
+                      }}
+                    >
+                      Answer
+                    </button>
+                  </div>
+                ) : null}
               </article>
             );
           })}
@@ -200,7 +214,12 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
 
       {acceptRec ? (
         <div className="tx-drill-overlay" role="presentation">
-          <div className="tx-drill-modal" role="dialog" aria-modal="true" aria-labelledby="rec-accept-title">
+          <div
+            className="tx-drill-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rec-accept-title"
+          >
             <div className="tx-drill-head">
               <div>
                 <p className="eyebrow">Accept recommendation</p>
@@ -208,13 +227,17 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                   {acceptRec.title}
                 </h3>
               </div>
-              <button type="button" className="btn btn-secondary text-xs" onClick={() => setAcceptId(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary text-xs"
+                onClick={() => setAcceptId(null)}
+              >
                 Close
               </button>
             </div>
             <p className="treasury-muted mb-4">
-              You are accepting this recommendation. That commits it, and your treasurer will begin
-              the work. You will see it move to In progress, then Done.
+              You are accepting this recommendation. That commits it, and your treasurer will
+              begin the work. You will see it move to In progress, then Done.
             </p>
             <div className="flex gap-2">
               <button
@@ -225,7 +248,12 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
               >
                 Accept and commit
               </button>
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setAcceptId(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setAcceptId(null)}
+              >
                 Cancel
               </button>
             </div>
@@ -235,7 +263,12 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
 
       {declineRec ? (
         <div className="tx-drill-overlay" role="presentation">
-          <div className="tx-drill-modal" role="dialog" aria-modal="true" aria-labelledby="rec-decline-title">
+          <div
+            className="tx-drill-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rec-decline-title"
+          >
             <div className="tx-drill-head">
               <div>
                 <p className="eyebrow">Decline recommendation</p>
@@ -243,7 +276,11 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                   {declineRec.title}
                 </h3>
               </div>
-              <button type="button" className="btn btn-secondary text-xs" onClick={() => setDeclineId(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary text-xs"
+                onClick={() => setDeclineId(null)}
+              >
                 Close
               </button>
             </div>
@@ -285,13 +322,79 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
               >
                 Decline
               </button>
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setDeclineId(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setDeclineId(null)}
+              >
                 Cancel
               </button>
             </div>
             <p className="treasury-meta-fine">
               Declined recommendations are final. Your treasurer can propose a fresh one instead.
             </p>
+          </div>
+        </div>
+      ) : null}
+
+      {answerRec ? (
+        <div className="tx-drill-overlay" role="presentation">
+          <div
+            className="tx-drill-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rec-answer-title"
+          >
+            <div className="tx-drill-head">
+              <div>
+                <p className="eyebrow">Answer question</p>
+                <h3 id="rec-answer-title" className="sec-title" style={{ margin: 0 }}>
+                  {answerRec.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary text-xs"
+                onClick={() => setAnswerId(null)}
+              >
+                Close
+              </button>
+            </div>
+            <p className="treasury-muted mb-3">{answerRec.why}</p>
+            <FrozenEvidenceList evidence={answerRec.evidence ?? []} />
+            <label className="rc-f block mb-4 mt-4">
+              <span>Your answer</span>
+              <textarea
+                className="rec-input"
+                rows={4}
+                value={answerText}
+                onChange={(e) => setAnswerText(e.target.value)}
+                placeholder="Write your answer for your treasurer"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn"
+                disabled={busy || !answerText.trim()}
+                onClick={() =>
+                  void patchAction(answerRec.id, "answer", {
+                    client_response: answerText.trim(),
+                  })
+                }
+              >
+                Send answer
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setAnswerId(null)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

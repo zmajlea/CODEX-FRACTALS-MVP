@@ -244,6 +244,9 @@ export type TreasuryRecommendationRow = {
   decided_at: string | null;
   decline_reason: string | null;
   decline_note: string | null;
+  /** Spec 40 §7 — client answer to a question */
+  client_response: string | null;
+  responded_at: string | null;
   operator_seen_at: string | null;
   client_seen_at: string | null;
   created_at: string;
@@ -264,7 +267,7 @@ export type TreasuryInboxItem = {
   recommendationId: string;
   clientUserId: string;
   clientName: string;
-  kind: "Accepted" | "Declined" | "Progress";
+  kind: "Accepted" | "Declined" | "Progress" | "Answered";
   title: string;
   sub: string | null;
   unread: boolean;

@@ -7,7 +7,7 @@ import {
   buildOperatorInboxItems,
   inboxUnreadCount,
 } from "@/lib/server/treasury-recommendations";
-import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
+import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -66,9 +66,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const filtered = (data ?? []).filter((r) =>
-    allowedIds.has(r.client_user_id)
-  ) as TreasuryRecommendationRow[];
+  const filtered = (data ?? [])
+    .filter((r) => allowedIds.has(r.client_user_id))
+    .map((r) => normalizeRecommendationRow(r as Record<string, unknown>));
 
   const items = buildOperatorInboxItems(filtered, clientNames);
   const unreadCount = inboxUnreadCount(items);

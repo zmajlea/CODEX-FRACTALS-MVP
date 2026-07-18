@@ -57,10 +57,13 @@ export async function verifyRecommendationAnchor(
 }
 
 export function operatorUnreadCount(rows: TreasuryRecommendationRow[]): number {
-  return rows.filter(
-    (r) =>
-      (r.status === "accepted" || r.status === "declined") && r.operator_seen_at == null
-  ).length;
+  return rows.filter((r) => {
+    if (r.operator_seen_at != null) return false;
+    if (r.status === "accepted" || r.status === "declined") return true;
+    // Question answered → done with responded_at
+    if (r.kind === "question" && r.status === "done" && r.responded_at) return true;
+    return false;
+  }).length;
 }
 
 export function clientUnreadCount(rows: TreasuryRecommendationRow[]): number {
@@ -82,6 +85,27 @@ export function buildOperatorInboxItems(
 
   for (const row of rows) {
     const clientName = clientNames.get(row.client_user_id) ?? "Client";
+    const isQuestion = row.kind === "question";
+
+    if (isQuestion && row.status === "done" && row.responded_at) {
+      items.push({
+        id: `${row.id}-answered`,
+        recommendationId: row.id,
+        clientUserId: row.client_user_id,
+        clientName,
+        kind: "Answered",
+        title: `${clientName} answered: ${row.title}`,
+        sub: row.client_response
+          ? row.client_response.length > 120
+            ? `${row.client_response.slice(0, 117)}…`
+            : row.client_response
+          : "Answer received",
+        unread: row.operator_seen_at == null,
+        actioned: false,
+        updatedAt: row.responded_at ?? row.updated_at,
+      });
+      continue;
+    }
 
     if (row.status === "accepted") {
       items.push({
@@ -109,7 +133,10 @@ export function buildOperatorInboxItems(
         actioned: false,
         updatedAt: row.decided_at ?? row.updated_at,
       });
-    } else if (row.status === "in_progress" || row.status === "done") {
+    } else if (
+      !isQuestion &&
+      (row.status === "in_progress" || row.status === "done")
+    ) {
       items.push({
         id: `${row.id}-${row.status}`,
         recommendationId: row.id,

@@ -1554,6 +1554,10 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 .rec-card{ background:var(--paper); border:1px solid var(--paper-edge); border-radius:var(--radius); box-shadow:var(--paper-shadow); padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
 .rec-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .rec-cat{ font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--slate); padding:3px 9px; border:1px solid var(--line); border-radius:999px; }
+.rec-cat-q{ color:var(--brand-2, var(--brand)); border-color:color-mix(in srgb,var(--brand-2, var(--brand)) 40%, var(--line)); background:color-mix(in srgb,var(--brand-2, var(--brand)) 8%, var(--paper-2)); }
+.rec-card.question{ border-left:3px solid var(--brand-2, var(--brand)); }
+.rec-answer{ font-size:13.5px; line-height:1.5; color:var(--ink); background:var(--paper-2); border-radius:6px; padding:11px 14px; }
+.rec-answer .rw-l{ font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); display:block; margin-bottom:4px; }
 .rec-title{ font-family:var(--font-display); font-size:17px; font-weight:700; line-height:1.25; color:var(--ink); margin:0; }
 .rec-why{ font-size:13.5px; line-height:1.5; color:var(--slate); margin:0; }
 .rec-why .rw-l{ font-family:var(--font-mono); font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin-right:6px; }
@@ -1643,6 +1647,7 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 [data-brand="summit"] .ct-acct-line-bal{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--ink); }
 [data-brand="summit"] .ct-chart-panel{ background:var(--paper); border:1px solid var(--line); border-radius:10px; box-shadow:var(--paper-shadow); padding:16px 18px; }
 [data-brand="summit"] .rec-card.client.pending{ border-left:3px solid var(--su-warn); }
+[data-brand="summit"] .rec-card.client.question.pending{ border-left:3px solid var(--brand-2, var(--brand)); }
 [data-brand="summit"] .rec-card .rec-acts .btn.decline{ background:transparent; border:1px solid var(--line); color:var(--slate); }
 [data-brand="summit"] .dtile .dt-k{ font-size:11px; font-weight:700; color:var(--slate); }
 [data-brand="summit"] .rec-impact .ri-l{ font-size:10.5px; font-weight:700; color:var(--slate); }

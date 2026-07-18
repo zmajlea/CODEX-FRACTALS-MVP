@@ -38,6 +38,10 @@ export function normalizeRecommendationRow(
     ...(row as unknown as TreasuryRecommendationRow),
     kind,
     evidence: parseEvidence(row.evidence),
+    client_response:
+      typeof row.client_response === "string" ? row.client_response : null,
+    responded_at:
+      typeof row.responded_at === "string" ? row.responded_at : null,
   };
 }
 

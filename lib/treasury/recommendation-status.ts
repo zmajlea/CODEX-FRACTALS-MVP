@@ -77,7 +77,10 @@ export function canTransition(
     return false;
   }
 
-  if (from === "sent" && (to === "accepted" || to === "declined")) return true;
+  // Client: accept/decline a recommendation, or answer a question (sent → done)
+  if (from === "sent" && (to === "accepted" || to === "declined" || to === "done")) {
+    return true;
+  }
   return false;
 }
 
@@ -92,6 +95,8 @@ export function actionToStatus(
       return current === "sent" ? "accepted" : null;
     case "decline":
       return current === "sent" ? "declined" : null;
+    case "answer":
+      return current === "sent" ? "done" : null;
     case "mark_in_progress":
       return current === "accepted" ? "in_progress" : null;
     case "mark_done":
