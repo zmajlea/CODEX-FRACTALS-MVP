@@ -5,7 +5,6 @@ import { createClient } from "@/utils/supabase/client";
 import { DraftComposer } from "@/components/operator/treasury/DraftComposer";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import {
   IMPACT_BASIS_LABELS,
@@ -26,6 +25,9 @@ type Props = {
   institutions: TreasuryInstitutionView[];
   operatorName?: string | null;
   onUnreadChange?: (count: number) => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
+  /** Bump drafts rail after send/discard (not for picks). */
   onBasketChanged?: () => void;
   /** Deep-link `?draft=<id>` — open this draft in the composer. */
   initialDraftId?: string | null;
@@ -73,6 +75,7 @@ export function TreasuryRecommendationsPanel({
   clientUserId,
   operatorName,
   onUnreadChange,
+  onPick,
   onBasketChanged,
   initialDraftId,
   onDraftDeepLinkConsumed,
@@ -87,15 +90,6 @@ export function TreasuryRecommendationsPanel({
   const [operatorId, setOperatorId] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenDraft | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
-
-  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      await postPickableToDraft(clientUserId, draftKind, pickable);
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
-  }
 
   useEffect(() => {
     void createClient()
@@ -384,7 +378,7 @@ export function TreasuryRecommendationsPanel({
                       {RECOMMENDATION_STATUS_LABELS[rec.status]}
                     </span>
                   )}
-                  {sealed ? (
+                  {sealed && onPick ? (
                     <PickButton
                       variant="row"
                       pickable={{
@@ -393,7 +387,7 @@ export function TreasuryRecommendationsPanel({
                         label: rec.title || "Recommendation",
                         sublabel: `sealed · ${formatTreasuryAsOf(rec.sealed_at)}`,
                       }}
-                      onPick={addPickableToDraft}
+                      onPick={onPick}
                     />
                   ) : null}
                 </div>

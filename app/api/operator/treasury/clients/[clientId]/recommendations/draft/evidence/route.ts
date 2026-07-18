@@ -5,14 +5,14 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import {
-  appendEvidenceItem,
-  appendTransactionEvidence,
   assertTransactionsBelongToClient,
   evidenceAsJson,
   evidenceFromPickable,
   findOrCreateOpenDraft,
   normalizeRecommendationRow,
   resolveEvidenceLive,
+  tryAppendEvidenceItem,
+  tryAppendTransactionEvidence,
 } from "@/lib/server/treasury-recommendation-evidence";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import { assertAbsolutePickParams } from "@/lib/treasury/pickable";
@@ -58,6 +58,7 @@ export async function POST(request: Request, context: RouteContext) {
   let nextEvidence = draft.evidence;
   let auditKind = "transaction";
   let auditDetail: Record<string, unknown> = {};
+  let duplicate = false;
 
   if (body.pickable) {
     try {
@@ -77,7 +78,9 @@ export async function POST(request: Request, context: RouteContext) {
           );
         }
       }
-      nextEvidence = appendEvidenceItem(draft.evidence, item);
+      const appended = tryAppendEvidenceItem(draft.evidence, item);
+      nextEvidence = appended.evidence;
+      duplicate = appended.duplicate;
       auditKind = item.kind;
       auditDetail = {
         pickable_kind: body.pickable.kind,
@@ -113,8 +116,24 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    nextEvidence = appendTransactionEvidence(draft.evidence, transactionIds);
+    const appended = tryAppendTransactionEvidence(draft.evidence, transactionIds);
+    nextEvidence = appended.evidence;
+    duplicate = appended.duplicate;
     auditDetail = { transaction_ids: transactionIds };
+  }
+
+  if (duplicate) {
+    const { items, missingCount } = await resolveEvidenceLive(
+      guard.admin,
+      clientId,
+      draft.evidence
+    );
+    return NextResponse.json({
+      draft,
+      items,
+      missingCount,
+      duplicate: true,
+    });
   }
 
   const { data: updated, error } = await guard.admin
@@ -155,5 +174,10 @@ export async function POST(request: Request, context: RouteContext) {
     },
   });
 
-  return NextResponse.json({ draft: row, items, missingCount });
+  return NextResponse.json({
+    draft: row,
+    items,
+    missingCount,
+    duplicate: false,
+  });
 }

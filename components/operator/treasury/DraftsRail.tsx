@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
-import type { DraftKind } from "@/lib/treasury/pickable";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   ResolvedEvidenceItem,
   TreasuryRecommendationRow,
 } from "@/lib/treasury/types";
 import type { Evidence } from "@/lib/treasury/evidence";
 import { evidenceRunningTotal } from "@/lib/treasury/evidence";
+import type { OptimisticPickPayload } from "@/components/operator/treasury/useOptimisticPick";
 
 type DraftBundle = {
   draft: TreasuryRecommendationRow;
@@ -98,6 +99,9 @@ export function DraftsRail({
   onOpenChange,
   onOpenDraft,
   onNavigateEvidence,
+  optimisticPick,
+  pickNotice,
+  onClearPickNotice,
 }: {
   clientUserId: string;
   refreshKey: number;
@@ -107,6 +111,11 @@ export function DraftsRail({
   onOpenDraft?: (draftId: string) => void;
   /** Stage 8a-4 — jump from basket item to its source surface. */
   onNavigateEvidence?: (nav: EvidenceNavRequest) => void;
+  /** Stage 8b-2 — provisional row from shared useOptimisticPick. */
+  optimisticPick?: OptimisticPickPayload | null;
+  /** Stage 8b-3 — duplicate / error acknowledgement. */
+  pickNotice?: string | null;
+  onClearPickNotice?: () => void;
 }) {
   const [data, setData] = useState<DraftsPayload>({
     recommendation: null,
@@ -185,6 +194,86 @@ export function DraftsRail({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
+
+  // Stage 8b-2 — insert provisional item immediately (before POST settles)
+  const lastOptToken = useRef<number | null>(null);
+  useEffect(() => {
+    if (!optimisticPick || optimisticPick.token === lastOptToken.current) {
+      if (!optimisticPick) lastOptToken.current = null;
+      return;
+    }
+    lastOptToken.current = optimisticPick.token;
+    const kind = optimisticPick.draftKind;
+    const pickable = optimisticPick.pickable;
+    const provisionalId =
+      pickable.ref ?? `opt-${optimisticPick.token}-${pickable.kind}`;
+    const provisional = {
+      kind: pickable.kind === "transaction" ? "txquery" : pickable.kind,
+      id: provisionalId,
+      available: true,
+      label: pickable.label,
+      sublabel: pickable.sublabel,
+    } as ResolvedEvidenceItem;
+    // For transaction picks keep kind accurate via a soft cast:
+    const provisionalItem: ResolvedEvidenceItem =
+      pickable.kind === "transaction"
+        ? {
+            kind: "transaction",
+            id: provisionalId,
+            available: false,
+            label: pickable.label,
+          }
+        : provisional;
+    snapshotRef.current = {
+      recommendation: data.recommendation,
+      question: data.question,
+    };
+    setUpdating((u) => ({ ...u, [kind]: true }));
+    setGroupError((e) => ({ ...e, [kind]: undefined }));
+    setData((prev) => {
+      const bundle = prev[kind];
+      if (!bundle) {
+        return {
+          ...prev,
+          [kind]: {
+            draft: {
+              id: `pending-${optimisticPick.token}`,
+              evidence: [],
+              kind,
+              status: "draft",
+              title: "",
+              why: "",
+            } as unknown as TreasuryRecommendationRow,
+            items: [provisionalItem],
+            missingCount: 0,
+          },
+        };
+      }
+      const already = bundle.items.some(
+        (it) =>
+          ("id" in it && it.id === provisionalId) ||
+          (it.label === pickable.label && it.kind === pickable.kind)
+      );
+      if (already) return prev;
+      return {
+        ...prev,
+        [kind]: {
+          ...bundle,
+          items: [...bundle.items, provisionalItem],
+        },
+      };
+    });
+  }, [optimisticPick]); // eslint-disable-line react-hooks/exhaustive-deps -- apply once per token
+
+  // When optimistic pick clears with a notice (error / duplicate), revert provisional row
+  useEffect(() => {
+    if (optimisticPick) return;
+    if (pickNotice && snapshotRef.current) {
+      setData(snapshotRef.current);
+      snapshotRef.current = null;
+      setUpdating({});
+    }
+  }, [optimisticPick, pickNotice]);
 
   const recCount = data.recommendation?.items.length ?? 0;
   const qCount = data.question?.items.length ?? 0;
@@ -451,6 +540,17 @@ export function DraftsRail({
         className={`drawer${drawerOpen ? " open" : ""}`}
         aria-label="Drafts"
       >
+        {drawerOpen ? (
+          <button
+            type="button"
+            className="railtab close-twin"
+            title="Close drafts"
+            aria-label="Close drafts"
+            onClick={() => setDrawerOpen(false)}
+          >
+            <span className="vt">Close</span>
+          </button>
+        ) : null}
         <div className="drawer-h">
           <b>Drafts</b>
           <span className="drawer-sub">collector · compose on the desk</span>
@@ -463,6 +563,20 @@ export function DraftsRail({
             ×
           </button>
         </div>
+        {pickNotice ? (
+          <p className="dg-err" role="status" style={{ margin: "8px 14px 0" }}>
+            {pickNotice}{" "}
+            {onClearPickNotice ? (
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={onClearPickNotice}
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </p>
+        ) : null}
         <div className="drawer-b">
           {total === 0 ? (
             <div className="drafts-empty">

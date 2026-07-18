@@ -2,7 +2,6 @@
 
 import { TreasuryCsvImport } from "@/components/operator/treasury/TreasuryCsvImport";
 import { TreasurySourcesList } from "@/components/treasury/TreasurySourcesList";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryInstitutionView } from "@/lib/treasury/types";
 
@@ -16,7 +15,8 @@ type Props = {
   showSyncFromBank?: boolean;
   onSync?: () => void;
   onImported?: () => void;
-  onBasketChanged?: () => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 export function TreasuryConnectionsPanel({
@@ -28,17 +28,8 @@ export function TreasuryConnectionsPanel({
   showSyncFromBank = true,
   onSync,
   onImported,
-  onBasketChanged,
+  onPick,
 }: Props) {
-  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      await postPickableToDraft(clientUserId, draftKind, pickable);
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
-  }
-
   return (
     <div className="space-y-4">
       <div className="panel p-4">
@@ -47,7 +38,8 @@ export function TreasuryConnectionsPanel({
           institutions={institutions}
           lastSyncedAt={lastSyncedAt}
           readOnly
-          onPick={addPickableToDraft}
+          onPick={onPick}
+
         />
         <p className="su-note mt-4">
           Bank connections are created by the client — Plaid Link is their verification step.
@@ -81,7 +73,7 @@ export function TreasuryConnectionsPanel({
         <TreasuryCsvImport
           clientUserId={clientUserId}
           onImported={onImported}
-          onPick={addPickableToDraft}
+          onPick={onPick}
         />
       </div>
     </div>

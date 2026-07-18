@@ -5,7 +5,6 @@ import { TreasuryForecastDrillModal } from "@/components/operator/treasury/Treas
 import { TreasuryPeriodDrillModal } from "@/components/operator/treasury/TreasuryPeriodDrillModal";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import {
   listPeriodStarts,
   periodEnd,
@@ -27,7 +26,8 @@ type Props = {
   clientUserId: string;
   hasSyncedData?: boolean;
   onSelectPeriod?: (bucket: SummaryBucket, periodStart: string) => void;
-  onBasketChanged?: () => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 const GRANULARITIES: { id: SummaryGranularity; label: string; defaultPeriods: number }[] = [
@@ -222,7 +222,7 @@ export function TreasurySummaryPanel({
   clientUserId,
   hasSyncedData = true,
   onSelectPeriod,
-  onBasketChanged,
+  onPick,
 }: Props) {
   const [granularity, setGranularity] = useState<SummaryGranularity>("month");
   const [since, setSince] = useState(() => subtractMonths(todayIso(), 12));
@@ -237,15 +237,6 @@ export function TreasurySummaryPanel({
     const starts = listPeriodStarts(granularity, since, todayIso());
     return Math.min(60, Math.max(1, starts.length || 1));
   }, [granularity, since]);
-
-  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      await postPickableToDraft(clientUserId, draftKind, pickable);
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
-  }
 
   function periodPickable(row: TreasurySummaryRow): Pickable {
     const from = row.period_start;
@@ -409,7 +400,7 @@ export function TreasurySummaryPanel({
           <PickButton
             variant="header"
             pickable={rangePickable()!}
-            onPick={addPickableToDraft}
+            onPick={onPick!}
           />
         ) : null}
         {data?.data_span ? (
@@ -482,7 +473,7 @@ export function TreasurySummaryPanel({
                     <PickButton
                       variant="header"
                       pickable={forecastPickable()!}
-                      onPick={addPickableToDraft}
+                      onPick={onPick!}
                     />
                   ) : null}
                 </div>
@@ -573,7 +564,7 @@ export function TreasurySummaryPanel({
                     <PickButton
                       variant="row"
                       pickable={periodPickable(r)}
-                      onPick={addPickableToDraft}
+                      onPick={onPick!}
                     />
                   </td>
                 </tr>

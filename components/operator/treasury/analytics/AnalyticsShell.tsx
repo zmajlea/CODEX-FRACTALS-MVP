@@ -20,7 +20,8 @@ type Props = {
   clientUserId: string;
   accountsData: TreasuryAccountsResponse | null;
   initialStudyId?: string;
-  onBasketChanged?: () => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 function fmtMoney(n: number): string {
@@ -57,7 +58,7 @@ export function AnalyticsShell({
   clientUserId,
   accountsData,
   initialStudyId,
-  onBasketChanged,
+  onPick,
 }: Props) {
   const accounts = useMemo(() => {
     const list: { id: string; name: string }[] = [];
@@ -354,23 +355,7 @@ export function AnalyticsShell({
   };
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draft_kind: draftKind, pickable }),
-        }
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to draft");
-      }
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
+    await onPick?.(draftKind, pickable);
   }
 
   const studyPickable = useMemo((): Pickable | null => {
@@ -482,7 +467,7 @@ export function AnalyticsShell({
           onAccountIdChange={setAccountId}
           modelState={modelState}
           studyId={studyId}
-          onBasketChanged={onBasketChanged}
+          onPick={onPick}
         />
       </div>
     </div>

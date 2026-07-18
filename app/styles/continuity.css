@@ -1726,6 +1726,9 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 .railtab .ct{ font-family:var(--font-mono); font-size:10px; font-weight:700; color:#fff; background:var(--brand); border-radius:999px; min-width:17px; height:17px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px; }
 .railtab .ct.zero{ background:var(--paper); color:var(--mute); border:1px solid var(--line); }
 .railtab.pulse{ animation:pkpulse .45s ease; }
+/* Stage 8b-1 — mirrored CLOSE tab on the drawer’s left edge */
+.drawer .railtab.close-twin{ position:absolute; right:auto; left:0; top:50%; transform:translate(-100%,-50%); z-index:71; border-right:1px solid var(--line); border-left:none; border-radius:0 9px 9px 0; box-shadow:2px 2px 12px rgba(16,42,71,.08); }
+.drawer .railtab.close-twin .vt{ writing-mode:vertical-rl; transform:rotate(180deg); }
 @keyframes pkpulse{ 40%{ transform:translateY(-50%) scale(1.14); } }
 
 .drawer{ position:fixed; right:0; top:0; bottom:0; width:var(--drafts-drawer-width, 320px); max-width:86vw; background:var(--paper); border-left:1px solid var(--line); z-index:70; transform:translateX(102%); transition:transform .2s ease; display:flex; flex-direction:column; box-shadow:-10px 0 30px rgba(16,42,71,.1); }

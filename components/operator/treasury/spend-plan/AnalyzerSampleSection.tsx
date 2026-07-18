@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { PickButton } from "@/components/operator/treasury/PickButton";
+import {
+  TreasuryPeriodDrillModal,
+} from "@/components/operator/treasury/TreasuryPeriodDrillModal";
 import type { SpendPlanHistoryResponse } from "@/lib/treasury/spend-plan";
 import {
   monthYm,
@@ -10,8 +14,10 @@ import {
 } from "@/lib/treasury/spend-plan";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { StudyExcludedMonth } from "@/lib/treasury/studies";
+import type { TreasurySummaryRow } from "@/lib/treasury/types";
 
 type Props = {
+  clientUserId: string;
   history: SpendPlanHistoryResponse;
   excludedMonths: StudyExcludedMonth[];
   l0: number;
@@ -20,9 +26,11 @@ type Props = {
   seasonalSampleCounts?: Record<number, number>;
   ttmYoy: number | null;
   bufferLabel: string;
-  onToggle: (monthYm: string) => void;
+  onToggle: (monthYm: string, reason?: string) => void;
   onReason: (monthYm: string, reason: string) => void;
   accountId?: string;
+  /** PD / category label scope for the series (same as loadMonthlyOutflows). */
+  seriesLabel?: string | null;
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
@@ -38,6 +46,7 @@ function reasonFor(
 }
 
 export function AnalyzerSampleSection({
+  clientUserId,
   history,
   excludedMonths,
   l0,
@@ -49,6 +58,7 @@ export function AnalyzerSampleSection({
   onToggle,
   onReason,
   accountId,
+  seriesLabel,
   onPick,
 }: Props) {
   const months = Object.keys(history.monthlyOutflows).sort();
@@ -69,6 +79,8 @@ export function AnalyzerSampleSection({
   );
   const l6 = new Set(l0WindowMonths.map((m) => monthYm(m)));
 
+  const [drillYm, setDrillYm] = useState<string | null>(null);
+
   function monthPickable(ym: string, debits: number, idx: number | undefined): Pickable {
     const params: Record<string, unknown> = { month: ym };
     if (accountId) params.accountId = accountId;
@@ -83,14 +95,41 @@ export function AnalyzerSampleSection({
     };
   }
 
+  const drillAmt = drillYm
+    ? (history.monthlyOutflows[
+        months.find((m) => monthYm(m) === drillYm) ?? drillYm
+      ] ??
+        history.monthlyOutflows[drillYm] ??
+        0)
+    : 0;
+
+  const drillRow: TreasurySummaryRow | null = drillYm
+    ? {
+        period_start: `${drillYm}-01`,
+        iso_currency_code: "USD",
+        inflow: 0,
+        outflow: drillAmt,
+        net: -drillAmt,
+        count: 0,
+      }
+    : null;
+
+  function openDrill(ym: string) {
+    if (!accountId) {
+      onToggle(ym);
+      return;
+    }
+    setDrillYm(ym);
+  }
+
   return (
     <section className="space-y-4">
       <div>
         <p className="sec-title mb-1">01 · The sample</p>
         <p className="treasury-meta text-sm leading-relaxed max-w-[74ch]">
-          Which months are real? Untick a month and L0, indices, and the
-          projection recompute. The transaction is never deleted — the exclusion
-          is an assumption stored with the study.
+          Which months are real? Click a month to see its transactions before
+          you exclude it. Untick is a power-user shortcut — exclusions are a
+          view, never a deletion.
         </p>
       </div>
 
@@ -110,9 +149,9 @@ export function AnalyzerSampleSection({
               <button
                 key={m}
                 type="button"
-                title={`${ym} · $${fmt(amt)}${off ? " · excluded" : ""}`}
+                title={`${ym} · $${fmt(amt)}${off ? " · excluded" : ""} — click to inspect`}
                 className="flex-1 flex flex-col justify-end h-full cursor-pointer bg-transparent border-0 p-0"
-                onClick={() => onToggle(ym)}
+                onClick={() => openDrill(ym)}
               >
                 <span
                   className="block w-full rounded-t-sm"
@@ -165,7 +204,15 @@ export function AnalyzerSampleSection({
                     key={m}
                     className={`border-b border-[var(--line)] tabular-nums ${off ? "opacity-50" : ""} ${hl ? "bg-[color-mix(in_srgb,var(--accent)_7%,transparent)]" : ""}`}
                   >
-                    <td className="py-1.5 pr-2 font-mono text-xs">{ym}</td>
+                    <td className="py-1.5 pr-2 font-mono text-xs">
+                      <button
+                        type="button"
+                        className="underline-offset-2 hover:underline bg-transparent border-0 p-0 font-inherit cursor-pointer"
+                        onClick={() => openDrill(ym)}
+                      >
+                        {ym}
+                      </button>
+                    </td>
                     <td
                       className={`py-1.5 pr-2 text-right ${off ? "line-through" : ""}`}
                     >
@@ -267,6 +314,34 @@ export function AnalyzerSampleSection({
           </div>
         </div>
       </div>
+
+      {drillYm && drillRow && accountId ? (
+        <TreasuryPeriodDrillModal
+          open
+          clientUserId={clientUserId}
+          bucket="month"
+          row={drillRow}
+          onClose={() => setDrillYm(null)}
+          analyzer={{
+            accountId,
+            label: seriesLabel,
+            monthYm: drillYm,
+            expectedOutflow: drillAmt,
+            excluded: excludedSet.has(drillYm),
+            initialReason: reasonFor(excludedMonths, drillYm),
+            onKeep: () => {
+              if (excludedSet.has(drillYm)) onToggle(drillYm);
+            },
+            onExclude: (reason) => {
+              if (excludedSet.has(drillYm)) {
+                if (reason) onReason(drillYm, reason);
+              } else {
+                onToggle(drillYm, reason);
+              }
+            },
+          }}
+        />
+      ) : null}
     </section>
   );
 }

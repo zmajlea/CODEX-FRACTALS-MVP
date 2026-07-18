@@ -14,13 +14,13 @@ import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTil
 import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
 import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
+import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
 import { formatTreasuryAsOf } from "@/lib/treasury/format";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import { defaultDateRange, periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
@@ -144,6 +144,18 @@ export function OperatorTreasuryClientRecord({
     status?: "all" | "needs_label" | "suggested" | "labeled";
   } | null>(null);
   const [focusStudyId, setFocusStudyId] = useState<string | null>(null);
+
+  const bumpBasket = useCallback(() => {
+    setBasketKey((k) => k + 1);
+  }, []);
+
+  const {
+    pick: sharedPick,
+    pickTransactions,
+    optimisticPick,
+    pickNotice,
+    clearNotice,
+  } = useOptimisticPick(clientUserId, bumpBasket);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
   const hasSyncedData = (data?.transaction_count ?? 0) > 0;
@@ -358,12 +370,7 @@ export function OperatorTreasuryClientRecord({
   }
 
   async function handleOverviewPick(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      await postPickableToDraft(clientUserId, draftKind, pickable);
-      setBasketKey((k) => k + 1);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
+    await sharedPick(draftKind, pickable);
   }
 
   function handleRuleSaved(suggestedCount: number, ruleId: string | null) {
@@ -551,7 +558,7 @@ export function OperatorTreasuryClientRecord({
             clientUserId={clientUserId}
             hasSyncedData={hasSyncedData}
             onSelectPeriod={handleSelectPeriod}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
           />
         ) : null}
 
@@ -560,7 +567,7 @@ export function OperatorTreasuryClientRecord({
             clientUserId={clientUserId}
             accountsData={data}
             initialStudyId={focusStudyId ?? initialStudyId}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
           />
         ) : null}
 
@@ -579,7 +586,8 @@ export function OperatorTreasuryClientRecord({
             onOpenRuleQueue={handleOpenRuleQueue}
             ruleBanner={ruleBanner}
             onDismissBanner={() => setRuleBanner(null)}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
+            onPickTransactions={pickTransactions}
             focusTxId={focusTxId}
             onFocusTxConsumed={() => setFocusTxId(null)}
             seedFilters={seedLedgerFilters}
@@ -596,7 +604,7 @@ export function OperatorTreasuryClientRecord({
             onRuleSaved={handleRuleSaved}
             openRuleQueueId={openRuleQueueId}
             onOpenRuleQueueConsumed={() => setOpenRuleQueueId(null)}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
           />
         ) : null}
 
@@ -606,7 +614,8 @@ export function OperatorTreasuryClientRecord({
             institutions={data?.institutions ?? []}
             operatorName={who}
             onUnreadChange={setRecUnread}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
+            onBasketChanged={bumpBasket}
             initialDraftId={focusDraftId}
             onDraftDeepLinkConsumed={() => {
               setFocusDraftId(null);
@@ -628,7 +637,7 @@ export function OperatorTreasuryClientRecord({
             showSyncFromBank={hasBankConnection}
             onSync={() => void load(true)}
             onImported={() => void load(false)}
-            onBasketChanged={() => setBasketKey((k) => k + 1)}
+            onPick={sharedPick}
           />
         ) : null}
       </div>
@@ -636,6 +645,9 @@ export function OperatorTreasuryClientRecord({
       <DraftsRail
         clientUserId={clientUserId}
         refreshKey={basketKey}
+        optimisticPick={optimisticPick}
+        pickNotice={pickNotice}
+        onClearPickNotice={clearNotice}
         onOpenDraft={(draftId) => {
           setTab("recommendations");
           setFocusDraftId(draftId);

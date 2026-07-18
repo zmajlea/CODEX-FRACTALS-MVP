@@ -11,7 +11,6 @@ import { SpendPlanScenarioEditor } from "@/components/operator/treasury/spend-pl
 import { AnalyzerSampleSection } from "@/components/operator/treasury/spend-plan/AnalyzerSampleSection";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { monthYm } from "@/lib/treasury/spend-plan";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 
 type Props = {
@@ -24,7 +23,8 @@ type Props = {
   modelState?: SpendPlanModelState;
   label?: string;
   studyId?: string | null;
-  onBasketChanged?: () => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 const MONTH_NAMES = [
@@ -80,7 +80,7 @@ function SpendPlanPanelBody({
   noHistory,
   insufficientHistory,
   studyId,
-  onBasketChanged,
+  onPick,
 }: {
   clientUserId: string;
   accounts: { id: string; name: string }[];
@@ -101,7 +101,7 @@ function SpendPlanPanelBody({
   noHistory: boolean;
   insufficientHistory: boolean;
   studyId?: string | null;
-  onBasketChanged?: () => void;
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 }) {
   const activeScenarios = scenarios ?? model?.scenarios ?? [];
   const hasScenarios = activeScenarios.length > 0;
@@ -147,12 +147,7 @@ function SpendPlanPanelBody({
   }, [model?.backtest, inputs, studyId, accountId, backtestVerdict?.text]);
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    try {
-      await postPickableToDraft(clientUserId, draftKind, pickable);
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
-    }
+    await onPick?.(draftKind, pickable);
   }
 
   function scenarioPickable(scenarioId: string, name: string, ending: number): Pickable | null {
@@ -270,6 +265,7 @@ function SpendPlanPanelBody({
 
       {history && model ? (
         <AnalyzerSampleSection
+          clientUserId={clientUserId}
           history={history}
           excludedMonths={excludedMonths}
           l0={Number(model.inputs.find((i) => i.key === "l0")?.value ?? 0)}
@@ -281,6 +277,7 @@ function SpendPlanPanelBody({
           onToggle={toggleExcludedMonth}
           onReason={setExcludedReason}
           accountId={accountId}
+          seriesLabel={history.label}
           onPick={addPickableToDraft}
         />
       ) : null}
@@ -607,7 +604,7 @@ export function TreasurySpendPlanPanel({
   modelState,
   label,
   studyId,
-  onBasketChanged,
+  onPick,
 }: Props) {
   const accounts = useMemo(() => {
     const list: { id: string; name: string }[] = [];
@@ -660,7 +657,7 @@ export function TreasurySpendPlanPanel({
       noHistory={state.noHistory}
       insufficientHistory={state.insufficientHistory}
       studyId={studyId}
-      onBasketChanged={onBasketChanged}
+      onPick={onPick}
     />
   );
 }

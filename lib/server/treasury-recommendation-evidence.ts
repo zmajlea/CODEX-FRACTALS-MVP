@@ -13,6 +13,8 @@ import type { Database } from "@/lib/database.types";
 export {
   appendEvidenceItem,
   appendTransactionEvidence,
+  tryAppendEvidenceItem,
+  tryAppendTransactionEvidence,
   assertTransactionsBelongToClient,
   evidenceAsJson,
   evidenceFromPickable,

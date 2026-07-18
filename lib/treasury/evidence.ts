@@ -329,27 +329,65 @@ export function appendTransactionEvidence(
   evidence: Evidence[],
   transactionIds: string[]
 ): Evidence[] {
+  return tryAppendTransactionEvidence(evidence, transactionIds).evidence;
+}
+
+export function tryAppendTransactionEvidence(
+  evidence: Evidence[],
+  transactionIds: string[]
+): { evidence: Evidence[]; added: number; duplicate: boolean } {
   const seen = new Set(
     evidence.filter((e) => e.kind === "transaction").map((e) => ("id" in e ? e.id : ""))
   );
   const next = [...evidence];
+  let added = 0;
   for (const id of transactionIds) {
     if (seen.has(id)) continue;
     seen.add(id);
     next.push({ kind: "transaction", id });
+    added += 1;
   }
-  return next;
+  return {
+    evidence: next,
+    added,
+    duplicate: added === 0 && transactionIds.length > 0,
+  };
+}
+
+function evidenceIdentityKey(item: Evidence): string {
+  if (item.kind === "transaction") return `transaction:${item.id}`;
+  if ("id" in item && item.id) return `${item.kind}:${item.id}`;
+  if ("params" in item && item.params) {
+    try {
+      return `${item.kind}:${JSON.stringify(item.params)}`;
+    } catch {
+      return `${item.kind}:params`;
+    }
+  }
+  return item.kind;
 }
 
 export function appendEvidenceItem(
   evidence: Evidence[],
   item: Evidence
 ): Evidence[] {
+  return tryAppendEvidenceItem(evidence, item).evidence;
+}
+
+/** Stage 8b-3 — skip duplicates; report whether anything was added. */
+export function tryAppendEvidenceItem(
+  evidence: Evidence[],
+  item: Evidence
+): { evidence: Evidence[]; duplicate: boolean } {
   if (item.kind === "transaction") {
-    return appendTransactionEvidence(evidence, [item.id]);
+    return tryAppendTransactionEvidence(evidence, [item.id]);
   }
-  // Recipes / other refs: append as a single item (txquery must stay one).
-  return [...evidence, item];
+  const key = evidenceIdentityKey(item);
+  const exists = evidence.some((e) => evidenceIdentityKey(e) === key);
+  if (exists) {
+    return { evidence, duplicate: true };
+  }
+  return { evidence: [...evidence, item], duplicate: false };
 }
 
 export function removeEvidenceItem(

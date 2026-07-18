@@ -30,7 +30,12 @@ type Props = {
   onOpenRuleQueue?: (ruleId: string) => void;
   ruleBanner?: string | null;
   onDismissBanner?: () => void;
-  onBasketChanged?: () => void;
+  /** Stage 8b — shared useOptimisticPick.pick */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
+  onPickTransactions?: (
+    draftKind: DraftKind,
+    transactionIds: string[]
+  ) => void | Promise<void>;
   /** Stage 8a-4 — highlight/scroll to this transaction after load */
   focusTxId?: string | null;
   onFocusTxConsumed?: () => void;
@@ -87,7 +92,8 @@ export function TreasuryLedgerPanel({
   onOpenRuleQueue,
   ruleBanner,
   onDismissBanner,
-  onBasketChanged,
+  onPick,
+  onPickTransactions,
   focusTxId,
   onFocusTxConsumed,
   seedFilters,
@@ -405,54 +411,21 @@ export function TreasuryLedgerPanel({
   }
 
   async function addSelectionToDraft(draftKind: DraftKind, _pickable: Pickable) {
-    if (selected.size === 0) return;
+    if (selected.size === 0 || !onPickTransactions) return;
     setBulkBusy(true);
     try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction_ids: [...selected],
-            draft_kind: draftKind,
-          }),
-        }
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to draft");
-      }
+      await onPickTransactions(draftKind, [...selected]);
       setSelected(new Set());
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
     } finally {
       setBulkBusy(false);
     }
   }
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    if (!onPick) return;
     setBulkBusy(true);
     try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            draft_kind: draftKind,
-            pickable,
-          }),
-        }
-      );
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to draft");
-      }
-      onBasketChanged?.();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to draft");
+      await onPick(draftKind, pickable);
     } finally {
       setBulkBusy(false);
     }
