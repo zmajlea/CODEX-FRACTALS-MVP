@@ -214,18 +214,12 @@ export type TreasuryRecommendationAnchorRef = {
 };
 
 /** Spec 39 — what backs a recommendation. Wire transaction in R1; study/backtest R2. */
-export type RecommendationTxSnap = {
-  date: string;
-  payee: string | null;
-  amount: number;
-  category: string | null;
-  direction: "in" | "out" | null;
-};
-
-export type RecommendationEvidence =
-  | { kind: "transaction"; id: string; snap?: RecommendationTxSnap }
-  | { kind: "study"; id: string; snap?: unknown }
-  | { kind: "backtest"; id: string; snap?: unknown };
+export type {
+  Evidence as RecommendationEvidence,
+  RecommendationTxSnap,
+  ResolvedEvidenceItem,
+} from "@/lib/treasury/evidence";
+export type { DraftKind } from "@/lib/treasury/pickable";
 
 export type TreasuryRecommendationRow = {
   id: string;
@@ -240,7 +234,9 @@ export type TreasuryRecommendationRow = {
   impact_basis: "per_month" | "per_year" | "one_time" | null;
   anchor_type: "account" | "general";
   anchor_ref: TreasuryRecommendationAnchorRef | null;
-  evidence: RecommendationEvidence[];
+  evidence: import("@/lib/treasury/evidence").Evidence[];
+  /** Spec 40 — recommendation (judgment) vs question (request) */
+  kind: "recommendation" | "question";
   status: "draft" | "sent" | "accepted" | "in_progress" | "done" | "declined";
   sealed_at: string | null;
   sealed_by: string | null;
@@ -253,25 +249,6 @@ export type TreasuryRecommendationRow = {
   created_at: string;
   updated_at: string;
 };
-
-/** Live-resolved draft evidence for sidebar / composer. */
-export type ResolvedEvidenceItem =
-  | {
-      kind: "transaction";
-      id: string;
-      available: true;
-      date: string;
-      payee: string | null;
-      amount: number;
-      category: string | null;
-      direction: "in" | "out" | null;
-      raw_name: string | null;
-    }
-  | {
-      kind: "transaction";
-      id: string;
-      available: false;
-    };
 
 export type TreasuryRecommendationRollup = {
   awaiting: number;

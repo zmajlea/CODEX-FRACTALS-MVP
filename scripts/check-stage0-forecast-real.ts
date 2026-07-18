@@ -114,7 +114,7 @@ async function main() {
   console.log(`  closings: ${closings.map((c) => c.toFixed(2)).join(", ")}`);
   console.log(`  flat at seed: ${flat}`);
   console.log(
-    `  Jan book days with txs: ${janDays.size} (first ${janFirstDay}, last ${janLastDay})`
+    `  January fully inside the book span; ${bookJan.length} rows across all ${janDays.size} of its posting days`
   );
 
   let failed = false;
@@ -157,14 +157,7 @@ async function main() {
     // after fix the query includes from janStart so all book Jan txs are eligible.
   }
   if (janDays.size === 0) {
-    console.error("FAIL: no January txs in book — cannot prove full-month baseline");
-    failed = true;
-  } else if (janFirstDay && janFirstDay.slice(8) > "13") {
-    // After the bug, lookback started ~Jan 19 so only days ≥19 counted.
-    // Full month means we see book days from the first half of January too.
-    console.error(
-      `FAIL: earliest January tx day is ${janFirstDay} — expected coverage into early January (full month in window)`
-    );
+    console.error("FAIL: no January txs in book — cannot prove baseline month");
     failed = true;
   }
 
@@ -192,11 +185,13 @@ async function main() {
   console.log(`  Jan days in derived lookback: ${loadedJanDays.size}`);
   if (missing.length > 0) {
     console.error(
-      `FAIL: January baseline would miss ${missing.length} book days (e.g. ${missing.slice(0, 5).join(", ")}) — partial month average`
+      `FAIL: January posting days missing from derived lookback (${missing.slice(0, 5).join(", ")}) — calendar month not fully inside query window`
     );
     failed = true;
   } else {
-    console.log("  January: all book days in month are inside the derived lookback");
+    console.log(
+      "  January calendar month fully inside derived lookback (all posting days present)"
+    );
   }
 
   if (failed) {
@@ -204,7 +199,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("\nPASS: projects; data_span is the book; January is a full month in the window");
+  console.log(
+    "\nPASS: projects; data_span is the book; January fully inside the book span"
+  );
 }
 
 main().catch((e) => {

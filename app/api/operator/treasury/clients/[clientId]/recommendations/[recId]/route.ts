@@ -183,17 +183,28 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not your draft" }, { status: 403 });
     }
 
-    // Explicit category required on seal — never inherit an unexamined DB placeholder
-    if (!body.category || !isRecommendationCategory(body.category)) {
-      return NextResponse.json(
-        { error: "Category required — choose one before sealing" },
-        { status: 400 }
-      );
-    }
+    const isQuestion = current.kind === "question";
     const title = (body.title ?? current.title).trim();
     const why = (body.why ?? current.why).trim();
-    if (!title || !why) {
-      return NextResponse.json({ error: "Title and why are required to seal" }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
+    }
+    if (!isQuestion && !why) {
+      return NextResponse.json({ error: "Why is required to seal" }, { status: 400 });
+    }
+    if (isQuestion && !why) {
+      return NextResponse.json({ error: "The question is required" }, { status: 400 });
+    }
+
+    // Recommendation only: explicit category — never inherit DB placeholder
+    if (!isQuestion) {
+      if (!body.category || !isRecommendationCategory(body.category)) {
+        return NextResponse.json(
+          { error: "Category required — choose one before sealing" },
+          { status: 400 }
+        );
+      }
+      update.category = body.category;
     }
 
     if (body.impact_amount !== undefined) update.impact_amount = body.impact_amount;
@@ -221,10 +232,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     update.evidence = evidenceAsJson(snapped);
     update.title = title;
     update.why = why;
-    update.category = body.category;
-    update.sealed_at = now;
-    update.sealed_by = guard.user.id;
     update.sent_at = now;
+
+    // Seal is a claim — recommendations only. Questions are requests.
+    if (!isQuestion) {
+      update.sealed_at = now;
+      update.sealed_by = guard.user.id;
+    }
   }
 
   const { data: updated, error } = await guard.admin
@@ -239,13 +253,19 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   if (action === "send") {
+    const row = normalizeRecommendationRow(updated as Record<string, unknown>);
     await writeTreasuryAudit(guard.admin, {
       actorUserId: guard.user.id,
-      eventType: "treasury_recommendation_sealed",
+      eventType:
+        row.kind === "question"
+          ? "treasury_question_sent"
+          : "treasury_recommendation_sealed",
       payload: {
         client_user_id: clientId,
         recommendation_id: recId,
-        sealed_at: now,
+        kind: row.kind,
+        sealed_at: row.sealed_at,
+        sent_at: now,
         evidence_count: parseEvidence(
           (updated as { evidence?: unknown }).evidence
         ).length,

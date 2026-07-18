@@ -1420,6 +1420,7 @@ export type Database = {
           impact_amount: number | null
           impact_basis: string | null
           impact_unit: string | null
+          kind: string
           operator_seen_at: string | null
           operator_tenant_id: string | null
           sealed_at: string | null
@@ -1446,6 +1447,7 @@ export type Database = {
           impact_amount?: number | null
           impact_basis?: string | null
           impact_unit?: string | null
+          kind?: string
           operator_seen_at?: string | null
           operator_tenant_id?: string | null
           sealed_at?: string | null
@@ -1472,6 +1474,7 @@ export type Database = {
           impact_amount?: number | null
           impact_basis?: string | null
           impact_unit?: string | null
+          kind?: string
           operator_seen_at?: string | null
           operator_tenant_id?: string | null
           sealed_at?: string | null

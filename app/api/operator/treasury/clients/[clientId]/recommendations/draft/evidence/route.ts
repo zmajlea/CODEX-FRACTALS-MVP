@@ -12,11 +12,14 @@ import {
   normalizeRecommendationRow,
   resolveEvidenceLive,
 } from "@/lib/server/treasury-recommendation-evidence";
+import type { DraftKind } from "@/lib/treasury/pickable";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
 type PostBody = {
   transaction_ids?: string[];
+  /** Spec 40 — which open draft receives the pick */
+  draft_kind?: DraftKind;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -30,6 +33,9 @@ export async function POST(request: Request, context: RouteContext) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const draftKind: DraftKind =
+    body.draft_kind === "question" ? "question" : "recommendation";
 
   const transactionIds = (body.transaction_ids ?? []).filter(
     (id): id is string => typeof id === "string" && id.length > 0
@@ -54,6 +60,7 @@ export async function POST(request: Request, context: RouteContext) {
     clientUserId: clientId,
     operatorId: guard.user.id,
     tenantId: guard.grant.tenantId,
+    kind: draftKind,
   });
   if (createErr) {
     return NextResponse.json({ error: createErr }, { status: 500 });
@@ -89,6 +96,7 @@ export async function POST(request: Request, context: RouteContext) {
     payload: {
       client_user_id: clientId,
       recommendation_id: row.id,
+      draft_kind: draftKind,
       transaction_ids: transactionIds,
       evidence_count: row.evidence.length,
       draft_created: created,

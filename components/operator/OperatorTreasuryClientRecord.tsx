@@ -12,7 +12,7 @@ import { TreasuryConnectionsPanel } from "@/components/operator/treasury/Treasur
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
-import { RecommendationBasketSidebar } from "@/components/operator/treasury/RecommendationBasketSidebar";
+import { DraftsRail } from "@/components/operator/treasury/DraftsRail";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
@@ -508,10 +508,7 @@ export function OperatorTreasuryClientRecord({
         ) : null}
       </div>
 
-      <RecommendationBasketSidebar
-        clientUserId={clientUserId}
-        refreshKey={basketKey}
-      />
+      <DraftsRail clientUserId={clientUserId} refreshKey={basketKey} />
     </BcnContinuityShell>
   );
 }

@@ -5,7 +5,7 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import {
-  findOpenDraft,
+  findOpenDrafts,
   resolveEvidenceLive,
 } from "@/lib/server/treasury-recommendation-evidence";
 
@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
-  const draft = await findOpenDraft(guard.admin, clientId, guard.user.id);
+  const drafts = await findOpenDrafts(guard.admin, clientId, guard.user.id);
 
   await writeOperatorTreasuryReadAudit(guard.admin, {
     actorUserId: guard.user.id,
@@ -26,15 +26,27 @@ export async function GET(_request: Request, context: RouteContext) {
     surface: "recommendations",
   });
 
-  if (!draft) {
-    return NextResponse.json({ draft: null, items: [], missingCount: 0 });
-  }
+  const recommendation = drafts.recommendation
+    ? await resolveEvidenceLive(guard.admin, clientId, drafts.recommendation.evidence)
+    : { items: [], missingCount: 0 };
+  const question = drafts.question
+    ? await resolveEvidenceLive(guard.admin, clientId, drafts.question.evidence)
+    : { items: [], missingCount: 0 };
 
-  const { items, missingCount } = await resolveEvidenceLive(
-    guard.admin,
-    clientId,
-    draft.evidence
-  );
-
-  return NextResponse.json({ draft, items, missingCount });
+  return NextResponse.json({
+    recommendation: drafts.recommendation
+      ? {
+          draft: drafts.recommendation,
+          items: recommendation.items,
+          missingCount: recommendation.missingCount,
+        }
+      : null,
+    question: drafts.question
+      ? {
+          draft: drafts.question,
+          items: question.items,
+          missingCount: question.missingCount,
+        }
+      : null,
+  });
 }

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TreasuryRangeCalendar } from "@/components/operator/treasury/TreasuryRangeCalendar";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatRangeLabel } from "@/lib/treasury/period-bounds";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   TreasuryBookStats,
   TreasuryDateRange,
@@ -332,7 +334,7 @@ export function TreasuryLedgerPanel({
     }
   }
 
-  async function addToRecommendation() {
+  async function addSelectionToDraft(draftKind: DraftKind, _pickable: Pickable) {
     if (selected.size === 0) return;
     setBulkBusy(true);
     try {
@@ -341,17 +343,20 @@ export function TreasuryLedgerPanel({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transaction_ids: [...selected] }),
+          body: JSON.stringify({
+            transaction_ids: [...selected],
+            draft_kind: draftKind,
+          }),
         }
       );
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Failed to add to recommendation");
+        throw new Error(body.error ?? "Failed to add to draft");
       }
       setSelected(new Set());
       onBasketChanged?.();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add to recommendation");
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
     } finally {
       setBulkBusy(false);
     }
@@ -509,14 +514,16 @@ export function TreasuryLedgerPanel({
           >
             Apply category to {selected.size}
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary text-xs"
+          <PickButton
+            variant="header"
             disabled={bulkBusy}
-            onClick={() => void addToRecommendation()}
-          >
-            Add to recommendation
-          </button>
+            pickable={{
+              kind: "transaction",
+              label: `${selected.size} transaction${selected.size === 1 ? "" : "s"} selected`,
+              sublabel: undefined,
+            }}
+            onPick={addSelectionToDraft}
+          />
           <button
             type="button"
             className="btn btn-secondary text-xs"
