@@ -25,10 +25,13 @@ const record = readFileSync(
   "utf8"
 );
 if (!record.includes('"profile"') || !record.includes("TreasuryProfilePanel")) {
-  fail("Profile tab must exist above Overview");
+  fail("Profile tab must exist");
 }
-if (!/id:\s*"profile"[\s\S]*id:\s*"overview"/.test(record)) {
-  fail("Profile must appear before Overview in the rail");
+if (!/id:\s*"overview"[\s\S]*id:\s*"profile"[\s\S]*id:\s*"connections"/.test(record)) {
+  fail("Rail order must be Overview → Profile → Connections");
+}
+if (!record.includes('return "overview"')) {
+  fail('parseInitialTab fallback must be "overview"');
 }
 // Header must not host Suspend/Revoke/Sync — only Profile / Connections
 const headerChunk = record.slice(

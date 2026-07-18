@@ -55,7 +55,7 @@ function parseInitialTab(value: string | undefined): Tab {
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
-  return "profile";
+  return "overview";
 }
 
 type Props = {
@@ -218,18 +218,18 @@ export function OperatorTreasuryClientRecord({
         reveal: "unlocked",
         items: [
           {
-            id: "profile",
-            icon: "building",
-            label: "Profile",
-            active: tab === "profile",
-            onClick: () => setTab("profile"),
-          },
-          {
             id: "overview",
             icon: "home",
             label: "Overview",
             active: tab === "overview",
             onClick: () => setTab("overview"),
+          },
+          {
+            id: "profile",
+            icon: "building",
+            label: "Profile",
+            active: tab === "profile",
+            onClick: () => setTab("profile"),
           },
           {
             id: "connections",
