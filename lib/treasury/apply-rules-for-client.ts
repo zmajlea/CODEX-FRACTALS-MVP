@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
+import { formatTreasuryMoney } from "@/lib/treasury/format";
 import { normalizeMerchant } from "@/lib/treasury/normalize";
 import {
   detectCadence,
@@ -12,6 +13,11 @@ import type { Database } from "@/lib/database.types";
 type AdminClient = SupabaseClient<Database>;
 
 const UPDATE_CONCURRENCY = 15;
+
+function formatRuleAmountBound(n: number | null | undefined): string {
+  if (n == null) return "∞";
+  return formatTreasuryMoney(n, "USD");
+}
 
 function buildRuleSuggestionExplanation(
   rule: TreasuryRuleRow,
@@ -27,7 +33,9 @@ function buildRuleSuggestionExplanation(
     `merchant ~ ${tx.normalized_merchant ?? rule.match_merchant}`,
   ];
   if (rule.amount_min != null || rule.amount_max != null) {
-    parts.push(`$${rule.amount_min ?? 0}–$${rule.amount_max ?? "∞"}`);
+    parts.push(
+      `${formatRuleAmountBound(rule.amount_min ?? 0)}–${formatRuleAmountBound(rule.amount_max)}`
+    );
   }
   if (rule.direction) parts.push(rule.direction);
   if (cadenceLabel !== "irregular") parts.push(cadenceLabel);

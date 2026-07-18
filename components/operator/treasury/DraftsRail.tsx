@@ -346,9 +346,12 @@ function DraftComposer({
 export function DraftsRail({
   clientUserId,
   refreshKey,
+  onOpenChange,
 }: {
   clientUserId: string;
   refreshKey: number;
+  /** Stage 7b — parent reflows main content while drawer is open. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [data, setData] = useState<DraftsPayload>({
     recommendation: null,
@@ -374,6 +377,7 @@ export function DraftsRail({
     void load();
   }, [load, refreshKey]);
 
+  // Pick pulses the tab + bumps the badge count only — never auto-opens (Stage 7b).
   useEffect(() => {
     if (refreshKey > 0) {
       setPulse(true);
@@ -381,6 +385,15 @@ export function DraftsRail({
       return () => window.clearTimeout(t);
     }
   }, [refreshKey]);
+
+  useEffect(() => {
+    onOpenChange?.(drawerOpen);
+    const app = document.getElementById("app");
+    app?.classList.toggle("drafts-drawer-open", drawerOpen);
+    return () => {
+      app?.classList.remove("drafts-drawer-open");
+    };
+  }, [drawerOpen, onOpenChange]);
 
   const recCount = data.recommendation?.items.length ?? 0;
   const qCount = data.question?.items.length ?? 0;
@@ -551,12 +564,116 @@ export function DraftsRail({
         </div>
         <div className="drawer-b">
           {total === 0 ? (
-            <div className="drawer-empty">
-              <b>Nothing picked yet.</b>
-              <p>
-                Select something and add it here with its <b>+</b>. You choose
-                at pick time whether it feeds the <b>recommendation</b> or the{" "}
-                <b>question</b>; both drafts stay open at once.
+            <div className="drafts-empty">
+              <svg
+                viewBox="0 0 264 140"
+                role="img"
+                aria-label="A pick splits into two drafts: Recommendation or Question"
+              >
+                <circle
+                  cx="132"
+                  cy="21"
+                  r="12.5"
+                  fill="var(--paper)"
+                  stroke="var(--accent)"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M132 15.5 V26.5 M126.5 21 H137.5"
+                  stroke="var(--brand)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M132 34 V55"
+                  stroke="var(--brand-2)"
+                  strokeOpacity=".4"
+                  strokeWidth="1.25"
+                />
+                <path
+                  d="M132 55 C132 73 68 71 68 90"
+                  fill="none"
+                  stroke="var(--brand-2)"
+                  strokeOpacity=".4"
+                  strokeWidth="1.25"
+                />
+                <path
+                  d="M132 55 C132 73 196 71 196 90"
+                  fill="none"
+                  stroke="var(--brand-2)"
+                  strokeOpacity=".4"
+                  strokeWidth="1.25"
+                />
+                <circle cx="132" cy="55" r="2.5" fill="var(--brand-2)" />
+                <rect
+                  x="18"
+                  y="90"
+                  width="100"
+                  height="23"
+                  rx="8"
+                  fill="var(--brand)"
+                />
+                <text
+                  x="68"
+                  y="105"
+                  textAnchor="middle"
+                  fontSize="10.5"
+                  fontWeight="600"
+                  fill="var(--paper)"
+                  style={{ fontFamily: "var(--font-ui)" }}
+                >
+                  Recommendation
+                </text>
+                <rect
+                  x="160"
+                  y="90"
+                  width="72"
+                  height="23"
+                  rx="8"
+                  fill="var(--paper)"
+                  stroke="var(--brand-2)"
+                />
+                <text
+                  x="196"
+                  y="105"
+                  textAnchor="middle"
+                  fontSize="10.5"
+                  fontWeight="600"
+                  fill="var(--brand)"
+                  style={{ fontFamily: "var(--font-ui)" }}
+                >
+                  Question
+                </text>
+                <text
+                  x="68"
+                  y="128"
+                  textAnchor="middle"
+                  fontSize="9.5"
+                  fill="var(--mute)"
+                  style={{ fontFamily: "var(--font-ui)" }}
+                >
+                  seal & send
+                </text>
+                <text
+                  x="196"
+                  y="128"
+                  textAnchor="middle"
+                  fontSize="9.5"
+                  fill="var(--mute)"
+                  style={{ fontFamily: "var(--font-ui)" }}
+                >
+                  ask client
+                </text>
+              </svg>
+              <p className="de-title">Nothing picked yet</p>
+              <p className="de-body">
+                Hit the <span className="de-plus">+</span> on anything — a
+                transaction, a study, a chart period — and choose which draft it
+                feeds.
+              </p>
+              <p className="de-hint">
+                Both drafts stay open side by side. Your picks stay here as you
+                move around the app.
               </p>
             </div>
           ) : (

@@ -118,6 +118,20 @@ export function TreasuryTxRow({
         <b>{tx.merchant_name ?? tx.normalized_merchant ?? "—"}</b>
         <em>{tx.raw_name ?? tx.description ?? ""}</em>
         {tx.pending ? <span className="txr-flag">Pending</span> : null}
+        {tx.suggestion_explanation && tx.suggested_by_rule_id && onOpenRuleQueue ? (
+          <button
+            type="button"
+            className="txr-explain text-xs text-left underline text-codex-muted hover:text-ink block mt-1"
+            title="Open this rule’s Suggested queue"
+            onClick={() => onOpenRuleQueue(tx.suggested_by_rule_id!)}
+          >
+            {tx.suggestion_explanation}
+          </button>
+        ) : tx.suggestion_explanation ? (
+          <span className="txr-explain text-xs text-codex-muted block mt-1">
+            {tx.suggestion_explanation}
+          </span>
+        ) : null}
       </span>
       <span className="txr-catcell">
         {editing ? (
@@ -170,17 +184,17 @@ export function TreasuryTxRow({
         ) : null}
         {txStatusChip(tx)}
         {tx.suggestion_status === "suggested" ? (
-          <span className="flex gap-2">
+          <span className="txr-actions flex gap-2 flex-nowrap">
             <button
               type="button"
-              className="btn btn-secondary text-xs"
+              className="btn btn-secondary text-xs shrink-0"
               onClick={() => onConfirm?.()}
             >
               Confirm
             </button>
             <button
               type="button"
-              className="btn btn-secondary text-xs"
+              className="btn btn-secondary text-xs shrink-0"
               onClick={() => onReject?.()}
             >
               Reject
@@ -204,18 +218,6 @@ export function TreasuryTxRow({
           >
             Make rule
           </button>
-        ) : null}
-        {tx.suggestion_explanation && tx.suggested_by_rule_id && onOpenRuleQueue ? (
-          <button
-            type="button"
-            className="text-xs text-left underline text-codex-muted hover:text-ink"
-            title="Open this rule’s Suggested queue"
-            onClick={() => onOpenRuleQueue(tx.suggested_by_rule_id!)}
-          >
-            {tx.suggestion_explanation}
-          </button>
-        ) : tx.suggestion_explanation ? (
-          <span className="text-xs text-codex-muted">{tx.suggestion_explanation}</span>
         ) : null}
       </span>
     </div>

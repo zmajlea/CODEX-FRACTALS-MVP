@@ -309,12 +309,13 @@ export function OperatorTreasuryClientRecord({
 
   function handleMakeRule(tx: TreasuryTransactionRow) {
     const abs = Math.abs(Number(tx.amount));
+    const round2 = (n: number) => Math.round(n * 100) / 100;
     setRuleDraft({
       name: `Rule: ${tx.label}`,
       match_merchant: tx.normalized_merchant ?? tx.merchant_name ?? "",
       assign_label: tx.label ?? "",
-      amount_min: abs * 0.8,
-      amount_max: abs * 1.2,
+      amount_min: round2(abs * 0.8),
+      amount_max: round2(abs * 1.2),
       direction: tx.direction ?? undefined,
       source_transaction_id: tx.id,
     });
