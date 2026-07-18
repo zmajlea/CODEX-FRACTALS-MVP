@@ -12,12 +12,15 @@ import {
   type RecommendationStatus,
 } from "@/lib/treasury/recommendation-status";
 import {
+  clampRuleContextN,
   evidenceAsJson,
   normalizeRecommendationRow,
   parseEvidence,
   removeEvidenceItem,
+  replaceRuleContextCompanions,
   resolveEvidenceLive,
   snapshotEvidenceAtSeal,
+  type RuleLikeForContext,
 } from "@/lib/server/treasury-recommendation-evidence";
 import type { Database } from "@/lib/database.types";
 import type { RecommendationEvidence } from "@/lib/treasury/types";
@@ -34,6 +37,8 @@ type PatchBody = {
   impact_basis?: string | null;
   evidence_kind?: RecommendationEvidence["kind"];
   evidence_id?: string;
+  /** Spec 44 — last N for rule-context companions */
+  n?: number;
 };
 
 /** Resolve a recommendation (or draft) with live evidence for the desk composer. */
@@ -140,6 +145,88 @@ export async function PATCH(request: Request, context: RouteContext) {
       },
     });
     return NextResponse.json({ ok: true });
+  }
+
+  // Spec 44 — change companion N (questions); fail closed on non-draft with 400
+  if (action === "set_rule_context_n") {
+    if (current.status !== "draft") {
+      return NextResponse.json(
+        { error: "Only drafts can change context N" },
+        { status: 400 }
+      );
+    }
+    if (current.created_by !== guard.user.id) {
+      return NextResponse.json({ error: "Not your draft" }, { status: 403 });
+    }
+    const n = clampRuleContextN(body.n);
+    if (n == null) {
+      return NextResponse.json(
+        { error: "N must be an integer from 1 to 25" },
+        { status: 400 }
+      );
+    }
+
+    const ruleIds = [
+      ...new Set(
+        current.evidence.flatMap((ev) => {
+          if (ev.kind !== "txquery") return [];
+          const id = ev.params.contextForRuleId;
+          return typeof id === "string" && id.length > 0 ? [id] : [];
+        })
+      ),
+    ];
+    const rulesById = new Map<string, RuleLikeForContext>();
+    if (ruleIds.length > 0) {
+      const { data: rules } = await guard.admin
+        .from("treasury_rules")
+        .select("id, match_merchant, amount_min, amount_max, direction")
+        .eq("client_user_id", clientId)
+        .in("id", ruleIds);
+      for (const r of rules ?? []) {
+        rulesById.set(r.id, {
+          id: r.id,
+          match_merchant: r.match_merchant,
+          amount_min: r.amount_min,
+          amount_max: r.amount_max,
+          direction:
+            r.direction === "in" || r.direction === "out" ? r.direction : null,
+        });
+      }
+    }
+
+    const evidence = replaceRuleContextCompanions(
+      current.evidence,
+      n,
+      rulesById
+    );
+    const { data: updated, error } = await guard.admin
+      .from("treasury_recommendations")
+      .update({ evidence: evidenceAsJson(evidence) })
+      .eq("id", recId)
+      .eq("status", "draft")
+      .eq("created_by", guard.user.id)
+      .select("*")
+      .single();
+
+    if (error || !updated) {
+      return NextResponse.json(
+        { error: error?.message ?? "Failed to update context N" },
+        { status: 500 }
+      );
+    }
+
+    const row = normalizeRecommendationRow(updated as Record<string, unknown>);
+    const { items, missingCount } = await resolveEvidenceLive(
+      guard.admin,
+      clientId,
+      row.evidence
+    );
+    return NextResponse.json({
+      recommendation: row,
+      draft: row,
+      items,
+      missingCount,
+    });
   }
 
   if (

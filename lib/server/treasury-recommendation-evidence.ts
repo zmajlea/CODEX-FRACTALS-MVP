@@ -16,16 +16,27 @@ export {
   tryAppendEvidenceItem,
   tryAppendTransactionEvidence,
   assertTransactionsBelongToClient,
+  buildRuleContextTxQueryParams,
+  clampRuleContextN,
+  currentRuleContextN,
   evidenceAsJson,
   evidenceFromPickable,
   evidenceRunningTotal,
+  hasRuleContextCompanion,
+  isRuleContextCompanion,
   parseEvidence,
   removeEvidenceItem,
+  replaceRuleContextCompanions,
   resolveEvidenceLive,
+  RULE_CONTEXT_DEFAULT_N,
+  RULE_CONTEXT_MAX_N,
+  RULE_CONTEXT_MIN_N,
+  ruleContextLabel,
   snapshotEvidence,
   snapshotEvidenceAtSeal,
   txQueryParamsToFilters,
 } from "@/lib/treasury/evidence";
+export type { RuleLikeForContext } from "@/lib/treasury/evidence";
 
 type AdminClient = SupabaseClient<Database>;
 

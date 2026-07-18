@@ -6,9 +6,12 @@ import {
 } from "@/lib/server/operator-treasury-route";
 import {
   assertTransactionsBelongToClient,
+  buildRuleContextTxQueryParams,
+  currentRuleContextN,
   evidenceAsJson,
   evidenceFromPickable,
   findOrCreateOpenDraft,
+  hasRuleContextCompanion,
   normalizeRecommendationRow,
   resolveEvidenceLive,
   tryAppendEvidenceItem,
@@ -87,6 +90,47 @@ export async function POST(request: Request, context: RouteContext) {
         params: body.pickable.params ?? null,
         ref: body.pickable.ref ?? null,
       };
+
+      // Spec 44 — question + rule → companion txquery (ilike “like this rule”)
+      if (
+        !duplicate &&
+        draftKind === "question" &&
+        item.kind === "rule" &&
+        !hasRuleContextCompanion(nextEvidence, item.id)
+      ) {
+        const { data: ruleRow } = await guard.admin
+          .from("treasury_rules")
+          .select("id, match_merchant, amount_min, amount_max, direction")
+          .eq("id", item.id)
+          .eq("client_user_id", clientId)
+          .maybeSingle();
+        if (ruleRow) {
+          const n = currentRuleContextN(nextEvidence);
+          const companion = evidenceFromPickable({
+            kind: "txquery",
+            label: `Recent ${n} transactions like this rule — for context.`,
+            params: buildRuleContextTxQueryParams(
+              {
+                id: ruleRow.id,
+                match_merchant: ruleRow.match_merchant,
+                amount_min: ruleRow.amount_min,
+                amount_max: ruleRow.amount_max,
+                direction:
+                  ruleRow.direction === "in" || ruleRow.direction === "out"
+                    ? ruleRow.direction
+                    : null,
+              },
+              n
+            ),
+          });
+          nextEvidence = tryAppendEvidenceItem(nextEvidence, companion).evidence;
+          auditDetail = {
+            ...auditDetail,
+            rule_context_companion: true,
+            rule_context_n: n,
+          };
+        }
+      }
     } catch (e) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : "Invalid pickable" },

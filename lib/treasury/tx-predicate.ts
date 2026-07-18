@@ -17,6 +17,8 @@ export type TxFilterInput = {
   amountMin?: number | null;
   amountMax?: number | null;
   amountExact?: number | null;
+  /** Spec 44 — rule companion / ledger direction filter */
+  direction?: "in" | "out" | null;
   /** Rule queue: suggested_by_rule_id scope */
   ruleId?: string | null;
   /** When ruleId set: suggested | confirmed | rejected */
@@ -47,6 +49,9 @@ export function applyTxPredicate<Q extends Filterable>(query: Q, filters: TxFilt
   if (filters.from) q = q.gte("posted_date", filters.from);
   if (filters.to) q = q.lte("posted_date", filters.to);
   if (filters.accountIds?.length) q = q.in("account_id", filters.accountIds);
+  if (filters.direction === "in" || filters.direction === "out") {
+    q = q.eq("direction", filters.direction);
+  }
 
   if (filters.ruleId && filters.ruleQueue) {
     q = q.eq("suggested_by_rule_id", filters.ruleId);

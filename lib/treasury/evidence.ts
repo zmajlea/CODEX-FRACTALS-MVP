@@ -156,6 +156,123 @@ function formatSignedNet(net: number): string {
   return abs;
 }
 
+/** Spec 44 — question companion “recent N like this rule”. */
+export const RULE_CONTEXT_DEFAULT_N = 5;
+export const RULE_CONTEXT_MIN_N = 1;
+export const RULE_CONTEXT_MAX_N = 25;
+
+export type RuleLikeForContext = {
+  id: string;
+  match_merchant: string;
+  amount_min: number | null;
+  amount_max: number | null;
+  direction: "in" | "out" | null;
+};
+
+/** Clamp N to 1–25; null if not a valid integer in range. */
+export function clampRuleContextN(n: unknown): number | null {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x) || !Number.isInteger(x)) return null;
+  if (x < RULE_CONTEXT_MIN_N || x > RULE_CONTEXT_MAX_N) return null;
+  return x;
+}
+
+/** Client-facing label — ilike-q, not the rule engine’s exact matcher. */
+export function ruleContextLabel(n: number): string {
+  return `Recent ${n} transactions like this rule — for context.`;
+}
+
+export function isRuleContextCompanion(ev: Evidence): boolean {
+  return (
+    ev.kind === "txquery" &&
+    typeof ev.params.contextForRuleId === "string" &&
+    ev.params.contextForRuleId.length > 0
+  );
+}
+
+export function hasRuleContextCompanion(
+  evidence: Evidence[],
+  ruleId: string
+): boolean {
+  return evidence.some(
+    (ev) =>
+      ev.kind === "txquery" && ev.params.contextForRuleId === ruleId
+  );
+}
+
+/** N from an existing companion, else default 5. */
+export function currentRuleContextN(evidence: Evidence[]): number {
+  for (const ev of evidence) {
+    if (!isRuleContextCompanion(ev) || ev.kind !== "txquery") continue;
+    const lim = clampRuleContextN(ev.params.limit);
+    if (lim != null) return lim;
+  }
+  return RULE_CONTEXT_DEFAULT_N;
+}
+
+export function buildRuleContextTxQueryParams(
+  rule: RuleLikeForContext,
+  n: number
+): Record<string, unknown> {
+  const limit = clampRuleContextN(n) ?? RULE_CONTEXT_DEFAULT_N;
+  const params: Record<string, unknown> = {
+    q: rule.match_merchant,
+    limit,
+    contextForRuleId: rule.id,
+  };
+  if (rule.amount_min != null && Number.isFinite(rule.amount_min)) {
+    params.amountMin = rule.amount_min;
+  }
+  if (rule.amount_max != null && Number.isFinite(rule.amount_max)) {
+    params.amountMax = rule.amount_max;
+  }
+  if (rule.direction === "in" || rule.direction === "out") {
+    params.direction = rule.direction;
+  }
+  assertAbsolutePickParams(params);
+  return params;
+}
+
+/** Replace every Spec-44 companion’s limit (and rebuild params when rule known). */
+export function replaceRuleContextCompanions(
+  evidence: Evidence[],
+  n: number,
+  rulesById: Map<string, RuleLikeForContext>
+): Evidence[] {
+  const limit = clampRuleContextN(n);
+  if (limit == null) {
+    throw new Error("N must be an integer from 1 to 25");
+  }
+  return evidence.map((ev) => {
+    if (ev.kind !== "txquery" || !isRuleContextCompanion(ev)) return ev;
+    const ruleId = String(ev.params.contextForRuleId);
+    const rule = rulesById.get(ruleId);
+    if (rule) {
+      return {
+        ...ev,
+        params: buildRuleContextTxQueryParams(rule, limit),
+        snap: undefined,
+      };
+    }
+    return {
+      ...ev,
+      params: { ...ev.params, limit },
+      snap: undefined,
+    };
+  });
+}
+
+function txQueryLimitFromParams(
+  params: Record<string, unknown>
+): number | undefined {
+  const lim = clampRuleContextN(params.limit);
+  if (lim != null) return lim;
+  if (typeof params.limit === "number" && Number.isFinite(params.limit) && params.limit > 0) {
+    return Math.floor(params.limit);
+  }
+  return undefined;
+}
+
 /** Map frozen txquery params → TxFilterInput for buildTxPredicate. */
 export function txQueryParamsToFilters(
   params: Record<string, unknown>
@@ -163,6 +280,10 @@ export function txQueryParamsToFilters(
   const status =
     typeof params.status === "string" ? (params.status as TxStatusFilter) : "all";
   const ruleQueue = params.ruleQueue;
+  const direction =
+    params.direction === "in" || params.direction === "out"
+      ? params.direction
+      : undefined;
   return {
     from: typeof params.from === "string" ? params.from : undefined,
     to: typeof params.to === "string" ? params.to : undefined,
@@ -174,6 +295,7 @@ export function txQueryParamsToFilters(
     amountMin: typeof params.amountMin === "number" ? params.amountMin : null,
     amountMax: typeof params.amountMax === "number" ? params.amountMax : null,
     amountExact: typeof params.amountExact === "number" ? params.amountExact : null,
+    direction,
     ruleId: typeof params.ruleId === "string" ? params.ruleId : undefined,
     ruleQueue:
       ruleQueue === "suggested" ||
@@ -187,21 +309,32 @@ export function txQueryParamsToFilters(
 async function aggregateViaTxPredicate(
   admin: AdminClient,
   clientUserId: string,
-  filters: TxFilterInput
+  filters: TxFilterInput,
+  opts?: { limit?: number }
 ): Promise<{ count: number; inflow: number; outflow: number; net: number }> {
-  const rows = await fetchAllRows<{ amount: number; direction: string | null }>(
-    (from, to) =>
-      buildTxPredicate(
-        admin
-          .from("treasury_transactions")
-          .select("amount, direction")
-          .eq("client_user_id", clientUserId)
-          .eq("is_removed", false)
-          .order("posted_date", { ascending: false })
-          .order("id", { ascending: false }),
-        filters
-      ).range(from, to)
-  );
+  const base = () =>
+    buildTxPredicate(
+      admin
+        .from("treasury_transactions")
+        .select("amount, direction")
+        .eq("client_user_id", clientUserId)
+        .eq("is_removed", false)
+        .order("posted_date", { ascending: false })
+        .order("id", { ascending: false }),
+      filters
+    );
+
+  let rows: { amount: number; direction: string | null }[];
+  const limit = opts?.limit;
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    const { data, error } = await base().range(0, Math.floor(limit) - 1);
+    if (error) throw error;
+    rows = (data ?? []) as { amount: number; direction: string | null }[];
+  } else {
+    rows = await fetchAllRows<{ amount: number; direction: string | null }>(
+      (from, to) => base().range(from, to)
+    );
+  }
 
   let inflow = 0;
   let outflow = 0;
@@ -222,6 +355,15 @@ function txQueryDescription(
   params: Record<string, unknown>,
   agg: { count: number; net: number }
 ): string {
+  if (
+    typeof params.contextForRuleId === "string" &&
+    params.contextForRuleId.length > 0
+  ) {
+    const n =
+      clampRuleContextN(params.limit) ??
+      (agg.count > 0 ? agg.count : RULE_CONTEXT_DEFAULT_N);
+    return ruleContextLabel(n);
+  }
   const parts = [`${agg.count.toLocaleString()} transaction${agg.count === 1 ? "" : "s"}`];
   if (typeof params.q === "string" && params.q.trim()) {
     parts.push(params.q.trim());
@@ -495,7 +637,10 @@ export async function resolveEvidenceLive(
     if (ev.kind === "txquery") {
       try {
         const filters = txQueryParamsToFilters(ev.params);
-        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        const limit = txQueryLimitFromParams(ev.params);
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters, {
+          limit,
+        });
         const description = txQueryDescription(ev.params, agg);
         items.push({
           kind: "txquery",
@@ -973,7 +1118,10 @@ export async function snapshotEvidence(
 
       if (ev.kind === "txquery" && live?.available && live.kind === "txquery") {
         const filters = txQueryParamsToFilters(ev.params);
-        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        const limit = txQueryLimitFromParams(ev.params);
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters, {
+          limit,
+        });
         const snap: TxQuerySnap = {
           count: agg.count,
           in: agg.inflow,

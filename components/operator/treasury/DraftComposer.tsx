@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
   IMPACT_BASIS_LABELS,
@@ -10,6 +10,12 @@ import {
   type ImpactBasis,
   type RecommendationCategory,
 } from "@/lib/treasury/recommendation-status";
+import {
+  currentRuleContextN,
+  isRuleContextCompanion,
+  RULE_CONTEXT_MAX_N,
+  RULE_CONTEXT_MIN_N,
+} from "@/lib/treasury/evidence";
 import type { DraftKind } from "@/lib/treasury/pickable";
 import type {
   ResolvedEvidenceItem,
@@ -68,6 +74,14 @@ export function DraftComposer({
   const [impactBasis, setImpactBasis] = useState<ImpactBasis | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contextN, setContextN] = useState(5);
+
+  const showContextN = useMemo(() => {
+    if (!isQuestion) return false;
+    return draft.evidence.some(
+      (ev) => ev.kind === "rule" || isRuleContextCompanion(ev)
+    );
+  }, [isQuestion, draft.evidence]);
 
   useEffect(() => {
     setTitle(draft.title?.trim() ? draft.title : "");
@@ -75,6 +89,7 @@ export function DraftComposer({
     setCategory("");
     setImpactAmount(draft.impact_amount != null ? String(draft.impact_amount) : "");
     setImpactBasis(draft.impact_basis ?? "");
+    setContextN(currentRuleContextN(draft.evidence));
     setError(null);
   }, [draft]);
 
@@ -83,6 +98,28 @@ export function DraftComposer({
     body.trim().length > 0 &&
     (isQuestion || category !== "") &&
     !busy;
+
+  async function setRuleContextN(next: number) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/recommendations/${draft.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_rule_context_n", n: next }),
+      }
+    );
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    setBusy(false);
+    if (!res.ok) {
+      setError(data.error ?? "Could not update context N");
+      setContextN(currentRuleContextN(draft.evidence));
+      return;
+    }
+    setContextN(next);
+    onEvidenceChanged();
+  }
 
   async function removeItem(id: string, evidenceKind: string) {
     setBusy(true);
@@ -270,6 +307,46 @@ export function DraftComposer({
             onChange={(e) => setBody(e.target.value)}
           />
         </div>
+
+        {showContextN ? (
+          <div className="req-to" style={{ marginTop: 12 }}>
+            <label htmlFor="draft-context-n">Last N for context</label>
+            <div className="flex gap-2 items-center flex-wrap">
+              <input
+                id="draft-context-n"
+                className="req-input"
+                style={{ maxWidth: 88 }}
+                type="number"
+                min={RULE_CONTEXT_MIN_N}
+                max={RULE_CONTEXT_MAX_N}
+                step={1}
+                value={contextN}
+                disabled={busy}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  setContextN(Number.isFinite(raw) ? raw : contextN);
+                }}
+                onBlur={() => {
+                  if (
+                    !Number.isInteger(contextN) ||
+                    contextN < RULE_CONTEXT_MIN_N ||
+                    contextN > RULE_CONTEXT_MAX_N
+                  ) {
+                    setError(`N must be an integer from ${RULE_CONTEXT_MIN_N} to ${RULE_CONTEXT_MAX_N}`);
+                    setContextN(currentRuleContextN(draft.evidence));
+                    return;
+                  }
+                  if (contextN !== currentRuleContextN(draft.evidence)) {
+                    void setRuleContextN(contextN);
+                  }
+                }}
+              />
+              <span className="panel-note" style={{ margin: 0 }}>
+                Recent transactions like this rule — for context
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {!isQuestion ? (
           <div className="req-to" style={{ marginTop: 12 }}>
