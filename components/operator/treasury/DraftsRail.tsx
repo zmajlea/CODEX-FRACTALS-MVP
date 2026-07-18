@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import type { DraftKind } from "@/lib/treasury/pickable";
 import type {
   ResolvedEvidenceItem,
   TreasuryRecommendationRow,
 } from "@/lib/treasury/types";
+import type { Evidence } from "@/lib/treasury/evidence";
 import { evidenceRunningTotal } from "@/lib/treasury/evidence";
 
 type DraftBundle = {
@@ -19,6 +20,17 @@ type DraftsPayload = {
   recommendation: DraftBundle;
   question: DraftBundle;
 };
+
+/** Stage 8a-4 — parent resolves these into tab + focus state. */
+export type EvidenceNavRequest =
+  | { kind: "transaction"; id: string }
+  | { kind: "txquery"; params: Record<string, unknown> }
+  | { kind: "study"; id: string }
+  | { kind: "rule"; id: string }
+  | {
+      kind: "summary_period" | "summary_range";
+      params: Record<string, unknown>;
+    };
 
 function formatEvidenceAmount(
   amount: number,
@@ -42,11 +54,50 @@ function itemLabel(item: ResolvedEvidenceItem): string {
   return "Item no longer available";
 }
 
+function navFromEvidence(ev: Evidence | undefined): EvidenceNavRequest | null {
+  if (!ev) return null;
+  if (ev.kind === "transaction" && ev.id) {
+    return { kind: "transaction", id: ev.id };
+  }
+  if (ev.kind === "study" && ev.id) {
+    return { kind: "study", id: ev.id };
+  }
+  if (ev.kind === "rule" && ev.id) {
+    return { kind: "rule", id: ev.id };
+  }
+  if (ev.kind === "txquery" && ev.params) {
+    return { kind: "txquery", params: ev.params };
+  }
+  if (
+    (ev.kind === "summary_period" || ev.kind === "summary_range") &&
+    ev.params
+  ) {
+    return { kind: ev.kind, params: ev.params };
+  }
+  return null;
+}
+
+function navBlockedReason(item: ResolvedEvidenceItem): string | null {
+  if (!item.available) return "No longer available — cannot open";
+  if (
+    item.kind === "transaction" ||
+    item.kind === "txquery" ||
+    item.kind === "study" ||
+    item.kind === "rule" ||
+    item.kind === "summary_period" ||
+    item.kind === "summary_range"
+  ) {
+    return null;
+  }
+  return `No jump target for ${item.kind} yet`;
+}
+
 export function DraftsRail({
   clientUserId,
   refreshKey,
   onOpenChange,
   onOpenDraft,
+  onNavigateEvidence,
 }: {
   clientUserId: string;
   refreshKey: number;
@@ -54,6 +105,8 @@ export function DraftsRail({
   onOpenChange?: (open: boolean) => void;
   /** Stage 8 — open draft on the Recommendations desk (no inline compose). */
   onOpenDraft?: (draftId: string) => void;
+  /** Stage 8a-4 — jump from basket item to its source surface. */
+  onNavigateEvidence?: (nav: EvidenceNavRequest) => void;
 }) {
   const [data, setData] = useState<DraftsPayload>({
     recommendation: null,
@@ -61,17 +114,31 @@ export function DraftsRail({
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
+  const [updating, setUpdating] = useState<{
+    recommendation?: boolean;
+    question?: boolean;
+  }>({});
+  const [pendingRemove, setPendingRemove] = useState<Set<string>>(new Set());
+  const [groupError, setGroupError] = useState<{
+    recommendation?: string;
+    question?: string;
+  }>({});
+  const snapshotRef = useRef<DraftsPayload | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/recommendations/draft`
     );
-    if (!res.ok) return;
+    if (!res.ok) {
+      setUpdating({});
+      return;
+    }
     const body = (await res.json()) as DraftsPayload;
     setData({
       recommendation: body.recommendation ?? null,
       question: body.question ?? null,
     });
+    setUpdating({});
   }, [clientUserId]);
 
   useEffect(() => {
@@ -87,6 +154,19 @@ export function DraftsRail({
     }
   }, [refreshKey]);
 
+  // 8a-1 — when a pick lands while the drawer is open, show Updating… until load settles
+  const prevRefreshRef = useRef(refreshKey);
+  useEffect(() => {
+    if (
+      refreshKey > 0 &&
+      refreshKey !== prevRefreshRef.current &&
+      drawerOpen
+    ) {
+      setUpdating({ recommendation: true, question: true });
+    }
+    prevRefreshRef.current = refreshKey;
+  }, [refreshKey, drawerOpen]);
+
   useEffect(() => {
     onOpenChange?.(drawerOpen);
     const app = document.getElementById("app");
@@ -95,6 +175,16 @@ export function DraftsRail({
       app?.classList.remove("drafts-drawer-open");
     };
   }, [drawerOpen, onOpenChange]);
+
+  // 8a-3 — Esc closes
+  useEffect(() => {
+    if (!drawerOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setDrawerOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   const recCount = data.recommendation?.items.length ?? 0;
   const qCount = data.question?.items.length ?? 0;
@@ -119,7 +209,34 @@ export function DraftsRail({
   ) {
     const bundle = kind === "recommendation" ? data.recommendation : data.question;
     if (!bundle) return;
-    await fetch(
+    const pendKey = `${kind}:${id}`;
+    if (pendingRemove.has(pendKey)) return;
+
+    snapshotRef.current = {
+      recommendation: data.recommendation,
+      question: data.question,
+    };
+    setGroupError((e) => ({ ...e, [kind]: undefined }));
+    setPendingRemove((s) => new Set(s).add(pendKey));
+    setUpdating((u) => ({ ...u, [kind]: true }));
+
+    const nextItems = bundle.items.filter(
+      (it) => !("id" in it && it.id === id)
+    );
+    const removedMissing =
+      bundle.items.find((it) => "id" in it && it.id === id)?.available === false
+        ? 1
+        : 0;
+    setData((prev) => ({
+      ...prev,
+      [kind]: {
+        ...bundle,
+        items: nextItems,
+        missingCount: Math.max(0, bundle.missingCount - removedMissing),
+      },
+    }));
+
+    const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/recommendations/${bundle.draft.id}`,
       {
         method: "PATCH",
@@ -131,13 +248,42 @@ export function DraftsRail({
         }),
       }
     );
+
+    setPendingRemove((s) => {
+      const next = new Set(s);
+      next.delete(pendKey);
+      return next;
+    });
+    setUpdating((u) => ({ ...u, [kind]: false }));
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (snapshotRef.current) setData(snapshotRef.current);
+      setGroupError((e) => ({
+        ...e,
+        [kind]: body.error ?? "Remove failed — restored",
+      }));
+      return;
+    }
     void load();
   }
 
   async function clearDraft(kind: DraftKind) {
     const bundle = kind === "recommendation" ? data.recommendation : data.question;
-    if (!bundle) return;
-    await fetch(
+    if (!bundle || updating[kind]) return;
+
+    snapshotRef.current = {
+      recommendation: data.recommendation,
+      question: data.question,
+    };
+    setGroupError((e) => ({ ...e, [kind]: undefined }));
+    setUpdating((u) => ({ ...u, [kind]: true }));
+    setData((prev) => ({
+      ...prev,
+      [kind]: { ...bundle, items: [], missingCount: 0 },
+    }));
+
+    const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/recommendations/${bundle.draft.id}`,
       {
         method: "PATCH",
@@ -145,12 +291,39 @@ export function DraftsRail({
         body: JSON.stringify({ action: "clear_evidence" }),
       }
     );
+
+    setUpdating((u) => ({ ...u, [kind]: false }));
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (snapshotRef.current) setData(snapshotRef.current);
+      setGroupError((e) => ({
+        ...e,
+        [kind]: body.error ?? "Clear failed — restored",
+      }));
+      return;
+    }
     void load();
   }
 
   function openInDrafts(draftId: string) {
     setDrawerOpen(false);
     onOpenDraft?.(draftId);
+  }
+
+  function navigateItem(
+    kind: DraftKind,
+    item: ResolvedEvidenceItem,
+    idx: number
+  ) {
+    if (navBlockedReason(item)) return;
+    const bundle = kind === "recommendation" ? data.recommendation : data.question;
+    if (!bundle) return;
+    const ev = bundle.draft.evidence?.[idx] as Evidence | undefined;
+    const nav = navFromEvidence(ev);
+    if (!nav) return;
+    setDrawerOpen(false);
+    onNavigateEvidence?.(nav);
   }
 
   function renderGroup(
@@ -160,6 +333,7 @@ export function DraftsRail({
     running: ReturnType<typeof evidenceRunningTotal>
   ) {
     const n = bundle?.items.length ?? 0;
+    const busy = !!updating[kind];
     return (
       <div className="dg" key={kind}>
         <div className="dg-h">
@@ -169,6 +343,7 @@ export function DraftsRail({
             {running
               ? ` · ${formatEvidenceAmount(running.total, running.direction)}`
               : ""}
+            {busy ? <em className="dg-upd"> · Updating…</em> : null}
           </span>
           {bundle ? (
             <button
@@ -180,6 +355,11 @@ export function DraftsRail({
             </button>
           ) : null}
         </div>
+        {groupError[kind] ? (
+          <p className="dg-err" role="alert">
+            {groupError[kind]}
+          </p>
+        ) : null}
         {n === 0 ? (
           <p className="dg-hint">Nothing here yet.</p>
         ) : (
@@ -187,27 +367,44 @@ export function DraftsRail({
             {bundle!.items.map((item, idx) => {
               const key =
                 "id" in item && item.id ? item.id : `${item.kind}-${idx}`;
+              const pendKey =
+                "id" in item && item.id ? `${kind}:${item.id}` : "";
+              const removing = pendKey ? pendingRemove.has(pendKey) : false;
+              const blocked = navBlockedReason(item);
+              const canNav = !blocked && !!onNavigateEvidence;
               return (
                 <div
                   key={key}
-                  className={`dit ${item.kind === "transaction" ? "m" : "s"}`}
+                  className={`dit ${item.kind === "transaction" ? "m" : "s"}${canNav ? " nav" : ""}${removing ? " pend" : ""}`}
                 >
-                  <span className="kk">{item.kind}</span>
-                  <span className="bd">
-                    {itemLabel(item)}
-                    {item.available &&
-                    item.kind === "transaction" &&
-                    "amount" in item ? (
-                      <em>
-                        {" "}
-                        {formatEvidenceAmount(item.amount, item.direction)}
-                      </em>
-                    ) : null}
-                  </span>
+                  <button
+                    type="button"
+                    className="dit-body"
+                    disabled={!canNav}
+                    title={blocked ?? "Open source"}
+                    onClick={() => navigateItem(kind, item, idx)}
+                  >
+                    <span className="kk">{item.kind}</span>
+                    <span className="bd">
+                      {itemLabel(item)}
+                      {item.available &&
+                      item.kind === "transaction" &&
+                      "amount" in item ? (
+                        <em>
+                          {" "}
+                          {formatEvidenceAmount(item.amount, item.direction)}
+                        </em>
+                      ) : null}
+                      {blocked && !item.available ? (
+                        <em className="dit-dead"> — {blocked}</em>
+                      ) : null}
+                    </span>
+                  </button>
                   {"id" in item && item.id ? (
                     <button
                       type="button"
                       className="rm"
+                      disabled={removing || busy}
                       onClick={() => void removeItem(kind, item.id!, item.kind)}
                       aria-label="Remove"
                     >
@@ -227,9 +424,10 @@ export function DraftsRail({
               type="button"
               className="btn ghost sm"
               style={{ marginTop: 8 }}
+              disabled={busy}
               onClick={() => void clearDraft(kind)}
             >
-              Clear
+              {busy ? "Updating…" : "Clear"}
             </button>
           </div>
         )}
@@ -242,7 +440,8 @@ export function DraftsRail({
       <aside
         className={`railtab${pulse && !drawerOpen ? " pulse" : ""}`}
         title="Drafts — everything you pick collects here"
-        onClick={() => setDrawerOpen(true)}
+        onClick={() => setDrawerOpen((o) => !o)}
+        aria-expanded={drawerOpen}
       >
         <span className={`ct${total === 0 ? " zero" : ""}`}>{total}</span>
         <span className="vt">Drafts</span>

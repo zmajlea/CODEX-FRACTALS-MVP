@@ -13,11 +13,12 @@ import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedg
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
-import { DraftsRail } from "@/components/operator/treasury/DraftsRail";
+import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
+import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
 import { formatTreasuryAsOf } from "@/lib/treasury/format";
 import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import { defaultDateRange, periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
@@ -131,6 +132,18 @@ export function OperatorTreasuryClientRecord({
   const [ledgerKey, setLedgerKey] = useState(0);
   const [openRuleQueueId, setOpenRuleQueueId] = useState<string | null>(null);
   const [basketKey, setBasketKey] = useState(0);
+  const [focusTxId, setFocusTxId] = useState<string | null>(null);
+  const [seedLedgerFilters, setSeedLedgerFilters] = useState<{
+    from?: string;
+    to?: string;
+    q?: string;
+    accountIds?: string[];
+    amountMin?: string;
+    amountMax?: string;
+    amountExact?: string;
+    status?: "all" | "needs_label" | "suggested" | "labeled";
+  } | null>(null);
+  const [focusStudyId, setFocusStudyId] = useState<string | null>(null);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
   const hasSyncedData = (data?.transaction_count ?? 0) > 0;
@@ -369,6 +382,79 @@ export function OperatorTreasuryClientRecord({
     setTab("rules");
   }
 
+  function handleNavigateEvidence(nav: EvidenceNavRequest) {
+    if (nav.kind === "transaction") {
+      setDrillRange(null);
+      setSeedLedgerFilters(null);
+      setFocusTxId(nav.id);
+      setTab("transactions");
+      setLedgerKey((k) => k + 1);
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=transactions`,
+        { scroll: false }
+      );
+      return;
+    }
+    if (nav.kind === "txquery") {
+      const f = txQueryParamsToFilters(nav.params);
+      setDrillRange(null);
+      setFocusTxId(null);
+      setSeedLedgerFilters({
+        from: f.from ?? undefined,
+        to: f.to ?? undefined,
+        q: f.q ?? undefined,
+        accountIds: f.accountIds ?? undefined,
+        amountMin: f.amountMin != null ? String(f.amountMin) : undefined,
+        amountMax: f.amountMax != null ? String(f.amountMax) : undefined,
+        amountExact: f.amountExact != null ? String(f.amountExact) : undefined,
+        status:
+          f.status === "needs_label" ||
+          f.status === "suggested" ||
+          f.status === "labeled"
+            ? f.status
+            : "all",
+      });
+      setTab("transactions");
+      setLedgerKey((k) => k + 1);
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=transactions`,
+        { scroll: false }
+      );
+      return;
+    }
+    if (nav.kind === "study") {
+      setFocusStudyId(nav.id);
+      setTab("analytics");
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&study=${nav.id}`,
+        { scroll: false }
+      );
+      return;
+    }
+    if (nav.kind === "rule") {
+      setOpenRuleQueueId(nav.id);
+      setTab("rules");
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=rules`,
+        { scroll: false }
+      );
+      return;
+    }
+    if (nav.kind === "summary_period" || nav.kind === "summary_range") {
+      const from =
+        typeof nav.params.from === "string" ? nav.params.from : undefined;
+      const to = typeof nav.params.to === "string" ? nav.params.to : undefined;
+      if (from && to) {
+        setDateRange({ preset: "custom", from, to });
+      }
+      setTab("summary");
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=summary`,
+        { scroll: false }
+      );
+    }
+  }
+
   const prov = provenanceLine(data);
   const csvOnly =
     !!data?.institutions.some((i) => i.item_id === "csv-manual") &&
@@ -473,7 +559,7 @@ export function OperatorTreasuryClientRecord({
           <AnalyticsShell
             clientUserId={clientUserId}
             accountsData={data}
-            initialStudyId={initialStudyId}
+            initialStudyId={focusStudyId ?? initialStudyId}
             onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
@@ -494,6 +580,10 @@ export function OperatorTreasuryClientRecord({
             ruleBanner={ruleBanner}
             onDismissBanner={() => setRuleBanner(null)}
             onBasketChanged={() => setBasketKey((k) => k + 1)}
+            focusTxId={focusTxId}
+            onFocusTxConsumed={() => setFocusTxId(null)}
+            seedFilters={seedLedgerFilters}
+            onSeedFiltersConsumed={() => setSeedLedgerFilters(null)}
           />
         ) : null}
 
@@ -554,6 +644,7 @@ export function OperatorTreasuryClientRecord({
             { scroll: false }
           );
         }}
+        onNavigateEvidence={handleNavigateEvidence}
       />
     </BcnContinuityShell>
   );

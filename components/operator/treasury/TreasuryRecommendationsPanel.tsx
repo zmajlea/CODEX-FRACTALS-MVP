@@ -62,6 +62,13 @@ function isEmptyDraft(rec: TreasuryRecommendationRow): boolean {
   return !rec.title?.trim() && (rec.evidence?.length ?? 0) === 0;
 }
 
+/** Stage 8a-2 — awaiting is a status read, not a to-do badge. */
+function isAwaitingClient(rec: TreasuryRecommendationRow): boolean {
+  if (rec.status !== "sent") return false;
+  if (rec.kind === "question") return !rec.client_response;
+  return true; // recommendation awaiting accept/decline
+}
+
 export function TreasuryRecommendationsPanel({
   clientUserId,
   operatorName,
@@ -355,7 +362,10 @@ export function TreasuryRecommendationsPanel({
             }
 
             return (
-              <article key={rec.id} className="rec-card">
+              <article
+                key={rec.id}
+                className={`rec-card${isAwaitingClient(rec) ? " awaiting" : ""}`}
+              >
                 <div className="rec-top">
                   <span className="rec-kind">{kindLabel}</span>
                   {rec.kind === "recommendation" ? (
@@ -363,10 +373,17 @@ export function TreasuryRecommendationsPanel({
                       {RECOMMENDATION_CATEGORY_LABELS[rec.category]}
                     </span>
                   ) : null}
-                  <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
-                    <span className="rec-bdot" />
-                    {RECOMMENDATION_STATUS_LABELS[rec.status]}
-                  </span>
+                  {isAwaitingClient(rec) ? (
+                    <span className="rec-badge k-proposed">
+                      <span className="rec-bdot" />
+                      Awaiting client
+                    </span>
+                  ) : (
+                    <span className={`rec-badge ${statusBadgeClass(rec.status)}`}>
+                      <span className="rec-bdot" />
+                      {RECOMMENDATION_STATUS_LABELS[rec.status]}
+                    </span>
+                  )}
                   {sealed ? (
                     <PickButton
                       variant="row"

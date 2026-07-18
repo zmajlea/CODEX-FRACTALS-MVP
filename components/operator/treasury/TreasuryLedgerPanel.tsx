@@ -14,6 +14,9 @@ import type {
   TreasuryTransactionRow,
 } from "@/lib/treasury/types";
 
+type AmountMode = "between" | "exact";
+type StatusFilter = "all" | "needs_label" | "suggested" | "labeled";
+
 type Props = {
   clientUserId: string;
   institutions: TreasuryInstitutionView[];
@@ -28,10 +31,22 @@ type Props = {
   ruleBanner?: string | null;
   onDismissBanner?: () => void;
   onBasketChanged?: () => void;
+  /** Stage 8a-4 — highlight/scroll to this transaction after load */
+  focusTxId?: string | null;
+  onFocusTxConsumed?: () => void;
+  /** Stage 8a-4 — apply txquery (or similar) filters once on mount */
+  seedFilters?: Partial<{
+    from: string;
+    to: string;
+    q: string;
+    accountIds: string[];
+    amountMin: string;
+    amountMax: string;
+    amountExact: string;
+    status: StatusFilter;
+  }> | null;
+  onSeedFiltersConsumed?: () => void;
 };
-
-type AmountMode = "between" | "exact";
-type StatusFilter = "all" | "needs_label" | "suggested" | "labeled";
 
 type AppliedFilters = {
   from?: string;
@@ -73,6 +88,10 @@ export function TreasuryLedgerPanel({
   ruleBanner,
   onDismissBanner,
   onBasketChanged,
+  focusTxId,
+  onFocusTxConsumed,
+  seedFilters,
+  onSeedFiltersConsumed,
 }: Props) {
   const [transactions, setTransactions] = useState<TreasuryTransactionRow[]>([]);
   const [book, setBook] = useState<TreasuryBookStats | null>(null);
@@ -217,6 +236,57 @@ export function TreasuryLedgerPanel({
   useEffect(() => {
     void load(applied, page, pageSize);
   }, [applied, page, pageSize, load, drillRange]);
+
+  // Stage 8a-4 — seed filters from a basket txquery jump
+  useEffect(() => {
+    if (!seedFilters) return;
+    const next: AppliedFilters = {
+      from: seedFilters.from,
+      to: seedFilters.to,
+      datePreset: seedFilters.from || seedFilters.to ? "custom" : "all",
+      status: seedFilters.status ?? "all",
+      q: seedFilters.q ?? "",
+      accountIds: seedFilters.accountIds ?? [],
+      amountMode: seedFilters.amountExact
+        ? "exact"
+        : "between",
+      amountMin: seedFilters.amountMin ?? "",
+      amountMax: seedFilters.amountMax ?? "",
+      amountExact: seedFilters.amountExact ?? "",
+    };
+    setApplied(next);
+    setDraftPayeeQ(next.q);
+    setDraftAccounts(new Set(next.accountIds));
+    setDraftAmountMode(next.amountMode);
+    setDraftAmountMin(next.amountMin);
+    setDraftAmountMax(next.amountMax);
+    setDraftAmountExact(next.amountExact);
+    if (next.from || next.to) {
+      setDraftDateRange({
+        preset: "custom",
+        from: next.from ?? "",
+        to: next.to ?? "",
+      });
+      onDateRangeChange({
+        preset: "custom",
+        from: next.from ?? "",
+        to: next.to ?? "",
+      });
+    }
+    setPage(0);
+    onSeedFiltersConsumed?.();
+  }, [seedFilters]); // eslint-disable-line react-hooks/exhaustive-deps -- consume once when seed arrives
+
+  // Stage 8a-4 — scroll/highlight focused row after load
+  useEffect(() => {
+    if (!focusTxId || loading) return;
+    const el = document.querySelector(`[data-tx-id="${CSS.escape(focusTxId)}"]`);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    const t = window.setTimeout(() => onFocusTxConsumed?.(), 1600);
+    return () => window.clearTimeout(t);
+  }, [focusTxId, loading, transactions, onFocusTxConsumed]);
 
   useEffect(() => {
     void (async () => {
@@ -839,6 +909,7 @@ export function TreasuryLedgerPanel({
             <TreasuryTxRow
               key={tx.id}
               tx={tx}
+              highlighted={focusTxId === tx.id}
               selected={selected.has(tx.id)}
               onToggleSelect={(checked) => {
                 setSelected((prev) => {

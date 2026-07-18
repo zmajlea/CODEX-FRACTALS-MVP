@@ -64,6 +64,8 @@ type Props = {
   /** Spec 36 return leg — open the producing rule’s queue */
   onOpenRuleQueue?: (ruleId: string) => void;
   onPick?: (draftKind: import("@/lib/treasury/pickable").DraftKind, pickable: import("@/lib/treasury/pickable").Pickable) => void;
+  /** Stage 8a-4 — scroll/highlight target from basket jump */
+  highlighted?: boolean;
 };
 
 export function TreasuryTxRow({
@@ -84,6 +86,7 @@ export function TreasuryTxRow({
   onMakeRule,
   onOpenRuleQueue,
   onPick,
+  highlighted = false,
 }: Props) {
   const payee = tx.merchant_name ?? tx.normalized_merchant ?? "—";
   const rowPickable: Pickable = {
@@ -95,7 +98,8 @@ export function TreasuryTxRow({
 
   return (
     <div
-      className={`txr ${tx.suggestion_status === "suggested" ? "r-review" : ""}`}
+      className={`txr ${tx.suggestion_status === "suggested" ? "r-review" : ""}${highlighted ? " focus-hit" : ""}`}
+      data-tx-id={tx.id}
     >
       {showSelect ? (
         <span>
