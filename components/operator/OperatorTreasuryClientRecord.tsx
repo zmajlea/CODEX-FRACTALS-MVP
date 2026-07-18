@@ -444,6 +444,7 @@ export function OperatorTreasuryClientRecord({
             clientUserId={clientUserId}
             hasSyncedData={hasSyncedData}
             onSelectPeriod={handleSelectPeriod}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
 
@@ -452,6 +453,7 @@ export function OperatorTreasuryClientRecord({
             clientUserId={clientUserId}
             accountsData={data}
             initialStudyId={initialStudyId}
+            onBasketChanged={() => setBasketKey((k) => k + 1)}
           />
         ) : null}
 

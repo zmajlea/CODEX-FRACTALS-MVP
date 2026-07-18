@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TreasuryForecastDrillModal } from "@/components/operator/treasury/TreasuryForecastDrillModal";
 import { TreasuryPeriodDrillModal } from "@/components/operator/treasury/TreasuryPeriodDrillModal";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { formatTreasuryAsOf, formatTreasuryMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
-import { periodLabel } from "@/lib/treasury/period-bounds";
+import { periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   SummaryBucket,
   SummaryGranularity,
@@ -18,6 +20,7 @@ type Props = {
   clientUserId: string;
   hasSyncedData?: boolean;
   onSelectPeriod?: (bucket: SummaryBucket, periodStart: string) => void;
+  onBasketChanged?: () => void;
 };
 
 const GRANULARITIES: { id: SummaryGranularity; label: string; defaultPeriods: number }[] = [
@@ -212,6 +215,7 @@ export function TreasurySummaryPanel({
   clientUserId,
   hasSyncedData = true,
   onSelectPeriod,
+  onBasketChanged,
 }: Props) {
   const [granularity, setGranularity] = useState<SummaryGranularity>("month");
   const [periods, setPeriods] = useState(12);
@@ -221,6 +225,41 @@ export function TreasurySummaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [drillRow, setDrillRow] = useState<TreasurySummaryRow | null>(null);
   const [forecastDrill, setForecastDrill] = useState<TreasuryForecastPeriod | null>(null);
+
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft_kind: draftKind, pickable }),
+        }
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Failed to add to draft");
+      }
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
+
+  function periodPickable(row: TreasurySummaryRow): Pickable {
+    const from = row.period_start;
+    const to = periodEnd(granularity, row.period_start);
+    return {
+      kind: "summary_period",
+      params: {
+        granularity,
+        from,
+        to,
+      },
+      label: `${periodLabel(granularity, row.period_start)} · ${formatTreasuryMoney(row.net, row.iso_currency_code)}`,
+      sublabel: `${row.count} tx`,
+    };
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -459,13 +498,14 @@ export function TreasurySummaryPanel({
                 <th className="font-mono text-xs uppercase tracking-wide">Out</th>
                 <th className="font-mono text-xs uppercase tracking-wide">Net</th>
                 <th className="font-mono text-xs uppercase tracking-wide">Count</th>
+                <th className="font-mono text-xs uppercase tracking-wide" aria-label="Add to draft" />
               </tr>
             </thead>
             <tbody>
               {[...rows].reverse().map((r) => (
                 <tr
                   key={`${r.period_start}-${r.iso_currency_code}`}
-                  className="cursor-pointer hover:bg-sealed-bone/30"
+                  className="cursor-pointer hover:bg-sealed-bone/30 group"
                   onClick={() => setDrillRow(r)}
                 >
                   <td>{periodLabel(granularity, r.period_start)}</td>
@@ -480,6 +520,16 @@ export function TreasurySummaryPanel({
                     {formatTreasuryMoney(r.net, r.iso_currency_code)}
                   </td>
                   <td>{r.count}</td>
+                  <td
+                    className="w-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <PickButton
+                      variant="row"
+                      pickable={periodPickable(r)}
+                      onPick={addPickableToDraft}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1,6 +1,7 @@
 /**
  * Single Transactions WHERE assembly for the operator ledger.
- * Rows and every scoped count must go through applyTxPredicate — no second builder.
+ * Rows and every scoped count must go through applyTxPredicate / buildTxPredicate —
+ * no second builder. Spec 36 names it buildTxPredicate; applyTxPredicate is the same function.
  */
 
 export type TxStatusFilter = "all" | "needs_label" | "suggested" | "labeled";
@@ -97,6 +98,9 @@ export function applyTxPredicate<Q extends Filterable>(query: Q, filters: TxFilt
 
   return q as Q;
 }
+
+/** Spec 36 name — identical to applyTxPredicate. Prefer this at call sites that cite the contract. */
+export const buildTxPredicate = applyTxPredicate;
 
 /** Chip counts: same filters with only the status dimension swapped. */
 export function withStatus(

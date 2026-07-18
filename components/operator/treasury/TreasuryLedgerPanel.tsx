@@ -362,6 +362,32 @@ export function TreasuryLedgerPanel({
     }
   }
 
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    setBulkBusy(true);
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draft_kind: draftKind,
+            pickable,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Failed to add to draft");
+      }
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   function toggleAccount(id: string, currentlyChecked: boolean) {
     setDraftAccounts((prev) => {
       if (prev.size === 0) {
@@ -392,6 +418,47 @@ export function TreasuryLedgerPanel({
     !!applied.amountMax ||
     !!applied.amountExact ||
     !!drillRange;
+
+  const filteredViewPickable = useMemo((): Pickable | null => {
+    if (!isFiltered || total <= 0) return null;
+    const from = drillRange?.from ?? applied.from;
+    const to = drillRange?.to ?? applied.to;
+    const params: Record<string, unknown> = {
+      status: applied.status,
+    };
+    if (from) params.from = from;
+    if (to) params.to = to;
+    if (applied.q.trim()) params.q = applied.q.trim();
+    if (
+      applied.accountIds.length > 0 &&
+      applied.accountIds.length < allAccountIds.length
+    ) {
+      params.accountIds = applied.accountIds;
+    }
+    if (applied.amountMode === "exact" && applied.amountExact.trim()) {
+      const n = Number(applied.amountExact);
+      if (Number.isFinite(n)) params.amountExact = n;
+    } else if (applied.amountMode === "between") {
+      if (applied.amountMin.trim()) {
+        const n = Number(applied.amountMin);
+        if (Number.isFinite(n)) params.amountMin = n;
+      }
+      if (applied.amountMax.trim()) {
+        const n = Number(applied.amountMax);
+        if (Number.isFinite(n)) params.amountMax = n;
+      }
+    }
+    const parts = [
+      `${total.toLocaleString()} transaction${total === 1 ? "" : "s"}`,
+    ];
+    if (applied.q.trim()) parts.push(applied.q.trim());
+    return {
+      kind: "txquery",
+      params,
+      label: parts.join(" · "),
+      sublabel: "filtered view",
+    };
+  }, [isFiltered, total, drillRange, applied, allAccountIds.length]);
 
   const showingFrom = total === 0 ? 0 : page * pageSize + 1;
   const showingTo = Math.min((page + 1) * pageSize, total);
@@ -478,7 +545,7 @@ export function TreasuryLedgerPanel({
             </span>
           ) : null}
         </h2>
-        <p className="text-xs text-codex-muted mt-1 flex items-center gap-2">
+        <p className="text-xs text-codex-muted mt-1 flex items-center gap-2 flex-wrap">
           {loading ? <span className="spinner" aria-hidden /> : null}
           {loading && transactions.length === 0
             ? "Loading…"
@@ -487,6 +554,14 @@ export function TreasuryLedgerPanel({
               : `Showing ${showingFrom}–${showingTo} of ${total.toLocaleString()}`}
           {loading && transactions.length > 0 ? (
             <span className="sr-only">Loading page…</span>
+          ) : null}
+          {filteredViewPickable ? (
+            <PickButton
+              variant="header"
+              disabled={bulkBusy}
+              pickable={filteredViewPickable}
+              onPick={addPickableToDraft}
+            />
           ) : null}
         </p>
       </div>

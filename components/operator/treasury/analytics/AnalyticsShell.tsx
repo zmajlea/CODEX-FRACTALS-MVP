@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
 import { StudyList } from "@/components/operator/treasury/analytics/StudyList";
 import { useSpendPlanModel } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import {
   defaultStudyParams,
   diffDerivedSnapshot,
@@ -12,12 +13,14 @@ import {
   type DriftEntry,
   type TreasuryStudyRow,
 } from "@/lib/treasury/studies";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
 
 type Props = {
   clientUserId: string;
   accountsData: TreasuryAccountsResponse | null;
   initialStudyId?: string;
+  onBasketChanged?: () => void;
 };
 
 function fmtMoney(n: number): string {
@@ -54,6 +57,7 @@ export function AnalyticsShell({
   clientUserId,
   accountsData,
   initialStudyId,
+  onBasketChanged,
 }: Props) {
   const accounts = useMemo(() => {
     const list: { id: string; name: string }[] = [];
@@ -349,6 +353,36 @@ export function AnalyticsShell({
     }
   };
 
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft_kind: draftKind, pickable }),
+        }
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Failed to add to draft");
+      }
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
+
+  const studyPickable = useMemo((): Pickable | null => {
+    if (!studyId) return null;
+    return {
+      kind: "study",
+      ref: studyId,
+      label: studyName.trim() || "Untitled spend plan",
+      sublabel: "study",
+    };
+  }, [studyId, studyName]);
+
   return (
     <div className="analytics-shell grid gap-4 lg:grid-cols-[240px_1fr]">
       <aside
@@ -395,6 +429,13 @@ export function AnalyticsShell({
               Delete
             </button>
           ) : null}
+          {studyPickable ? (
+            <PickButton
+              variant="header"
+              pickable={studyPickable}
+              onPick={addPickableToDraft}
+            />
+          ) : null}
           {dirty ? (
             <span className="chip prov-assumed">unsaved</span>
           ) : studyId ? (
@@ -440,6 +481,8 @@ export function AnalyticsShell({
           accountId={accountId}
           onAccountIdChange={setAccountId}
           modelState={modelState}
+          studyId={studyId}
+          onBasketChanged={onBasketChanged}
         />
       </div>
     </div>

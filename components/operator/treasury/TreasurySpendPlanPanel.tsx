@@ -9,7 +9,9 @@ import {
 } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
 import { SpendPlanScenarioEditor } from "@/components/operator/treasury/spend-plan/SpendPlanScenarioEditor";
 import { AnalyzerSampleSection } from "@/components/operator/treasury/spend-plan/AnalyzerSampleSection";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { monthYm } from "@/lib/treasury/spend-plan";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 
 type Props = {
   clientUserId: string;
@@ -20,6 +22,8 @@ type Props = {
   /** When provided, panel does not own the model hook (shell does). */
   modelState?: SpendPlanModelState;
   label?: string;
+  studyId?: string | null;
+  onBasketChanged?: () => void;
 };
 
 const MONTH_NAMES = [
@@ -56,6 +60,7 @@ function provenanceClass(p: InputProvenance | string): string {
 }
 
 function SpendPlanPanelBody({
+  clientUserId,
   accounts,
   accountId,
   setAccountId,
@@ -73,7 +78,10 @@ function SpendPlanPanelBody({
   error,
   noHistory,
   insufficientHistory,
+  studyId,
+  onBasketChanged,
 }: {
+  clientUserId: string;
   accounts: { id: string; name: string }[];
   accountId: string;
   setAccountId: (id: string) => void;
@@ -91,6 +99,8 @@ function SpendPlanPanelBody({
   error: string | null;
   noHistory: boolean;
   insufficientHistory: boolean;
+  studyId?: string | null;
+  onBasketChanged?: () => void;
 }) {
   const activeScenarios = scenarios ?? model?.scenarios ?? [];
   const hasScenarios = activeScenarios.length > 0;
@@ -114,6 +124,46 @@ function SpendPlanPanelBody({
     if (inp) return String(inp.value);
     return "—";
   }, [model?.inputs]);
+
+  const backtestPickable = useMemo((): Pickable | null => {
+    if (!model?.backtest?.length || !inputs) return null;
+    const startMonth = inputs.backtestStartMonth;
+    if (!startMonth || !/^\d{4}-\d{2}/.test(startMonth)) return null;
+    const params: Record<string, unknown> = {
+      startMonth: startMonth.slice(0, 7),
+      base: inputs.base,
+      step: inputs.step,
+      stepEveryMonths: inputs.stepEveryMonths,
+    };
+    if (studyId) params.studyId = studyId;
+    if (accountId) params.accountId = accountId;
+    return {
+      kind: "backtest",
+      params,
+      label: `Backtest from ${startMonth.slice(0, 7)}`,
+      sublabel: backtestVerdict?.text,
+    };
+  }, [model?.backtest, inputs, studyId, accountId, backtestVerdict?.text]);
+
+  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations/draft/evidence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft_kind: draftKind, pickable }),
+        }
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Failed to add to draft");
+      }
+      onBasketChanged?.();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to add to draft");
+    }
+  }
 
   return (
     <div className="spend-plan-panel space-y-6">
@@ -412,7 +462,16 @@ function SpendPlanPanelBody({
             className="panel p-4 overflow-x-auto"
             style={{ border: "1px solid var(--line)" }}
           >
-            <p className="sec-title mb-2">02 · The backtest</p>
+            <p className="sec-title mb-2 flex flex-wrap items-center gap-3">
+              <span>02 · The backtest</span>
+              {backtestPickable ? (
+                <PickButton
+                  variant="header"
+                  pickable={backtestPickable}
+                  onPick={addPickableToDraft}
+                />
+              ) : null}
+            </p>
             <p className="treasury-meta text-sm mb-3 leading-relaxed">
               No assumptions — allocation vs what actually left the bank. Exclusions
               do not touch this table. <b>The actuals are the actuals.</b>
@@ -500,6 +559,8 @@ export function TreasurySpendPlanPanel({
   onAccountIdChange,
   modelState,
   label,
+  studyId,
+  onBasketChanged,
 }: Props) {
   const accounts = useMemo(() => {
     const list: { id: string; name: string }[] = [];
@@ -533,6 +594,7 @@ export function TreasurySpendPlanPanel({
 
   return (
     <SpendPlanPanelBody
+      clientUserId={clientUserId}
       accounts={accounts}
       accountId={accountId}
       setAccountId={setAccountId}
@@ -550,6 +612,8 @@ export function TreasurySpendPlanPanel({
       error={state.error}
       noHistory={state.noHistory}
       insufficientHistory={state.insufficientHistory}
+      studyId={studyId}
+      onBasketChanged={onBasketChanged}
     />
   );
 }

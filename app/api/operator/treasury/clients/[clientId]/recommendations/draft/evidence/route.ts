@@ -5,14 +5,17 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import {
+  appendEvidenceItem,
   appendTransactionEvidence,
   assertTransactionsBelongToClient,
   evidenceAsJson,
+  evidenceFromPickable,
   findOrCreateOpenDraft,
   normalizeRecommendationRow,
   resolveEvidenceLive,
 } from "@/lib/server/treasury-recommendation-evidence";
-import type { DraftKind } from "@/lib/treasury/pickable";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
+import { assertAbsolutePickParams } from "@/lib/treasury/pickable";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
@@ -20,6 +23,8 @@ type PostBody = {
   transaction_ids?: string[];
   /** Spec 40 — which open draft receives the pick */
   draft_kind?: DraftKind;
+  /** Spec 40 — portable pick (recipes + refs) */
+  pickable?: Pickable;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -37,36 +42,81 @@ export async function POST(request: Request, context: RouteContext) {
   const draftKind: DraftKind =
     body.draft_kind === "question" ? "question" : "recommendation";
 
-  const transactionIds = (body.transaction_ids ?? []).filter(
-    (id): id is string => typeof id === "string" && id.length > 0
-  );
-  if (transactionIds.length === 0) {
-    return NextResponse.json({ error: "transaction_ids required" }, { status: 400 });
-  }
-
-  const owned = await assertTransactionsBelongToClient(
+  const { draft, created, error: createErr } = await findOrCreateOpenDraft(
     guard.admin,
-    clientId,
-    transactionIds
+    {
+      clientUserId: clientId,
+      operatorId: guard.user.id,
+      tenantId: guard.grant.tenantId,
+      kind: draftKind,
+    }
   );
-  if (!owned.ok) {
-    return NextResponse.json(
-      { error: "Transactions not found for client", missing: owned.missing },
-      { status: 400 }
-    );
-  }
-
-  const { draft, created, error: createErr } = await findOrCreateOpenDraft(guard.admin, {
-    clientUserId: clientId,
-    operatorId: guard.user.id,
-    tenantId: guard.grant.tenantId,
-    kind: draftKind,
-  });
   if (createErr) {
     return NextResponse.json({ error: createErr }, { status: 500 });
   }
 
-  const nextEvidence = appendTransactionEvidence(draft.evidence, transactionIds);
+  let nextEvidence = draft.evidence;
+  let auditKind = "transaction";
+  let auditDetail: Record<string, unknown> = {};
+
+  if (body.pickable) {
+    try {
+      assertAbsolutePickParams(body.pickable.params);
+      const item = evidenceFromPickable(body.pickable);
+      // transaction[] bulk still uses transaction_ids; single transaction pick uses ref
+      if (item.kind === "transaction") {
+        const owned = await assertTransactionsBelongToClient(
+          guard.admin,
+          clientId,
+          [item.id]
+        );
+        if (!owned.ok) {
+          return NextResponse.json(
+            { error: "Transactions not found for client", missing: owned.missing },
+            { status: 400 }
+          );
+        }
+      }
+      nextEvidence = appendEvidenceItem(draft.evidence, item);
+      auditKind = item.kind;
+      auditDetail = {
+        pickable_kind: body.pickable.kind,
+        params: body.pickable.params ?? null,
+        ref: body.pickable.ref ?? null,
+      };
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Invalid pickable" },
+        { status: 400 }
+      );
+    }
+  } else {
+    const transactionIds = (body.transaction_ids ?? []).filter(
+      (id): id is string => typeof id === "string" && id.length > 0
+    );
+    if (transactionIds.length === 0) {
+      return NextResponse.json(
+        { error: "pickable or transaction_ids required" },
+        { status: 400 }
+      );
+    }
+
+    const owned = await assertTransactionsBelongToClient(
+      guard.admin,
+      clientId,
+      transactionIds
+    );
+    if (!owned.ok) {
+      return NextResponse.json(
+        { error: "Transactions not found for client", missing: owned.missing },
+        { status: 400 }
+      );
+    }
+
+    nextEvidence = appendTransactionEvidence(draft.evidence, transactionIds);
+    auditDetail = { transaction_ids: transactionIds };
+  }
+
   const { data: updated, error } = await guard.admin
     .from("treasury_recommendations")
     .update({ evidence: evidenceAsJson(nextEvidence) })
@@ -97,10 +147,11 @@ export async function POST(request: Request, context: RouteContext) {
       client_user_id: clientId,
       recommendation_id: row.id,
       draft_kind: draftKind,
-      transaction_ids: transactionIds,
+      evidence_kind: auditKind,
       evidence_count: row.evidence.length,
       draft_created: created,
-      surface: "transactions",
+      surface: "pick",
+      ...auditDetail,
     },
   });
 

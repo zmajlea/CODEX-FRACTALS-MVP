@@ -1,9 +1,22 @@
 /**
  * Spec 40 — destination-agnostic evidence.
  * No server-only. No lib/server imports. No recommendation-module coupling.
+ *
+ * Batch A resolvers: txquery uses buildTxPredicate (spec 36) — never a second WHERE builder.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database.types";
+import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
+import { formatTreasuryMoney } from "@/lib/treasury/format";
+import {
+  assertAbsolutePickParams,
+  type Pickable,
+} from "@/lib/treasury/pickable";
+import {
+  buildTxPredicate,
+  type TxFilterInput,
+  type TxStatusFilter,
+} from "@/lib/treasury/tx-predicate";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -15,22 +28,78 @@ export type RecommendationTxSnap = {
   direction: "in" | "out" | null;
 };
 
-/** Reference + recipe union — Stage 1 resolves transaction; others defined for day-2. */
+export type TxQuerySnap = {
+  count: number;
+  in: number;
+  out: number;
+  net: number;
+  from?: string;
+  to?: string;
+  description: string;
+};
+
+export type SummaryPeriodSnap = {
+  granularity: string;
+  from: string;
+  to: string;
+  accountId?: string;
+  in: number;
+  out: number;
+  net: number;
+  count: number;
+};
+
+/** Reference + recipe union. Recipe `id` is a draft-local key for remove, not a row ref. */
 export type Evidence =
   | { kind: "transaction"; id: string; snap?: RecommendationTxSnap }
   | { kind: "study"; id: string; snap?: unknown }
-  | { kind: "backtest"; id: string; params?: Record<string, unknown>; snap?: unknown }
+  | {
+      kind: "backtest";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: unknown;
+    }
   | { kind: "rule"; id: string; snap?: unknown }
   | { kind: "account"; id: string; snap?: unknown }
   | { kind: "import"; id: string; snap?: unknown }
   | { kind: "recommendation"; id: string; snap?: unknown }
-  | { kind: "txquery"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "summary_period"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "summary_range"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "month"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "scenario"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "forecast"; params: Record<string, unknown>; snap?: unknown }
-  | { kind: "figure"; params: Record<string, unknown>; snap?: unknown };
+  | {
+      kind: "txquery";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: TxQuerySnap;
+    }
+  | {
+      kind: "summary_period";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: SummaryPeriodSnap;
+    }
+  | {
+      kind: "summary_range";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: unknown;
+    }
+  | { kind: "month"; id?: string; params: Record<string, unknown>; snap?: unknown }
+  | {
+      kind: "scenario";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: unknown;
+    }
+  | {
+      kind: "forecast";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: unknown;
+    }
+  | {
+      kind: "figure";
+      id?: string;
+      params: Record<string, unknown>;
+      snap?: unknown;
+    };
 
 /** @deprecated Spec 39 name — prefer Evidence */
 export type RecommendationEvidence = Evidence;
@@ -73,6 +142,96 @@ function payeeFromRow(row: {
   return row.merchant_name ?? row.normalized_merchant ?? row.raw_name ?? null;
 }
 
+function newDraftId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `ev_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function formatSignedNet(net: number): string {
+  const abs = formatTreasuryMoney(Math.abs(net), "USD");
+  if (net > 0) return `+${abs}`;
+  if (net < 0) return `\u2212${abs}`;
+  return abs;
+}
+
+/** Map frozen txquery params → TxFilterInput for buildTxPredicate. */
+export function txQueryParamsToFilters(
+  params: Record<string, unknown>
+): TxFilterInput {
+  const status =
+    typeof params.status === "string" ? (params.status as TxStatusFilter) : "all";
+  const ruleQueue = params.ruleQueue;
+  return {
+    from: typeof params.from === "string" ? params.from : undefined,
+    to: typeof params.to === "string" ? params.to : undefined,
+    status,
+    q: typeof params.q === "string" && params.q ? params.q : undefined,
+    accountIds: Array.isArray(params.accountIds)
+      ? (params.accountIds.filter((x): x is string => typeof x === "string") as string[])
+      : undefined,
+    amountMin: typeof params.amountMin === "number" ? params.amountMin : null,
+    amountMax: typeof params.amountMax === "number" ? params.amountMax : null,
+    amountExact: typeof params.amountExact === "number" ? params.amountExact : null,
+    ruleId: typeof params.ruleId === "string" ? params.ruleId : undefined,
+    ruleQueue:
+      ruleQueue === "suggested" ||
+      ruleQueue === "confirmed" ||
+      ruleQueue === "rejected"
+        ? ruleQueue
+        : undefined,
+  };
+}
+
+async function aggregateViaTxPredicate(
+  admin: AdminClient,
+  clientUserId: string,
+  filters: TxFilterInput
+): Promise<{ count: number; inflow: number; outflow: number; net: number }> {
+  const rows = await fetchAllRows<{ amount: number; direction: string | null }>(
+    (from, to) =>
+      buildTxPredicate(
+        admin
+          .from("treasury_transactions")
+          .select("amount, direction")
+          .eq("client_user_id", clientUserId)
+          .eq("is_removed", false)
+          .order("posted_date", { ascending: false })
+          .order("id", { ascending: false }),
+        filters
+      ).range(from, to)
+  );
+
+  let inflow = 0;
+  let outflow = 0;
+  for (const row of rows) {
+    const amt = Math.abs(Number(row.amount) || 0);
+    if (row.direction === "in") inflow += amt;
+    else if (row.direction === "out") outflow += amt;
+  }
+  return {
+    count: rows.length,
+    inflow,
+    outflow,
+    net: inflow - outflow,
+  };
+}
+
+function txQueryDescription(
+  params: Record<string, unknown>,
+  agg: { count: number; net: number }
+): string {
+  const parts = [`${agg.count.toLocaleString()} transaction${agg.count === 1 ? "" : "s"}`];
+  if (typeof params.q === "string" && params.q.trim()) {
+    parts.push(params.q.trim());
+  } else if (typeof params.description === "string" && params.description.trim()) {
+    parts.push(params.description.trim());
+  }
+  parts.push(formatSignedNet(agg.net));
+  return parts.join(" · ");
+}
+
 export function parseEvidence(raw: unknown): Evidence[] {
   if (!Array.isArray(raw)) return [];
   const out: Evidence[] = [];
@@ -82,7 +241,14 @@ export function parseEvidence(raw: unknown): Evidence[] {
     const kind = rec.kind;
     if (typeof kind !== "string") continue;
 
-    if (kind === "transaction" || kind === "study" || kind === "rule" || kind === "account" || kind === "import" || kind === "recommendation") {
+    if (
+      kind === "transaction" ||
+      kind === "study" ||
+      kind === "rule" ||
+      kind === "account" ||
+      kind === "import" ||
+      kind === "recommendation"
+    ) {
       const id = typeof rec.id === "string" ? rec.id : null;
       if (!id) continue;
       out.push({
@@ -107,20 +273,14 @@ export function parseEvidence(raw: unknown): Evidence[] {
         rec.params && typeof rec.params === "object"
           ? (rec.params as Record<string, unknown>)
           : undefined;
-      if (kind === "backtest" && typeof rec.id === "string") {
-        out.push({
-          kind: "backtest",
-          id: rec.id,
-          ...(params ? { params } : {}),
-          ...(rec.snap !== undefined ? { snap: rec.snap } : {}),
-        });
-      } else if (params) {
-        out.push({
-          kind,
-          params,
-          ...(rec.snap !== undefined ? { snap: rec.snap } : {}),
-        } as Evidence);
-      }
+      if (!params) continue;
+      const id = typeof rec.id === "string" ? rec.id : undefined;
+      out.push({
+        kind,
+        params,
+        ...(id ? { id } : {}),
+        ...(rec.snap !== undefined ? { snap: rec.snap as never } : {}),
+      } as Evidence);
     }
   }
   return out;
@@ -128,6 +288,38 @@ export function parseEvidence(raw: unknown): Evidence[] {
 
 export function evidenceAsJson(evidence: Evidence[]): Json {
   return evidence as unknown as Json;
+}
+
+/** Convert a Pickable into one Evidence item (never N rows for a recipe). */
+export function evidenceFromPickable(pickable: Pickable): Evidence {
+  assertAbsolutePickParams(pickable.params);
+
+  const refKinds = new Set([
+    "transaction",
+    "study",
+    "rule",
+    "account",
+    "import",
+    "recommendation",
+  ]);
+
+  if (refKinds.has(pickable.kind)) {
+    const id = pickable.ref?.trim();
+    if (!id) {
+      throw new Error(`Pickable ${pickable.kind} requires ref`);
+    }
+    return { kind: pickable.kind, id } as Evidence;
+  }
+
+  if (!pickable.params || Object.keys(pickable.params).length === 0) {
+    throw new Error(`Pickable ${pickable.kind} requires absolute params`);
+  }
+
+  return {
+    kind: pickable.kind,
+    id: newDraftId(),
+    params: pickable.params,
+  } as Evidence;
 }
 
 export function appendTransactionEvidence(
@@ -146,14 +338,26 @@ export function appendTransactionEvidence(
   return next;
 }
 
+export function appendEvidenceItem(
+  evidence: Evidence[],
+  item: Evidence
+): Evidence[] {
+  if (item.kind === "transaction") {
+    return appendTransactionEvidence(evidence, [item.id]);
+  }
+  // Recipes / other refs: append as a single item (txquery must stay one).
+  return [...evidence, item];
+}
+
 export function removeEvidenceItem(
   evidence: Evidence[],
   kind: string,
   id: string
 ): Evidence[] {
   return evidence.filter((e) => {
-    if (!("id" in e) || !e.id) return true;
-    return !(e.kind === kind && e.id === id);
+    const eid = "id" in e ? e.id : undefined;
+    if (!eid) return true;
+    return !(e.kind === kind && eid === id);
   });
 }
 
@@ -164,6 +368,10 @@ export async function resolveEvidenceLive(
 ): Promise<{ items: ResolvedEvidenceItem[]; missingCount: number }> {
   const txIds = evidence
     .filter((e): e is Extract<Evidence, { kind: "transaction" }> => e.kind === "transaction")
+    .map((e) => e.id);
+
+  const studyIds = evidence
+    .filter((e): e is Extract<Evidence, { kind: "study" }> => e.kind === "study")
     .map((e) => e.id);
 
   const byId = new Map<
@@ -192,6 +400,18 @@ export async function resolveEvidenceLive(
 
     for (const row of data ?? []) {
       byId.set(row.id, row);
+    }
+  }
+
+  const studiesById = new Map<string, { id: string; name: string }>();
+  if (studyIds.length > 0) {
+    const { data } = await admin
+      .from("treasury_studies")
+      .select("id, name")
+      .eq("client_user_id", clientUserId)
+      .in("id", studyIds);
+    for (const row of data ?? []) {
+      studiesById.set(row.id, row);
     }
   }
 
@@ -231,7 +451,147 @@ export async function resolveEvidenceLive(
       continue;
     }
 
-    // Stage 1: other kinds render as opaque live stubs (Batch A+ wires resolvers).
+    if (ev.kind === "txquery") {
+      try {
+        const filters = txQueryParamsToFilters(ev.params);
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        const description = txQueryDescription(ev.params, agg);
+        items.push({
+          kind: "txquery",
+          id: ev.id,
+          available: true,
+          label: description,
+          sublabel:
+            [ev.params.from, ev.params.to].filter(Boolean).join(" → ") ||
+            undefined,
+          amount: Math.abs(agg.net),
+          direction: agg.net > 0 ? "in" : agg.net < 0 ? "out" : null,
+        });
+      } catch {
+        missingCount += 1;
+        items.push({
+          kind: "txquery",
+          id: ev.id,
+          available: false,
+          label: "Filtered view unavailable",
+        });
+      }
+      continue;
+    }
+
+    if (ev.kind === "summary_period") {
+      const from = typeof ev.params.from === "string" ? ev.params.from : null;
+      const to = typeof ev.params.to === "string" ? ev.params.to : null;
+      if (!from || !to) {
+        missingCount += 1;
+        items.push({
+          kind: "summary_period",
+          id: ev.id,
+          available: false,
+          label: "Period unavailable",
+        });
+        continue;
+      }
+      try {
+        const accountId =
+          typeof ev.params.accountId === "string" ? ev.params.accountId : undefined;
+        const filters: TxFilterInput = {
+          from,
+          to,
+          accountIds: accountId ? [accountId] : undefined,
+          status: "all",
+        };
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        const g =
+          typeof ev.params.granularity === "string" ? ev.params.granularity : "period";
+        items.push({
+          kind: "summary_period",
+          id: ev.id,
+          available: true,
+          label: `${g} ${from} → ${to} · ${formatSignedNet(agg.net)}`,
+          sublabel: `${agg.count} tx`,
+          amount: Math.abs(agg.net),
+          direction: agg.net > 0 ? "in" : agg.net < 0 ? "out" : null,
+        });
+      } catch {
+        missingCount += 1;
+        items.push({
+          kind: "summary_period",
+          id: ev.id,
+          available: false,
+          label: "Period unavailable",
+        });
+      }
+      continue;
+    }
+
+    if (ev.kind === "study") {
+      const row = studiesById.get(ev.id);
+      if (!row) {
+        missingCount += 1;
+        items.push({
+          kind: "study",
+          id: ev.id,
+          available: false,
+          label: "Study no longer available",
+        });
+        continue;
+      }
+      items.push({
+        kind: "study",
+        id: ev.id,
+        available: true,
+        label: row.name || "Untitled spend plan",
+        sublabel: "study",
+      });
+      continue;
+    }
+
+    if (ev.kind === "backtest") {
+      const startMonth =
+        typeof ev.params.startMonth === "string"
+          ? ev.params.startMonth
+          : typeof ev.params.backtestStartMonth === "string"
+            ? ev.params.backtestStartMonth
+            : null;
+      const studyId =
+        typeof ev.params.studyId === "string" ? ev.params.studyId : undefined;
+      if (studyId) {
+        const { data: study } = await admin
+          .from("treasury_studies")
+          .select("id, name")
+          .eq("client_user_id", clientUserId)
+          .eq("id", studyId)
+          .maybeSingle();
+        if (!study) {
+          missingCount += 1;
+          items.push({
+            kind: "backtest",
+            id: ev.id,
+            available: false,
+            label: "Backtest study unavailable",
+          });
+          continue;
+        }
+      }
+      const base = ev.params.base;
+      const step = ev.params.step;
+      items.push({
+        kind: "backtest",
+        id: ev.id,
+        available: true,
+        label: startMonth
+          ? `Backtest from ${startMonth.slice(0, 7)}`
+          : "Backtest",
+        sublabel:
+          typeof base === "number" && typeof step === "number"
+            ? `base ${base} · step ${step}`
+            : undefined,
+      });
+      continue;
+    }
+
+    // Later batches
     missingCount += 1;
     items.push({
       kind: ev.kind,
@@ -250,27 +610,81 @@ export async function snapshotEvidence(
   evidence: Evidence[]
 ): Promise<Evidence[]> {
   const { items } = await resolveEvidenceLive(admin, clientUserId, evidence);
-  const liveById = new Map(
-    items
-      .filter((i) => i.kind === "transaction" && i.available && "id" in i)
-      .map((i) => [i.id!, i] as const)
-  );
 
-  return evidence.map((ev) => {
-    if (ev.kind !== "transaction") return ev;
-    const live = liveById.get(ev.id);
-    if (!live || !live.available || live.kind !== "transaction") {
-      return { kind: "transaction" as const, id: ev.id };
-    }
-    const snap: RecommendationTxSnap = {
-      date: live.date,
-      payee: live.payee,
-      amount: live.amount,
-      category: live.category,
-      direction: live.direction,
-    };
-    return { kind: "transaction", id: ev.id, snap };
-  });
+  return Promise.all(
+    evidence.map(async (ev, idx) => {
+      const live = items[idx];
+      if (ev.kind === "transaction") {
+        if (!live || live.kind !== "transaction" || !live.available) {
+          return { kind: "transaction" as const, id: ev.id };
+        }
+        const snap: RecommendationTxSnap = {
+          date: live.date,
+          payee: live.payee,
+          amount: live.amount,
+          category: live.category,
+          direction: live.direction,
+        };
+        return { kind: "transaction" as const, id: ev.id, snap };
+      }
+
+      if (ev.kind === "txquery" && live?.available && live.kind === "txquery") {
+        const filters = txQueryParamsToFilters(ev.params);
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, filters);
+        const snap: TxQuerySnap = {
+          count: agg.count,
+          in: agg.inflow,
+          out: agg.outflow,
+          net: agg.net,
+          from: typeof ev.params.from === "string" ? ev.params.from : undefined,
+          to: typeof ev.params.to === "string" ? ev.params.to : undefined,
+          description: live.label,
+        };
+        return { ...ev, snap };
+      }
+
+      if (
+        ev.kind === "summary_period" &&
+        live?.available &&
+        live.kind === "summary_period"
+      ) {
+        const from = String(ev.params.from);
+        const to = String(ev.params.to);
+        const accountId =
+          typeof ev.params.accountId === "string" ? ev.params.accountId : undefined;
+        const agg = await aggregateViaTxPredicate(admin, clientUserId, {
+          from,
+          to,
+          accountIds: accountId ? [accountId] : undefined,
+          status: "all",
+        });
+        const snap: SummaryPeriodSnap = {
+          granularity: String(ev.params.granularity ?? "month"),
+          from,
+          to,
+          accountId,
+          in: agg.inflow,
+          out: agg.outflow,
+          net: agg.net,
+          count: agg.count,
+        };
+        return { ...ev, snap };
+      }
+
+      if (live?.available) {
+        return {
+          ...ev,
+          snap: {
+            label: live.label,
+            sublabel: live.sublabel,
+            amount: live.amount,
+            direction: live.direction,
+          },
+        } as Evidence;
+      }
+      return ev;
+    })
+  );
 }
 
 /** @deprecated Spec 39 name */

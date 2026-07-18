@@ -93,7 +93,7 @@ function DraftComposer({
   const canSend =
     title.trim().length > 0 && (isQuestion || category !== "") && !busy;
 
-  async function removeItem(id: string) {
+  async function removeItem(id: string, evidenceKind: string) {
     setBusy(true);
     const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/recommendations/${draft.id}`,
@@ -102,7 +102,7 @@ function DraftComposer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "remove_evidence",
-          evidence_kind: "transaction",
+          evidence_kind: evidenceKind,
           evidence_id: id,
         }),
       }
@@ -221,7 +221,7 @@ function DraftComposer({
                     type="button"
                     className="btn ghost sm"
                     disabled={busy}
-                    onClick={() => void removeItem(item.id!)}
+                    onClick={() => void removeItem(item.id!, item.kind)}
                   >
                     ×
                   </button>
@@ -413,7 +413,7 @@ export function DraftsRail({
     void load();
   }
 
-  async function removeItem(kind: DraftKind, id: string) {
+  async function removeItem(kind: DraftKind, id: string, evidenceKind: string) {
     const bundle = kind === "recommendation" ? data.recommendation : data.question;
     if (!bundle) return;
     await fetch(
@@ -423,7 +423,7 @@ export function DraftsRail({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "remove_evidence",
-          evidence_kind: "transaction",
+          evidence_kind: evidenceKind,
           evidence_id: id,
         }),
       }
@@ -486,7 +486,7 @@ export function DraftsRail({
                     <button
                       type="button"
                       className="rm"
-                      onClick={() => void removeItem(kind, item.id!)}
+                      onClick={() => void removeItem(kind, item.id!, item.kind)}
                       aria-label="Remove"
                     >
                       ×

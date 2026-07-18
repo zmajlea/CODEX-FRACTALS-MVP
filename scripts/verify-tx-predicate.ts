@@ -45,6 +45,16 @@ if (!textHasApply(join(ROOT, "app/api/operator/treasury/clients/[clientId]/trans
   process.exit(1);
 }
 
+const evidencePath = join(ROOT, "lib/treasury/evidence.ts");
+const evidenceText = readFileSync(evidencePath, "utf8");
+if (
+  evidenceText.includes("treasury_transactions") &&
+  !evidenceText.includes("buildTxPredicate")
+) {
+  console.error("FAIL: evidence.ts queries transactions without buildTxPredicate");
+  process.exit(1);
+}
+
 if (offenders.length) {
   console.error(
     "FAIL: transactions route still hand-assembles status WHERE (use applyTxPredicate only):\n",

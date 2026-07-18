@@ -11,15 +11,18 @@ import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
 
 export {
+  appendEvidenceItem,
   appendTransactionEvidence,
   assertTransactionsBelongToClient,
   evidenceAsJson,
+  evidenceFromPickable,
   evidenceRunningTotal,
   parseEvidence,
   removeEvidenceItem,
   resolveEvidenceLive,
   snapshotEvidence,
   snapshotEvidenceAtSeal,
+  txQueryParamsToFilters,
 } from "@/lib/treasury/evidence";
 
 type AdminClient = SupabaseClient<Database>;
