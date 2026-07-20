@@ -36,7 +36,7 @@ export default async function OperatorTreasuryInboxPage({ searchParams }: Props)
       who={display}
     >
       <div className="view on">
-        <OperatorTreasuryInbox tenantId={ctx.tenantId} />
+        <OperatorTreasuryInbox tenantId={ctx.tenantId} domainSlug={ctx.domainSlug} />
       </div>
     </OperatorTreasuryInboxShell>
   );

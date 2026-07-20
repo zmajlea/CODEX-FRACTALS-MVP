@@ -132,12 +132,10 @@ export function buildOperatorInboxItems(
         clientUserId: row.client_user_id,
         clientName,
         kind: "Answered",
-        title: `${clientName} answered: ${row.title}`,
-        sub: row.client_response
-          ? row.client_response.length > 120
-            ? `${row.client_response.slice(0, 117)}…`
-            : row.client_response
-          : "Answer received",
+        act: `Answered your question: ${row.title}`,
+        snip: row.client_response
+          ? `Client answered: ${row.client_response}`
+          : "Client answered.",
         unread: row.operator_seen_at == null,
         actioned: false,
         updatedAt: row.responded_at ?? row.updated_at,
@@ -152,8 +150,8 @@ export function buildOperatorInboxItems(
         clientUserId: row.client_user_id,
         clientName,
         kind: "Accepted",
-        title: `${clientName} accepted: ${row.title}`,
-        sub: "Begin the work",
+        act: `Accepted your recommendation: ${row.title}`,
+        snip: "Now in progress on the record. Open to see the tracker.",
         unread: row.operator_seen_at == null,
         actioned: false,
         updatedAt: row.decided_at ?? row.updated_at,
@@ -165,8 +163,8 @@ export function buildOperatorInboxItems(
         clientUserId: row.client_user_id,
         clientName,
         kind: "Declined",
-        title: `${clientName} declined: ${row.title}`,
-        sub: row.decline_reason,
+        act: `Declined your recommendation: ${row.title}`,
+        snip: null,
         unread: row.operator_seen_at == null,
         actioned: false,
         updatedAt: row.decided_at ?? row.updated_at,
@@ -181,8 +179,11 @@ export function buildOperatorInboxItems(
         clientUserId: row.client_user_id,
         clientName,
         kind: "Progress",
-        title: row.title,
-        sub: row.status === "in_progress" ? "Marked in progress" : "Marked done",
+        act:
+          row.status === "in_progress"
+            ? `In progress on your recommendation: ${row.title}`
+            : `Completed your recommendation: ${row.title}`,
+        snip: null,
         unread: false,
         actioned: true,
         updatedAt: row.updated_at,

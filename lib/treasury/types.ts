@@ -272,8 +272,10 @@ export type TreasuryInboxItem = {
   clientUserId: string;
   clientName: string;
   kind: "Accepted" | "Declined" | "Progress" | "Answered";
-  title: string;
-  sub: string | null;
+  /** Ana `.ib-act` line */
+  act: string;
+  /** Ana `.ib-snip` line — omitted when null */
+  snip: string | null;
   unread: boolean;
   actioned: boolean;
   updatedAt: string;
