@@ -9,6 +9,7 @@ import {
   listPeriodStarts,
   periodEnd,
   periodLabel,
+  subtractDays,
   subtractMonths,
   todayIso,
 } from "@/lib/treasury/period-bounds";
@@ -87,6 +88,51 @@ function formatChartXLabel(granularity: SummaryGranularity, periodStart: string)
     return periodStart.slice(5);
   }
   return periodStart.slice(5);
+}
+
+/** Ana: "Jan to Dec 2026" — range for the This view line. */
+function formatViewRange(
+  granularity: SummaryGranularity,
+  first: string,
+  last: string
+): string {
+  const a = new Date(first + "T12:00:00Z");
+  const b = new Date(last + "T12:00:00Z");
+  if (granularity === "month") {
+    const ma = a.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    const mb = b.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    const ya = a.getUTCFullYear();
+    const yb = b.getUTCFullYear();
+    if (ya === yb) return `${ma} to ${mb} ${ya}`;
+    return `${ma} ${ya} to ${mb} ${yb}`;
+  }
+  const short = (d: Date) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  const full = (d: Date) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  if (a.getUTCFullYear() === b.getUTCFullYear()) {
+    return `${short(a)} to ${short(b)}, ${a.getUTCFullYear()}`;
+  }
+  return `${full(a)} to ${full(b)}`;
+}
+
+function sinceForDefaultPeriods(
+  granularity: SummaryGranularity,
+  defaultPeriods: number
+): string {
+  const today = todayIso();
+  if (granularity === "day") return subtractDays(today, defaultPeriods - 1);
+  if (granularity === "week") return subtractDays(today, defaultPeriods * 7 - 1);
+  return subtractMonths(today, defaultPeriods);
 }
 
 function CashFlowChart({
@@ -242,9 +288,11 @@ export function TreasurySummaryPanel({
   const [forecastDrill, setForecastDrill] = useState<TreasuryForecastPeriod | null>(null);
 
   const periods = useMemo(() => {
+    const meta = GRANULARITIES.find((g) => g.id === granularity);
+    if (embedded && meta) return meta.defaultPeriods;
     const starts = listPeriodStarts(granularity, since, todayIso());
     return Math.min(60, Math.max(1, starts.length || 1));
-  }, [granularity, since]);
+  }, [embedded, granularity, since]);
 
   function periodPickable(row: TreasurySummaryRow): Pickable {
     const from = row.period_start;
@@ -309,7 +357,11 @@ export function TreasurySummaryPanel({
   }, [load]);
 
   function setGranularityKeepSince(g: SummaryGranularity) {
+    const meta = GRANULARITIES.find((x) => x.id === g);
     setGranularity(g);
+    if (embedded && meta) {
+      setSince(sinceForDefaultPeriods(g, meta.defaultPeriods));
+    }
   }
 
   const rows = data?.rows ?? [];
@@ -397,10 +449,20 @@ export function TreasurySummaryPanel({
       ? `${data.from} – ${data.to} · ${currency}`
       : null;
 
-  const forecastPeriodLabel =
-    embedded && forecast?.periods.length
-      ? `${forecast.periods.length} monthly period${forecast.periods.length === 1 ? "" : "s"}`
-      : `${periods} ${granWord} period${periods === 1 ? "" : "s"}`;
+  /** Ana shape: "This view: Jan to Dec 2026, 12 monthly periods." — history window, not forecast-only. */
+  const thisViewLine = useMemo(() => {
+    const sorted = [...rows].sort((a, b) =>
+      a.period_start.localeCompare(b.period_start)
+    );
+    const count = sorted.length > 0 ? sorted.length : periods;
+    const periodPhrase = `${count} ${granWord} period${count === 1 ? "" : "s"}`;
+    if (sorted.length > 0) {
+      const first = sorted[0]!.period_start;
+      const last = sorted[sorted.length - 1]!.period_start;
+      return `${formatViewRange(granularity, first, last)}, ${periodPhrase}`;
+    }
+    return periodPhrase;
+  }, [rows, periods, granWord, granularity]);
 
   return (
     <div className={embedded ? undefined : "panel p-4"}>
@@ -411,28 +473,19 @@ export function TreasurySummaryPanel({
             {dataSpanLine ? `. ${dataSpanLine}` : ""}
           </p>
           <div className="seg" role="group" aria-label="Granularity">
-            <button
-              type="button"
-              aria-pressed="false"
-              disabled
-              title="Monthly only in this build"
-            >
-              Daily
-            </button>
-            <button
-              type="button"
-              aria-pressed="false"
-              disabled
-              title="Monthly only in this build"
-            >
-              Weekly
-            </button>
-            <button type="button" aria-pressed="true">
-              Monthly
-            </button>
+            {GRANULARITIES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                aria-pressed={granularity === g.id}
+                onClick={() => setGranularityKeepSince(g.id)}
+              >
+                {g.label}
+              </button>
+            ))}
           </div>
           <p className="meta" style={{ margin: "0 0 6px" }}>
-            This view: {forecastPeriodLabel}.
+            This view: {thisViewLine}.
           </p>
         </>
       ) : (
