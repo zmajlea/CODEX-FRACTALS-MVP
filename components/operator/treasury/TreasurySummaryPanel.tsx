@@ -13,6 +13,11 @@ import {
   todayIso,
 } from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
+import {
+  FORECAST_BOUNDARY_CAVEAT,
+  FORECAST_ENGINE_LABEL,
+  FORECAST_METHOD_NOTE,
+} from "@/lib/treasury/forecast-disclosure";
 import type {
   SummaryBucket,
   SummaryGranularity,
@@ -25,6 +30,8 @@ import type {
 type Props = {
   clientUserId: string;
   hasSyncedData?: boolean;
+  /** Spec 46 Stage 7 — inside Analytics subtabs (Ana forecast shape). */
+  embedded?: boolean;
   onSelectPeriod?: (bucket: SummaryBucket, periodStart: string) => void;
   /** Stage 8b — shared useOptimisticPick.pick */
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
@@ -221,6 +228,7 @@ function CashFlowChart({
 export function TreasurySummaryPanel({
   clientUserId,
   hasSyncedData = true,
+  embedded = false,
   onSelectPeriod,
   onPick,
 }: Props) {
@@ -346,15 +354,35 @@ export function TreasurySummaryPanel({
       forecast.as_of?.slice(0, 10) ??
       forecast.data_span?.last ??
       todayIso();
+    const label = lowPoint
+      ? `Projected low point, ${periodLabel(granularity, lowPoint.period_start)}`
+      : `Forecast as of ${asOf}`;
+    const sublabel = lowPoint
+      ? formatTreasuryMoney(lowPoint.closing, forecast.currency)
+      : `${forecast.periods.length} periods`;
     return {
       kind: "forecast",
-      params: { granularity, asOf },
-      label: lowPoint
-        ? `Forecast low · ${periodLabel(granularity, lowPoint.period_start)}`
-        : `Forecast as of ${asOf}`,
-      sublabel: lowPoint
-        ? formatTreasuryMoney(lowPoint.closing, forecast.currency)
-        : `${forecast.periods.length} periods`,
+      params: {
+        granularity,
+        asOf,
+        projected: true,
+        ...(lowPoint
+          ? {
+              lowPointPeriod: lowPoint.period_start,
+              lowPointClosing: lowPoint.closing,
+            }
+          : {}),
+      },
+      snap: {
+        projected: true,
+        caveat: FORECAST_BOUNDARY_CAVEAT,
+        engineLabel: FORECAST_ENGINE_LABEL,
+        label,
+        sublabel,
+        ...(lowPoint ? { amount: lowPoint.closing, direction: "in" as const } : {}),
+      },
+      label,
+      sublabel,
     };
   }
 
@@ -363,57 +391,97 @@ export function TreasurySummaryPanel({
     if (full) setForecastDrill(full);
   }
 
+  const dataSpanLine = data?.data_span
+    ? `Data through ${data.data_span.last}. From ${data.data_span.first ?? data.from}. ${currency}.`
+    : data
+      ? `${data.from} – ${data.to} · ${currency}`
+      : null;
+
+  const forecastPeriodLabel =
+    embedded && forecast?.periods.length
+      ? `${forecast.periods.length} monthly period${forecast.periods.length === 1 ? "" : "s"}`
+      : `${periods} ${granWord} period${periods === 1 ? "" : "s"}`;
+
   return (
-    <div className="panel p-4">
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <div className="lens-row">
-          {GRANULARITIES.map((g) => (
+    <div className={embedded ? undefined : "panel p-4"}>
+      {embedded ? (
+        <>
+          <p className="engine-label">
+            {FORECAST_ENGINE_LABEL}
+            {dataSpanLine ? `. ${dataSpanLine}` : ""}
+          </p>
+          <div className="seg" role="group" aria-label="Granularity">
             <button
-              key={g.id}
               type="button"
-              className={`lens-btn${granularity === g.id ? " on" : ""}`}
-              onClick={() => setGranularityKeepSince(g.id)}
+              aria-pressed="false"
+              disabled
+              title="Monthly only in this build"
             >
-              {g.label}
+              Daily
             </button>
-          ))}
+            <button
+              type="button"
+              aria-pressed="false"
+              disabled
+              title="Monthly only in this build"
+            >
+              Weekly
+            </button>
+            <button type="button" aria-pressed="true">
+              Monthly
+            </button>
+          </div>
+          <p className="meta" style={{ margin: "0 0 6px" }}>
+            This view: {forecastPeriodLabel}.
+          </p>
+        </>
+      ) : (
+        <div className="flex flex-wrap gap-3 mb-4 items-center">
+          <div className="lens-row">
+            {GRANULARITIES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className={`lens-btn${granularity === g.id ? " on" : ""}`}
+                onClick={() => setGranularityKeepSince(g.id)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-codex-muted font-mono text-[10px] uppercase tracking-wide">
+              Since
+            </span>
+            <input
+              type="date"
+              className="field-input text-sm"
+              value={since}
+              max={todayIso()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) setSince(v);
+              }}
+            />
+            <span className="text-xs text-codex-muted">
+              since {since} · {periods} {granWord} period{periods === 1 ? "" : "s"}
+            </span>
+          </label>
+          {rangePickable() && onPick ? (
+            <PickButton variant="header" pickable={rangePickable()!} onPick={onPick} />
+          ) : null}
+          {data?.data_span ? (
+            <span className="text-xs text-codex-muted ml-auto">
+              Data through {data.data_span.last}
+              {data.data_span.first ? ` · from ${data.data_span.first}` : ""} · {currency}
+            </span>
+          ) : data ? (
+            <span className="text-xs text-codex-muted ml-auto">
+              {data.from} – {data.to} · {currency}
+            </span>
+          ) : null}
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-codex-muted font-mono text-[10px] uppercase tracking-wide">
-            Since
-          </span>
-          <input
-            type="date"
-            className="field-input text-sm"
-            value={since}
-            max={todayIso()}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v) setSince(v);
-            }}
-          />
-          <span className="text-xs text-codex-muted">
-            since {since} · {periods} {granWord} period{periods === 1 ? "" : "s"}
-          </span>
-        </label>
-        {rangePickable() ? (
-          <PickButton
-            variant="header"
-            pickable={rangePickable()!}
-            onPick={onPick!}
-          />
-        ) : null}
-        {data?.data_span ? (
-          <span className="text-xs text-codex-muted ml-auto">
-            Data through {data.data_span.last}
-            {data.data_span.first ? ` · from ${data.data_span.first}` : ""} · {currency}
-          </span>
-        ) : data ? (
-          <span className="text-xs text-codex-muted ml-auto">
-            {data.from} – {data.to} · {currency}
-          </span>
-        ) : null}
-      </div>
+      )}
 
       {error ? (
         <p className="panel-note text-cinnabar" role="alert">
@@ -442,6 +510,17 @@ export function TreasurySummaryPanel({
             onForecastSelect={handleForecastBarClick}
           />
 
+          {embedded ? (
+            <div className="fc-legend">
+              <span>
+                <span className="sw act" /> Actual, what happened
+              </span>
+              <span>
+                <span className="sw pr" /> Projected, an estimate
+              </span>
+            </div>
+          ) : null}
+
           {forecast?.refuse_projection ? (
             <p className="text-sm text-codex-muted mt-4" role="status">
               {forecast.refuse_reason ??
@@ -459,73 +538,206 @@ export function TreasurySummaryPanel({
           ) : forecast && forecast.periods.length > 0 ? (
             <>
               {lowPoint ? (
-                <div className="fc-stat trough mt-4 p-3 rounded border border-sealed-bone flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="fcs-k">Projected low point</p>
-                    <p className="fcs-v">
+                embedded ? (
+                  <div className="lowpoint">
+                    <div className="lp-l">Projected low point, monthly</div>
+                    <div className="lp-n num">
                       {formatTreasuryMoney(lowPoint.closing, forecast.currency)}
-                    </p>
-                    <p className="fcs-n">
-                      {periodLabel(granularity, lowPoint.period_start)}
-                    </p>
+                    </div>
+                    <div className="lp-m">
+                      {periodLabel(granularity, lowPoint.period_start)}, the lowest
+                      monthly position across the projection.
+                    </div>
+                    <div className="caveat" style={{ margin: "12px 0 0" }}>
+                      <span>
+                        Projected from your recurring items (rules and labels) plus
+                        a {forecast.baseline_periods}-period average of everything
+                        else
+                        {forecast.data_span
+                          ? `, using data through ${forecast.data_span.last}`
+                          : forecast.as_of
+                            ? `, seeded from balances as of ${formatTreasuryAsOf(forecast.as_of)}`
+                            : ""}
+                        . {FORECAST_METHOD_NOTE}
+                      </span>
+                    </div>
+                    <div className="caveat" style={{ margin: "10px 0 0" }}>
+                      <span>{FORECAST_BOUNDARY_CAVEAT}</span>
+                    </div>
+                    {forecastPickable() && onPick ? (
+                      <div className="lp-act">
+                        <PickButton
+                          variant="header"
+                          pickable={forecastPickable()!}
+                          onPick={onPick}
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  {forecastPickable() ? (
-                    <PickButton
-                      variant="header"
-                      pickable={forecastPickable()!}
-                      onPick={onPick!}
-                    />
-                  ) : null}
-                </div>
+                ) : (
+                  <div className="fc-stat trough mt-4 p-3 rounded border border-sealed-bone flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="fcs-k">Projected low point</p>
+                      <p className="fcs-v">
+                        {formatTreasuryMoney(lowPoint.closing, forecast.currency)}
+                      </p>
+                      <p className="fcs-n">
+                        {periodLabel(granularity, lowPoint.period_start)}
+                      </p>
+                    </div>
+                    {forecastPickable() && onPick ? (
+                      <PickButton
+                        variant="header"
+                        pickable={forecastPickable()!}
+                        onPick={onPick}
+                      />
+                    ) : null}
+                  </div>
+                )
               ) : null}
 
-              <p className="fc-blurb mt-4">
-                Projected from your recurring items (rules + labels) plus a{" "}
-                {forecast.baseline_periods}-period average of everything else
-                {forecast.data_span
-                  ? `, using data through ${forecast.data_span.last}`
-                  : forecast.as_of
-                    ? `, seeded from balances as of ${formatTreasuryAsOf(forecast.as_of)}`
-                    : ""}
-                . An estimate, not a guarantee — one-off items are not predicted.
-              </p>
+              {!embedded ? (
+                <p className="fc-blurb mt-4">
+                  Projected from your recurring items (rules + labels) plus a{" "}
+                  {forecast.baseline_periods}-period average of everything else
+                  {forecast.data_span
+                    ? `, using data through ${forecast.data_span.last}`
+                    : forecast.as_of
+                      ? `, seeded from balances as of ${formatTreasuryAsOf(forecast.as_of)}`
+                      : ""}
+                  . {FORECAST_METHOD_NOTE}
+                </p>
+              ) : null}
 
-              <details className="fc-tablewrap mt-4">
-                <summary>Forecast detail by period</summary>
-                <table className="dtable fc-table w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th className="font-mono text-xs uppercase tracking-wide">Period</th>
-                      <th className="font-mono text-xs uppercase tracking-wide">Receipts</th>
-                      <th className="font-mono text-xs uppercase tracking-wide">Disbursements</th>
-                      <th className="font-mono text-xs uppercase tracking-wide">Closing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forecast.periods.map((p) => (
-                      <tr
-                        key={p.period_start}
-                        className="cursor-pointer hover:bg-sealed-bone/30"
-                        onClick={() => setForecastDrill(p)}
-                      >
-                        <td>{periodLabel(granularity, p.period_start)}</td>
-                        <td className="tabular-nums">
-                          {formatTreasuryMoney(p.projected_receipts, forecast.currency)}
-                        </td>
-                        <td className="tabular-nums">
-                          {formatTreasuryMoney(p.projected_disbursements, forecast.currency)}
-                        </td>
-                        <td className="tabular-nums">
-                          {formatTreasuryMoney(p.closing, forecast.currency)}
-                        </td>
+              {embedded ? (
+                <>
+                  <div className="rec-sec">
+                    <h2 className="rs-h">Forecast detail by period</h2>
+                    <p className="rs-note">
+                      The periods behind the headline, so the projection is
+                      inspectable, not just asserted.
+                    </p>
+                  </div>
+                  <table className="dtable">
+                    <thead>
+                      <tr>
+                        <th>Period</th>
+                        <th>Currency</th>
+                        <th style={{ textAlign: "right" }}>In</th>
+                        <th style={{ textAlign: "right" }}>Out</th>
+                        <th style={{ textAlign: "right" }}>Net</th>
+                        <th style={{ textAlign: "right" }}>Closing</th>
+                        <th>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </details>
+                    </thead>
+                    <tbody>
+                      {forecast.periods.map((p) => (
+                        <tr
+                          key={p.period_start}
+                          className="cursor-pointer hover:bg-sealed-bone/30"
+                          onClick={() => setForecastDrill(p)}
+                        >
+                          <td>{periodLabel(granularity, p.period_start)}</td>
+                          <td className="src">{forecast.currency}</td>
+                          <td className="amtcell">
+                            <span className="amt in num">
+                              {formatTreasuryMoney(p.projected_receipts, forecast.currency)}
+                            </span>
+                          </td>
+                          <td className="amtcell">
+                            <span className="amt out num">
+                              {formatTreasuryMoney(
+                                p.projected_disbursements,
+                                forecast.currency
+                              )}
+                            </span>
+                          </td>
+                          <td className="amtcell num">
+                            {formatTreasuryMoney(p.net, forecast.currency)}
+                          </td>
+                          <td className="amtcell num">
+                            {formatTreasuryMoney(p.closing, forecast.currency)}
+                          </td>
+                          <td className="row-act">
+                            {onPick ? (
+                              <PickButton
+                                variant="row"
+                                pickable={{
+                                  kind: "figure",
+                                  params: {
+                                    metric: "forecast_closing",
+                                    from: p.period_start,
+                                    to: periodEnd(granularity, p.period_start),
+                                    granularity,
+                                  },
+                                  label: periodLabel(granularity, p.period_start),
+                                  sublabel: formatTreasuryMoney(
+                                    p.closing,
+                                    forecast.currency
+                                  ),
+                                }}
+                                onPick={onPick}
+                              />
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              ) : (
+                <details className="fc-tablewrap mt-4">
+                  <summary>Forecast detail by period</summary>
+                  <table className="dtable fc-table w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="font-mono text-xs uppercase tracking-wide">
+                          Period
+                        </th>
+                        <th className="font-mono text-xs uppercase tracking-wide">
+                          Receipts
+                        </th>
+                        <th className="font-mono text-xs uppercase tracking-wide">
+                          Disbursements
+                        </th>
+                        <th className="font-mono text-xs uppercase tracking-wide">
+                          Closing
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {forecast.periods.map((p) => (
+                        <tr
+                          key={p.period_start}
+                          className="cursor-pointer hover:bg-sealed-bone/30"
+                          onClick={() => setForecastDrill(p)}
+                        >
+                          <td>{periodLabel(granularity, p.period_start)}</td>
+                          <td className="tabular-nums">
+                            {formatTreasuryMoney(
+                              p.projected_receipts,
+                              forecast.currency
+                            )}
+                          </td>
+                          <td className="tabular-nums">
+                            {formatTreasuryMoney(
+                              p.projected_disbursements,
+                              forecast.currency
+                            )}
+                          </td>
+                          <td className="tabular-nums">
+                            {formatTreasuryMoney(p.closing, forecast.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
             </>
           ) : null}
 
+          {!embedded ? (
           <table className="dtable w-full text-sm mt-4">
             <thead>
               <tr>
@@ -571,8 +783,9 @@ export function TreasurySummaryPanel({
               ))}
             </tbody>
           </table>
+          ) : null}
 
-          {otherRows.length > 0 ? (
+          {!embedded && otherRows.length > 0 ? (
             <details className="mt-4">
               <summary className="text-xs font-mono uppercase tracking-wide text-codex-muted cursor-pointer">
                 Other currencies ({otherRows.length} rows)

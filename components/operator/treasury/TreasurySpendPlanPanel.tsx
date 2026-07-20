@@ -12,6 +12,10 @@ import { AnalyzerSampleSection } from "@/components/operator/treasury/spend-plan
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { monthYm } from "@/lib/treasury/spend-plan";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
+import {
+  ANALYZER_ENGINE_LABEL,
+  BACKTEST_START_MONTH_CAVEAT,
+} from "@/lib/treasury/forecast-disclosure";
 
 type Props = {
   clientUserId: string;
@@ -23,6 +27,8 @@ type Props = {
   modelState?: SpendPlanModelState;
   label?: string;
   studyId?: string | null;
+  /** Spec 46 Stage 7 — Ana Analyzer subtab shape. */
+  embedded?: boolean;
   /** Stage 8b — shared useOptimisticPick.pick */
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
@@ -53,7 +59,13 @@ function fmtSigned(n: number): string {
   return fmt(n);
 }
 
-function provenanceClass(p: InputProvenance | string): string {
+function provenanceClass(p: InputProvenance | string, embedded = false): string {
+  if (embedded) {
+    if (p === "pulled") return "prov data";
+    if (p === "user-provided") return "prov entered";
+    if (p === "assumed") return "prov assumed";
+    return "prov adjusted";
+  }
   if (p === "pulled") return "chip prov-pulled";
   if (p === "user-provided") return "chip prov-user";
   if (p === "assumed") return "chip prov-assumed";
@@ -80,6 +92,7 @@ function SpendPlanPanelBody({
   noHistory,
   insufficientHistory,
   studyId,
+  embedded = false,
   onPick,
 }: {
   clientUserId: string;
@@ -101,6 +114,7 @@ function SpendPlanPanelBody({
   noHistory: boolean;
   insufficientHistory: boolean;
   studyId?: string | null;
+  embedded?: boolean;
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 }) {
   const activeScenarios = scenarios ?? model?.scenarios ?? [];
@@ -141,10 +155,16 @@ function SpendPlanPanelBody({
     return {
       kind: "backtest",
       params,
+      snap: embedded
+        ? {
+            startMonth: startMonth.slice(0, 7),
+            caveat: BACKTEST_START_MONTH_CAVEAT,
+          }
+        : undefined,
       label: `Backtest from ${startMonth.slice(0, 7)}`,
       sublabel: backtestVerdict?.text,
     };
-  }, [model?.backtest, inputs, studyId, accountId, backtestVerdict?.text]);
+  }, [model?.backtest, inputs, studyId, accountId, backtestVerdict?.text, embedded]);
 
   async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
     await onPick?.(draftKind, pickable);
@@ -161,14 +181,21 @@ function SpendPlanPanelBody({
   }
 
   return (
-    <div className="spend-plan-panel space-y-6">
-      <div>
-        <h2 className="font-head text-2xl mb-1">Analyzer</h2>
-        <p className="treasury-meta text-sm">
-          Deciding which months are real is the product — exclusions are a view,
-          never a deletion.
+    <div className={embedded ? "spend-plan-panel" : "spend-plan-panel space-y-6"}>
+      {embedded ? (
+        <p className="engine-label">
+          {ANALYZER_ENGINE_LABEL}. The two engines are labeled, never ranked; the
+          authoritative one is your Summit team&apos;s setting.
         </p>
-      </div>
+      ) : (
+        <div>
+          <h2 className="font-head text-2xl mb-1">Analyzer</h2>
+          <p className="treasury-meta text-sm">
+            Deciding which months are real is the product — exclusions are a view,
+            never a deletion.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-4 items-end">
         <label className="flex flex-col gap-1 text-sm">
@@ -295,7 +322,7 @@ function SpendPlanPanelBody({
                   <dt className="treasury-meta">{inp.label}</dt>
                   <dd className="flex items-center gap-2 tabular-nums">
                     <span>{String(inp.value)}</span>
-                    <span className={provenanceClass(inp.provenance)}>
+                    <span className={provenanceClass(inp.provenance, embedded)}>
                       {inp.provenance}
                     </span>
                   </dd>
@@ -417,7 +444,8 @@ function SpendPlanPanelBody({
                             className={`ml-2 ${provenanceClass(
                               model.scenarios.find(
                                 (sc) => sc.id === s.scenarioId
-                              )?.source ?? "assumed"
+                              )?.source ?? "assumed",
+                              embedded
                             )}`}
                           >
                             {model.scenarios.find(
@@ -524,7 +552,7 @@ function SpendPlanPanelBody({
               <div className="flex flex-wrap gap-3 mb-3 items-end">
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="treasury-meta">
-                    What if the plan had started
+                    Backtest start month
                   </span>
                   <select
                     className="field-input"
@@ -540,6 +568,9 @@ function SpendPlanPanelBody({
                     ))}
                   </select>
                 </label>
+                {embedded ? (
+                  <p className="meta caveat-sens">{BACKTEST_START_MONTH_CAVEAT}</p>
+                ) : null}
                 {backtestVerdict ? (
                   <p
                     className={`text-sm font-medium ${backtestVerdict.held ? "text-[var(--su-pos)]" : "text-[var(--su-neg)]"}`}
@@ -604,6 +635,7 @@ export function TreasurySpendPlanPanel({
   modelState,
   label,
   studyId,
+  embedded = false,
   onPick,
 }: Props) {
   const accounts = useMemo(() => {
@@ -657,6 +689,7 @@ export function TreasurySpendPlanPanel({
       noHistory={state.noHistory}
       insufficientHistory={state.insufficientHistory}
       studyId={studyId}
+      embedded={embedded}
       onPick={onPick}
     />
   );

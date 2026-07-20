@@ -9,6 +9,10 @@ import type { Database, Json } from "@/lib/database.types";
 import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
+  FORECAST_BOUNDARY_CAVEAT,
+  FORECAST_ENGINE_LABEL,
+} from "@/lib/treasury/forecast-disclosure";
+import {
   assertAbsolutePickParams,
   type Pickable,
 } from "@/lib/treasury/pickable";
@@ -56,6 +60,17 @@ export type SummaryPeriodSnap = {
   out: number;
   net: number;
   count: number;
+};
+
+export type ProjectedFigureSnap = {
+  label?: string;
+  sublabel?: string;
+  amount?: number;
+  direction?: "in" | "out" | null;
+  projected?: boolean;
+  caveat?: string;
+  engineLabel?: string;
+  startMonth?: string;
 };
 
 /** Reference + recipe union. Recipe `id` is a draft-local key for remove, not a row ref. */
@@ -563,11 +578,17 @@ export function evidenceFromPickable(pickable: Pickable): Evidence {
     throw new Error(`Pickable ${pickable.kind} requires absolute params`);
   }
 
-  return {
+  const recipe: Evidence = {
     kind: pickable.kind,
     id: newDraftId(),
     params: pickable.params,
   } as Evidence;
+
+  if (pickable.snap && Object.keys(pickable.snap).length > 0) {
+    return { ...recipe, snap: pickable.snap as never };
+  }
+
+  return recipe;
 }
 
 export function appendTransactionEvidence(
@@ -1099,12 +1120,15 @@ export async function resolveEvidenceLive(
             : null;
       const g =
         typeof ev.params.granularity === "string" ? ev.params.granularity : "month";
+      const preSnap = ev.snap as ProjectedFigureSnap | undefined;
       items.push({
         kind: "forecast",
         id: ev.id,
         available: true,
-        label: asOf ? `Forecast as of ${asOf}` : "Forecast",
-        sublabel: g,
+        label: preSnap?.label ?? (asOf ? `Forecast as of ${asOf}` : "Forecast"),
+        sublabel: preSnap?.sublabel ?? g,
+        amount: preSnap?.amount,
+        direction: preSnap?.direction,
       });
       continue;
     }
@@ -1293,6 +1317,29 @@ export async function snapshotEvidence(
           count: agg.count,
         };
         return { ...ev, snap };
+      }
+
+      if (ev.kind === "forecast") {
+        const pre = (ev.snap ?? {}) as ProjectedFigureSnap;
+        const liveItem =
+          live?.available && live.kind === "forecast" ? live : null;
+        const projected = ev.params.projected === true || pre.projected === true;
+        const snap: ProjectedFigureSnap = {
+          label: pre.label ?? liveItem?.label ?? "Forecast",
+          sublabel: pre.sublabel ?? liveItem?.sublabel,
+          amount: pre.amount ?? liveItem?.amount,
+          direction: pre.direction ?? liveItem?.direction,
+          projected,
+          caveat: pre.caveat ?? (projected ? FORECAST_BOUNDARY_CAVEAT : undefined),
+          engineLabel:
+            pre.engineLabel ??
+            (projected ? FORECAST_ENGINE_LABEL : undefined),
+        };
+        return { ...ev, snap };
+      }
+
+      if (ev.kind === "backtest" && ev.snap && typeof ev.snap === "object") {
+        return ev;
       }
 
       if (live?.available) {

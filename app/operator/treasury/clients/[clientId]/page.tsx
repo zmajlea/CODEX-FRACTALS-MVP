@@ -11,6 +11,7 @@ type Props = {
   searchParams: Promise<{
     tenantId?: string;
     tab?: string;
+    view?: string;
     study?: string;
     draft?: string;
   }>;
@@ -88,6 +89,7 @@ export default async function OperatorTreasuryClientPage({
       grantId={grant.grantId}
       watchNote={watchNote}
       initialTab={query.tab}
+      initialAnalyticsView={query.view}
       initialStudyId={query.study}
       initialDraftId={query.draft}
     />

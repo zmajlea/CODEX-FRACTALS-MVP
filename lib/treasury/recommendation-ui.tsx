@@ -225,21 +225,41 @@ export function FrozenEvidenceList({
               sublabel?: string;
               amount?: number;
               direction?: "in" | "out" | null;
+              projected?: boolean;
+              caveat?: string;
+              engineLabel?: string;
             }
           | undefined;
         if (snap && typeof snap === "object" && snap.label) {
           return (
-            <div key={key} className="req-item">
-              <span className="ri-d">{ev.kind}</span>
-              <span className="ri-p">
-                <b>{snap.label}</b>
-                {snap.sublabel ? <em>{snap.sublabel}</em> : null}
-              </span>
-              <span className="ri-a">
-                {typeof snap.amount === "number"
-                  ? formatSigned(snap.amount, snap.direction)
-                  : "—"}
-              </span>
+            <div key={key}>
+              <div className="req-item">
+                <span className="ri-d">{ev.kind}</span>
+                <span className="ri-p">
+                  <b>{snap.label}</b>
+                  {snap.sublabel ? <em>{snap.sublabel}</em> : null}
+                </span>
+                <span className="ri-a">
+                  {typeof snap.amount === "number"
+                    ? formatSigned(snap.amount, snap.direction)
+                    : "—"}
+                </span>
+              </div>
+              {snap.projected && snap.caveat ? (
+                <div className="caveat">
+                  <span>
+                    {snap.caveat}
+                    {snap.engineLabel ? (
+                      <>
+                        {" "}
+                        <span className="dd-engine">{snap.engineLabel}</span>
+                      </>
+                    ) : null}
+                    {" "}
+                    This caveat is frozen into the sealed evidence.
+                  </span>
+                </div>
+              ) : null}
             </div>
           );
         }

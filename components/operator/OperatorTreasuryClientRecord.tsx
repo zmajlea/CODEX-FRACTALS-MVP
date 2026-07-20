@@ -16,8 +16,10 @@ import { TreasuryRecordRailBack } from "@/components/operator/treasury/TreasuryR
 import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
 import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
-import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
-import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
+import {
+  TreasuryAnalyticsPanel,
+  type AnalyticsView,
+} from "@/components/operator/treasury/TreasuryAnalyticsPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
@@ -36,7 +38,6 @@ import type {
 type Tab =
   | "profile"
   | "overview"
-  | "summary"
   | "analytics"
   | "transactions"
   | "rules"
@@ -46,7 +47,6 @@ type Tab =
 const VALID_TABS: Tab[] = [
   "profile",
   "overview",
-  "summary",
   "analytics",
   "transactions",
   "rules",
@@ -55,11 +55,20 @@ const VALID_TABS: Tab[] = [
 ];
 
 function parseInitialTab(value: string | undefined): Tab {
-  if (value === "spend-plan") return "analytics";
+  if (value === "spend-plan" || value === "summary") return "analytics";
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
   return "overview";
+}
+
+function parseInitialAnalyticsView(
+  tabParam: string | undefined,
+  viewParam: string | undefined
+): AnalyticsView {
+  if (viewParam === "analyzer" || viewParam === "forecast") return viewParam;
+  if (tabParam === "spend-plan") return "analyzer";
+  return "forecast";
 }
 
 type Props = {
@@ -72,6 +81,7 @@ type Props = {
   grantId: string | null;
   watchNote?: string | null;
   initialTab?: string;
+  initialAnalyticsView?: string;
   initialStudyId?: string;
   /** Stage 8 — deep-link into Recommendations draft composer. */
   initialDraftId?: string;
@@ -120,6 +130,7 @@ export function OperatorTreasuryClientRecord({
   grantId,
   watchNote,
   initialTab,
+  initialAnalyticsView,
   initialStudyId,
   initialDraftId,
 }: Props) {
@@ -128,6 +139,9 @@ export function OperatorTreasuryClientRecord({
   const wordmark = defaultWordmark(SUMMIT_BRAND);
   const [who, setWho] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(() => parseInitialTab(initialTab));
+  const [analyticsView, setAnalyticsView] = useState<AnalyticsView>(() =>
+    parseInitialAnalyticsView(initialTab, initialAnalyticsView)
+  );
   const [focusDraftId, setFocusDraftId] = useState<string | null>(
     () => initialDraftId ?? null
   );
@@ -244,10 +258,32 @@ export function OperatorTreasuryClientRecord({
   }, [router, supabase]);
 
   const switchTab = useCallback(
-    (next: Tab) => {
+    (next: Tab, opts?: { view?: AnalyticsView }) => {
       setTab(next);
+      const view =
+        next === "analytics" ? (opts?.view ?? analyticsView) : analyticsView;
+      if (next === "analytics" && opts?.view) {
+        setAnalyticsView(opts.view);
+      }
+      const qs = new URLSearchParams({ tab: next });
+      if (next === "analytics" && view !== "forecast") {
+        qs.set("view", view);
+      }
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=${next}`,
+        `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
+        { scroll: false }
+      );
+    },
+    [analyticsView, clientUserId, router]
+  );
+
+  const syncAnalyticsView = useCallback(
+    (view: AnalyticsView) => {
+      setAnalyticsView(view);
+      const qs = new URLSearchParams({ tab: "analytics" });
+      if (view !== "forecast") qs.set("view", view);
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
         { scroll: false }
       );
     },
@@ -299,18 +335,11 @@ export function OperatorTreasuryClientRecord({
             onClick: () => setTab("rules"),
           },
           {
-            id: "summary",
-            icon: "money",
-            label: "Summary",
-            active: tab === "summary",
-            onClick: () => setTab("summary"),
-          },
-          {
             id: "analytics",
             icon: "money",
-            label: "Analyzer",
+            label: "Analytics",
             active: tab === "analytics",
-            onClick: () => setTab("analytics"),
+            onClick: () => switchTab("analytics"),
           },
           {
             id: "recommendations",
@@ -323,7 +352,7 @@ export function OperatorTreasuryClientRecord({
         ],
       },
     ],
-    [clientName, tab, needsLabelCount, recUnread]
+    [clientName, tab, needsLabelCount, recUnread, switchTab]
   );
 
   async function suspendAccess() {
@@ -444,8 +473,9 @@ export function OperatorTreasuryClientRecord({
     if (nav.kind === "study") {
       setFocusStudyId(nav.id);
       setTab("analytics");
+      setAnalyticsView("analyzer");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&study=${nav.id}`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=analyzer&study=${nav.id}`,
         { scroll: false }
       );
       return;
@@ -466,9 +496,10 @@ export function OperatorTreasuryClientRecord({
       if (from && to) {
         setDateRange({ preset: "custom", from, to });
       }
-      setTab("summary");
+      setTab("analytics");
+      setAnalyticsView("forecast");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=summary`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=forecast`,
         { scroll: false }
       );
     }
@@ -587,21 +618,17 @@ export function OperatorTreasuryClientRecord({
           </>
         ) : null}
 
-        {tab === "summary" ? (
-          <TreasurySummaryPanel
+        {tab === "analytics" ? (
+          <TreasuryAnalyticsPanel
             clientUserId={clientUserId}
+            demo={demo}
             hasSyncedData={hasSyncedData}
+            accountsData={data}
+            initialView={analyticsView}
+            initialStudyId={focusStudyId ?? initialStudyId}
             onSelectPeriod={handleSelectPeriod}
             onPick={sharedPick}
-          />
-        ) : null}
-
-        {tab === "analytics" ? (
-          <AnalyticsShell
-            clientUserId={clientUserId}
-            accountsData={data}
-            initialStudyId={focusStudyId ?? initialStudyId}
-            onPick={sharedPick}
+            onViewChange={syncAnalyticsView}
           />
         ) : null}
 

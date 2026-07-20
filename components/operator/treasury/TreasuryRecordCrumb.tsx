@@ -5,8 +5,8 @@ const TAB_LABELS: Record<string, string> = {
   connections: "Connections",
   transactions: "Transactions",
   rules: "Rules",
-  summary: "Summary",
-  analytics: "Analyzer",
+  summary: "Analytics",
+  analytics: "Analytics",
   recommendations: "Recommendations",
 };
 
