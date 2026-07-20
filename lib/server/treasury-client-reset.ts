@@ -93,6 +93,10 @@ export async function countClientDataForReset(
 /**
  * Ordered deletes with abort-on-failure. Not a single DB transaction —
  * idempotent: re-running completes a partial wipe.
+ *
+ * Rule rejections: delete by rule_id in chunks, then let ON DELETE CASCADE
+ * from rules/transactions clear the rest. Avoids PostgREST Bad Request on
+ * huge `.in(transaction_id, …)` lists.
  */
 export async function wipeClientTreasuryData(
   admin: AdminClient,
@@ -106,11 +110,13 @@ export async function wipeClientTreasuryData(
     .eq("client_user_id", clientUserId);
   const ruleIds = (rules ?? []).map((r) => r.id);
 
-  if (ruleIds.length > 0) {
+  const CHUNK = 100;
+  for (let i = 0; i < ruleIds.length; i += CHUNK) {
+    const slice = ruleIds.slice(i, i + CHUNK);
     const { error } = await admin
       .from("treasury_rule_rejections")
       .delete()
-      .in("rule_id", ruleIds);
+      .in("rule_id", slice);
     if (error) {
       throw new ResetPartialError(
         `Failed deleting rule rejections (by rule): ${error.message}`,
@@ -119,28 +125,13 @@ export async function wipeClientTreasuryData(
     }
   }
 
-  const { data: txs } = await admin
-    .from("treasury_transactions")
-    .select("id")
-    .eq("client_user_id", clientUserId);
-  const txIds = (txs ?? []).map((t) => t.id);
-  if (txIds.length > 0) {
-    const { error } = await admin
-      .from("treasury_rule_rejections")
-      .delete()
-      .in("transaction_id", txIds);
-    if (error) {
-      throw new ResetPartialError(
-        `Failed deleting rule rejections (by transaction): ${error.message}`,
-        before
-      );
-    }
-  }
-
   if (ruleIds.length > 0) {
-    const { error } = await admin.from("treasury_rules").delete().in("id", ruleIds);
-    if (error) {
-      throw new ResetPartialError(`Failed deleting rules: ${error.message}`, before);
+    for (let i = 0; i < ruleIds.length; i += CHUNK) {
+      const slice = ruleIds.slice(i, i + CHUNK);
+      const { error } = await admin.from("treasury_rules").delete().in("id", slice);
+      if (error) {
+        throw new ResetPartialError(`Failed deleting rules: ${error.message}`, before);
+      }
     }
   }
 
@@ -163,6 +154,7 @@ export async function wipeClientTreasuryData(
     throw new ResetPartialError(`Failed deleting studies: ${studyErr.message}`, before);
   }
 
+  // Cascade clears remaining rejections tied to transactions
   const { error: txErr } = await admin
     .from("treasury_transactions")
     .delete()

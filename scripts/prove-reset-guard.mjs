@@ -164,22 +164,21 @@ async function main() {
   const otherId = await findOtherGrantedClient(admin, operatorId);
   if (!otherId) {
     console.warn(
-      "No other granted client found — skipping 501 check (demo refuse proved)."
+      "No other granted client found — skipping non-demo check (demo refuse proved)."
     );
   } else {
+    // Wipe is live: empty body must not 501 — expect authz/validation, never silent success
     const otherHit = await postReset(cookie, otherId);
     console.log(`POST other ${otherId} →`, otherHit.status, otherHit.body);
-    if (
-      otherHit.status !== 501 ||
-      otherHit.body?.code !== "reset_not_implemented"
-    ) {
-      throw new Error(
-        `Expected 501 reset_not_implemented on other client, got ${otherHit.status} ${JSON.stringify(otherHit.body)}`
-      );
+    if (otherHit.status === 200) {
+      throw new Error("Non-demo reset succeeded without confirm_name — refuse");
+    }
+    if (otherHit.status === 501) {
+      throw new Error("Unexpected 501 — wipe should be enabled");
     }
   }
 
-  console.log("PASS — demo FFM refused; book unchanged; wipe path absent (501).");
+  console.log("PASS — demo FFM refused; book unchanged.");
 }
 
 main().catch((e) => {
