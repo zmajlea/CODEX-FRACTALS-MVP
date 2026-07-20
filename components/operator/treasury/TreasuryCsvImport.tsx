@@ -23,6 +23,7 @@ export function TreasuryCsvImport({ clientUserId, onImported, onPick }: Props) {
   const [busy, setBusy] = useState(false);
   const [importingRows, setImportingRows] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorTone, setErrorTone] = useState<"warn" | "neg">("neg");
   const [accountLabel, setAccountLabel] = useState("");
   const [report, setReport] = useState<TreasuryImportReconcile | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
@@ -30,6 +31,7 @@ export function TreasuryCsvImport({ clientUserId, onImported, onPick }: Props) {
   async function handleFile(file: File) {
     setBusy(true);
     setError(null);
+    setErrorTone("neg");
     setReport(null);
     const text = await file.text();
     const rowCount = Math.max(
@@ -47,9 +49,26 @@ export function TreasuryCsvImport({ clientUserId, onImported, onPick }: Props) {
       `/api/operator/treasury/clients/${clientUserId}/import-csv`,
       { method: "POST", body: form }
     );
-    const data = (await res.json()) as TreasuryImportReconcile & { error?: string };
+    const data = (await res.json()) as TreasuryImportReconcile & {
+      error?: string;
+      ok?: false;
+      code?: string;
+      kind?: "missing_column" | "empty_cells";
+      rows?: number;
+    };
     if (!res.ok) {
-      setError(data.error ?? "Import failed");
+      if (data.code === "missing_account") {
+        const n = data.rows ?? 0;
+        setErrorTone("warn");
+        setError(
+          data.kind === "missing_column"
+            ? `Nothing was imported. This file has no Account column. Add an Account column with the account number, or type an account label above, then import again.`
+            : `Nothing was imported. ${n} rows have no value in the Account column. Fill the Account column with the account number, or type an account label above, then import again.`
+        );
+      } else {
+        setErrorTone("neg");
+        setError(data.error ?? "Import failed");
+      }
     } else {
       setReport(data);
       onImported?.();
@@ -112,8 +131,18 @@ export function TreasuryCsvImport({ clientUserId, onImported, onPick }: Props) {
       </p>
 
       {error ? (
-        <p className="text-sm mt-3" style={{ color: "var(--su-neg)" }}>
-          {error}
+        <p
+          className="text-sm mt-3"
+          style={{ color: errorTone === "warn" ? "var(--su-warn)" : "var(--su-neg)" }}
+        >
+          {error.startsWith("Nothing was imported.") ? (
+            <>
+              <strong>Nothing was imported.</strong>
+              {error.slice("Nothing was imported.".length)}
+            </>
+          ) : (
+            error
+          )}
         </p>
       ) : null}
 
