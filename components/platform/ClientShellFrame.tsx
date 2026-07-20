@@ -37,6 +37,7 @@ export function ClientShellFrame({
 }: Props) {
   const pathname = usePathname();
   const bcnOwnsChrome = pathname?.startsWith("/client/bcn");
+  const treasuryR1 = pathname?.startsWith("/client/treasury");
 
   if (bcnOwnsChrome) {
     return (
@@ -54,6 +55,7 @@ export function ClientShellFrame({
       id="app"
       data-brand={dataBrand}
       data-bcn-tenant={tenantId}
+      {...(treasuryR1 ? { "data-r1": "" } : {})}
     >
       <style>{styleBlock}</style>
       <BcnThemeStyleInjector />

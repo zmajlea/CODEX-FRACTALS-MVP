@@ -485,6 +485,7 @@ export function OperatorTreasuryClientRecord({
     <BcnContinuityShell
       mode="operator"
       dataBrand={SUMMIT_BRAND}
+      dataR1
       wordmark={wordmark}
       homeHref="/operator"
       recordPill={{ primary: clientName, secondary: "Treasury" }}

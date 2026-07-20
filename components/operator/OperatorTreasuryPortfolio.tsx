@@ -158,6 +158,7 @@ export function OperatorTreasuryPortfolio({
       <BcnContinuityShell
         mode="operator"
         dataBrand="summit"
+        dataR1
         wordmark={defaultWordmark("summit")}
         homeHref="/operator"
         recordPill={{

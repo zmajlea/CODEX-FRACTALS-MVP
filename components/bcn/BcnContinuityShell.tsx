@@ -13,6 +13,7 @@ export type BcnContinuityShellMode = "client" | "operator";
 type Props = {
   mode: BcnContinuityShellMode;
   dataBrand?: string;
+  dataR1?: boolean;
   logoUrl?: string | null;
   wordmark: string;
   homeHref?: string;
@@ -39,6 +40,7 @@ type Props = {
 export function BcnContinuityShell({
   mode,
   dataBrand,
+  dataR1,
   logoUrl,
   wordmark,
   homeHref,
@@ -75,6 +77,7 @@ export function BcnContinuityShell({
         className={appClass}
         id="app"
         {...(dataBrand ? { "data-brand": dataBrand } : {})}
+        {...(dataR1 ? { "data-r1": "" } : {})}
         style={tokenOverridesToStyle(tokenOverrides) as CSSProperties}
       >
         <BcnTopbarContinuity

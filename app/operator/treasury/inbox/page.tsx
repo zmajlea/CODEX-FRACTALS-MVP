@@ -36,6 +36,7 @@ export default async function OperatorTreasuryInboxPage({ searchParams }: Props)
     <BcnContinuityShell
       mode="operator"
       dataBrand="summit"
+      dataR1
       wordmark={wordmark}
       homeHref="/operator"
       recordPill={{ primary: "Treasury workspace", secondary: ctx.tenantName }}
