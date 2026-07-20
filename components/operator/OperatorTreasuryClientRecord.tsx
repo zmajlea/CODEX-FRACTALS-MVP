@@ -185,6 +185,7 @@ export function OperatorTreasuryClientRecord({
     pickTransactions,
     pickNotice,
     clearNotice,
+    setNotice,
   } = useOptimisticPick(clientUserId, bumpBasket);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
@@ -709,9 +710,11 @@ export function OperatorTreasuryClientRecord({
 
       <DraftsRail
         clientUserId={clientUserId}
+        clientName={clientName}
         refreshKey={basketKey}
         pickNotice={pickNotice}
         onClearPickNotice={clearNotice}
+        onSetPickNotice={setNotice}
         onOpenDraft={(draftId) => {
           setTab("recommendations");
           setFocusDraftId(draftId);

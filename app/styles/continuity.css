@@ -76,7 +76,7 @@
   --radius:8px;
   --paper-shadow:0 12px 32px rgba(16,42,71,.10); --grain:0;
   --su-pos:#2F7D5B; --su-warn:#C8881F; --su-neg:#B23A2E;
-  --drafts-drawer-width:320px;
+  --drafts-drawer-width:360px;
 }
 /* SEALED = solid navy pill with white text — legible on light surfaces */
 [data-brand="summit"] .chip.sealed{ color:#fff; border-color:var(--brand); background:var(--brand); font-weight:600; }
@@ -1768,11 +1768,12 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 .pkh{ display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line); background:var(--paper); border-radius:999px; padding:3px 11px; font-size:11px; color:var(--slate); cursor:pointer; }
 .pkh b{ color:var(--brand-2); font-size:13px; line-height:1; font-weight:700; }
 .pkh:hover{ border-color:var(--brand-2); color:var(--brand); }
-.pkmenu{ position:fixed; z-index:80; background:var(--paper); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(16,42,71,.16); padding:5px; width:212px; }
-.pkmenu .t{ font-family:var(--font-mono); font-size:8.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--mute); padding:4px 8px 6px; border-bottom:1px solid var(--line); margin-bottom:4px; }
-.pkmenu button{ display:block; width:100%; text-align:left; background:transparent; border:none; border-radius:6px; padding:7px 8px; font-size:12.5px; color:var(--ink); cursor:pointer; }
-.pkmenu button:hover{ background:color-mix(in srgb,var(--accent) 9%, transparent); }
-.pkmenu button .k{ color:var(--brand-2); font-weight:700; margin-right:7px; font-family:var(--font-mono); }
+/* Spec 46e 9a — Ana paper tokens only (no literal hex) */
+.pkmenu{ position:fixed; z-index:80; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--paper-shadow); padding:6px; width:220px; }
+.pkmenu .t{ font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); font-weight:700; padding:6px 10px 8px; border-bottom:1px solid var(--line); margin-bottom:4px; }
+.pkmenu button{ display:block; width:100%; text-align:left; background:transparent; border:none; border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; color:var(--ink); cursor:pointer; }
+.pkmenu button:hover{ background:color-mix(in srgb,var(--brand) 8%, var(--paper)); }
+.pkmenu button .k{ color:var(--brand); font-weight:700; margin-right:8px; }
 
 .railtab{ position:fixed; right:0; top:50%; transform:translateY(-50%); z-index:60; background:var(--paper); border:1px solid var(--line); border-right:none; border-radius:9px 0 0 9px; padding:13px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:9px; box-shadow:-2px 2px 12px rgba(16,42,71,.08); }
 .railtab .vt{ writing-mode:vertical-rl; font-family:var(--font-mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--slate); }
@@ -1784,7 +1785,7 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 .drawer .railtab.close-twin .vt{ writing-mode:vertical-rl; transform:rotate(180deg); }
 @keyframes pkpulse{ 40%{ transform:translateY(-50%) scale(1.14); } }
 
-.drawer{ position:fixed; right:0; top:0; bottom:0; width:var(--drafts-drawer-width, 320px); max-width:86vw; background:var(--paper); border-left:1px solid var(--line); z-index:70; transform:translateX(102%); transition:transform .2s ease; display:flex; flex-direction:column; box-shadow:-10px 0 30px rgba(16,42,71,.1); }
+.drawer{ position:fixed; right:0; top:0; bottom:0; width:var(--drafts-drawer-width, 360px); max-width:86vw; background:var(--paper); border-left:1px solid var(--line); z-index:70; transform:translateX(102%); transition:transform .2s ease; display:flex; flex-direction:column; box-shadow:var(--paper-shadow); }
 .drawer.open{ transform:none; }
 .app .view.drafts-drawer-open{ padding-right:var(--drafts-drawer-width, 320px); transition:padding-right .2s ease; box-sizing:border-box; }
 /* Prefer app-level open: padding on app-main so content clears the fixed drawer */

@@ -882,6 +882,21 @@
 [data-r1] .dd-chip-caveat .dd-engine{ display:block; margin-top:5px; color:var(--mute); }
 [data-r1] .dd-nochips{ font-size:var(--t-meta); color:var(--mute); }
 
+/* Spec 46e 9a — stacked accordion (two drafts, one expanded) */
+[data-r1] .dd-acc{ border:1px solid var(--line); border-radius:var(--radius); background:var(--paper); margin-bottom:10px; overflow:hidden; }
+[data-r1] .dd-acc-h{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; width:100%; min-height:48px; padding:10px 14px; text-align:left; font:inherit; background:var(--paper-2); border:none; cursor:pointer; color:var(--ink); }
+[data-r1] .dd-acc-h:hover{ background:color-mix(in srgb,var(--brand) 5%, var(--paper-2)); }
+[data-r1] .dd-acc.open .dd-acc-h{ border-bottom:1px solid var(--line); }
+[data-r1] .dd-acc-kind{ font-size:13px; font-weight:700; }
+[data-r1] .dd-acc-n{ font-size:var(--t-meta); font-weight:700; font-variant-numeric:tabular-nums; color:var(--brand); margin-left:auto; }
+[data-r1] .dd-acc-peek{ flex:1 1 100%; font-size:var(--t-meta); color:var(--mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+[data-r1] .dd-acc-body{ padding:12px 14px 14px; }
+[data-r1] .dd-open-desk{ margin-bottom:10px; }
+[data-r1] .dd-chip-move{ margin-top:8px; }
+[data-r1] .dd-chip.pend{ opacity:.55; }
+[data-r1] .drawer .dd-head{ flex:0 0 auto; }
+[data-r1] .drawer .dd-body{ flex:1; min-height:0; overflow-y:auto; padding:14px 16px 20px; }
+
 /* category choices */
 [data-r1] .dd-cat{ display:flex; gap:7px; flex-wrap:wrap; }
 [data-r1] .dd-catbtn{ font:inherit; font-size:12.5px; font-weight:600; padding:6px 13px; border-radius:999px;

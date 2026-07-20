@@ -125,11 +125,9 @@ export function AnalyzerSampleSection({
   return (
     <section className="space-y-4">
       <div>
-        <p className="sec-title mb-1">01 · The sample</p>
         <p className="treasury-meta text-sm leading-relaxed max-w-[74ch]">
-          Which months are real? Click a month to see its transactions before
-          you exclude it. Untick is a power-user shortcut — exclusions are a
-          view, never a deletion.
+          Untick is a power-user shortcut — exclusions are a view, never a
+          deletion.
         </p>
       </div>
 
