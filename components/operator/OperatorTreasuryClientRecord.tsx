@@ -562,12 +562,17 @@ export function OperatorTreasuryClientRecord({
 
         {tab === "profile" ? (
           <TreasuryProfilePanel
+            clientUserId={clientUserId}
             clientName={clientName}
             clientEmail={clientEmail}
             grantId={grantId}
             busyAction={busyAction}
             onSuspend={() => void suspendAccess()}
             onRevoke={() => void revokeAccess()}
+            onResetComplete={() => {
+              setActionMsg("Client data reset — record is empty.");
+              void load(false);
+            }}
             primaryBanks={primaryBanksLabel}
           />
         ) : null}

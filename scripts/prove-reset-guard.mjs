@@ -7,6 +7,7 @@
  *   RESET_BASE_URL=https://codex-fractals-mvp.vercel.app node scripts/prove-reset-guard.mjs
  */
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { loadEnvLocal } from "./load-env.mjs";
@@ -120,9 +121,11 @@ async function main() {
 
   const admin = createClient(url, service, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws },
   });
   const browser = createClient(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws },
   });
 
   const before = await countDemoBook(admin);
