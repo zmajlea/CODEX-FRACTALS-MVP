@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -13,6 +12,8 @@ import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedg
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
+import { TreasuryRecordCrumb } from "@/components/operator/treasury/TreasuryRecordCrumb";
+import { TreasuryRecordRailBack } from "@/components/operator/treasury/TreasuryRecordRailBack";
 import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
 import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
@@ -228,23 +229,6 @@ export function OperatorTreasuryClientRecord({
 
   const railGroups: BcnRailGroup[] = useMemo(
     () => [
-      {
-        label: "Portfolio",
-        items: [
-          {
-            id: "treasury-inbox",
-            icon: "inbox",
-            label: "Inbox",
-            href: "/operator/treasury/inbox",
-          },
-          {
-            id: "treasury-portfolio",
-            icon: "grid",
-            label: "Portfolio Dashboard",
-            href: "/operator/treasury",
-          },
-        ],
-      },
       {
         label: `${clientName} record`,
         reveal: "unlocked",
@@ -492,17 +476,16 @@ export function OperatorTreasuryClientRecord({
       who={who}
       keyUnlocked
       railGroups={railGroups}
+      railHead={<TreasuryRecordRailBack />}
       onLogout={() => void handleLogout()}
       showBcnSolutionLine
     >
       <div className="view on">
-        <nav className="text-sm text-codex-muted mb-4">
-          <Link href="/operator/treasury" className="hover:text-ink">
-            Portfolio Dashboard
-          </Link>
-          <span className="mx-2">›</span>
-          <span className="text-ink">{clientName}</span>
-        </nav>
+        <TreasuryRecordCrumb
+          clientUserId={clientUserId}
+          clientName={clientName}
+          tab={tab}
+        />
 
         {/* Spec 35: record header = identity only. Sync → Connections; Suspend/Revoke → Profile. */}
         <div className="panel p-4 mb-4">

@@ -17,6 +17,8 @@ export type BcnRailItem = {
   unreadDot?: boolean;
   badge?: number;
   pinned?: boolean;
+  /** Summit R1 — disabled placeholder (e.g. Settings coming soon). */
+  stub?: boolean;
 };
 
 export type BcnRailGroup = {
@@ -38,25 +40,37 @@ type Props = {
 };
 
 function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }) {
+  const summit = dataBrand === "summit";
   const className = [
     "ritem",
     item.active ? "on" : "",
     item.pinned ? "pinned" : "",
+    item.stub ? "stub" : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const badgeClass = summit ? "rbadge" : "ri-badge";
 
   const content = (
     <>
       <BcnIcon name={item.icon} />
       <span className="ri-t">{item.label}</span>
       {item.badge != null && item.badge > 0 ? (
-        <span className="ri-badge">{item.badge}</span>
+        <span className={badgeClass}>{item.badge}</span>
       ) : null}
       {item.unreadDot ? <span className="ri-dot" /> : null}
       {item.sealed ? <BcnNib dataBrand={dataBrand} /> : null}
     </>
   );
+
+  if (item.stub) {
+    return (
+      <span className={className} aria-disabled="true" title="Settings">
+        {content}
+      </span>
+    );
+  }
 
   if (item.href) {
     return (

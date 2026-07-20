@@ -11,6 +11,7 @@ import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
 import { InviteClientModal } from "@/components/platform/InviteClientModal";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import { treasuryPortfolioRailGroups } from "@/components/operator/treasury/treasuryPortfolioRail";
 
 export type OperatorTreasuryClientRow = {
   grant_id: string;
@@ -122,32 +123,7 @@ export function OperatorTreasuryPortfolio({
   );
 
   const railGroups: BcnRailGroup[] = useMemo(
-    () => [
-      {
-        label: "Portfolio",
-        items: [
-          {
-            id: "treasury-inbox",
-            icon: "inbox",
-            label: "Inbox",
-            badge: inboxUnread,
-            href: "/operator/treasury/inbox",
-          },
-          {
-            id: "treasury-clients",
-            icon: "grid",
-            label: "Portfolio Dashboard",
-            active: true,
-          },
-          {
-            id: "operator-home",
-            icon: "people",
-            label: "Operator home",
-            href: "/operator",
-          },
-        ],
-      },
-    ],
+    () => treasuryPortfolioRailGroups({ inboxUnread, active: "portfolio" }),
     [inboxUnread]
   );
 
