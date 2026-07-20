@@ -626,6 +626,7 @@ export function OperatorTreasuryClientRecord({
             accountsData={data}
             initialView={analyticsView}
             initialStudyId={focusStudyId ?? initialStudyId}
+            clientName={clientName}
             onSelectPeriod={handleSelectPeriod}
             onPick={sharedPick}
             onViewChange={syncAnalyticsView}

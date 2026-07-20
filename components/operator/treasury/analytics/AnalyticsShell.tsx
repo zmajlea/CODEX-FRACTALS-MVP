@@ -22,6 +22,7 @@ type Props = {
   initialStudyId?: string;
   /** Spec 46 Stage 7 — inside Analytics Analyzer subtab. */
   embedded?: boolean;
+  clientName?: string;
   /** Stage 8b — shared useOptimisticPick.pick */
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
@@ -61,6 +62,7 @@ export function AnalyticsShell({
   accountsData,
   initialStudyId,
   embedded = false,
+  clientName,
   onPick,
 }: Props) {
   const accounts = useMemo(() => {
@@ -471,6 +473,7 @@ export function AnalyticsShell({
           modelState={modelState}
           studyId={studyId}
           embedded={embedded}
+          clientName={clientName}
           onPick={onPick}
         />
       </div>

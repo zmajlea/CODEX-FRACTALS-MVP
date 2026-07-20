@@ -43,11 +43,30 @@ export type SpendPlanModelInputs = {
   bufferAdjustment: number;
 };
 
+/** Spec 46d — untouched defaults are assumed; operator edits are user-provided. */
+export type SpendPlanParamDirty = {
+  base: boolean;
+  step: boolean;
+  stepEveryMonths: boolean;
+  horizon: boolean;
+  startMonth: boolean;
+};
+
+const CLEAN_PARAM_DIRTY: SpendPlanParamDirty = {
+  base: false,
+  step: false,
+  stepEveryMonths: false,
+  horizon: false,
+  startMonth: false,
+};
+
 export type SpendPlanModelState = {
   model: SpendPlanResponse | null;
   history: SpendPlanHistoryResponse | null;
   inputs: SpendPlanModelInputs | null;
   setInputs: (patch: Partial<SpendPlanModelInputs>) => void;
+  /** Spec 46d R2-BACKLOG §5 — which dials the operator has touched. */
+  paramDirty: SpendPlanParamDirty;
   overrides: StudyBaselineOverrides;
   setOverrides: (next: StudyBaselineOverrides) => void;
   scenarios: SpendPlanScenario[] | null;
@@ -115,6 +134,7 @@ export function useSpendPlanModel(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputs, setInputsState] = useState<SpendPlanModelInputs | null>(null);
+  const [paramDirty, setParamDirty] = useState<SpendPlanParamDirty>(CLEAN_PARAM_DIRTY);
   const [overrides, setOverrides] = useState<StudyBaselineOverrides>(emptyOverrides());
   const [scenarios, setScenarios] = useState<SpendPlanScenario[] | null>(null);
   const [excludedMonths, setExcludedMonths] = useState<StudyExcludedMonth[]>([]);
@@ -134,6 +154,13 @@ export function useSpendPlanModel(
       setOverrides(seed.overrides);
       if (seed.scenarios) setScenarios(seed.scenarios);
       if (seed.excludedMonths) setExcludedMonths(seed.excludedMonths);
+      setParamDirty({
+        base: seed.inputs.base !== undefined,
+        step: seed.inputs.step !== undefined,
+        stepEveryMonths: seed.inputs.stepEveryMonths !== undefined,
+        horizon: seed.inputs.horizon !== undefined,
+        startMonth: seed.inputs.startMonth !== undefined,
+      });
       setInputsState((prev) =>
         prev
           ? { ...prev, ...seed.inputs }
@@ -210,6 +237,7 @@ export function useSpendPlanModel(
           };
         });
         if (seedToken === 0) {
+          setParamDirty(CLEAN_PARAM_DIRTY);
           setOverrides(emptyOverrides());
           setExcludedMonths([]);
           setScenarios(buildDefaultScenarios(ttmYoy));
@@ -227,11 +255,23 @@ export function useSpendPlanModel(
   }, [clientUserId, accountId, label, syncKey]);
 
   const setInputs = useCallback((patch: Partial<SpendPlanModelInputs>) => {
+    setParamDirty((prev) => {
+      const next = { ...prev };
+      if (patch.base !== undefined) next.base = true;
+      if (patch.step !== undefined) next.step = true;
+      if (patch.stepEveryMonths !== undefined) next.stepEveryMonths = true;
+      if (patch.horizon !== undefined) next.horizon = true;
+      if (patch.startMonth !== undefined) next.startMonth = true;
+      return next;
+    });
     setInputsState((prev) => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };
       if (patch.stepEveryMonths !== undefined) {
         next.stepEveryMonths = Math.max(1, Number(patch.stepEveryMonths) || 1);
+      }
+      if (patch.horizon !== undefined) {
+        next.horizon = Math.min(60, Math.max(6, Number(patch.horizon) || 24));
       }
       if (patch.backtestStartMonth !== undefined && history) {
         const start = `${patch.backtestStartMonth}-01`;
@@ -387,14 +427,31 @@ export function useSpendPlanModel(
       bufferAdjusted,
       excludedMonths: excludedKeys,
       backtest,
+      paramProvenance: {
+        base: paramDirty.base ? "user-provided" : "assumed",
+        step: paramDirty.step ? "user-provided" : "assumed",
+        step_every_months: paramDirty.stepEveryMonths
+          ? "user-provided"
+          : "assumed",
+        horizon: paramDirty.horizon ? "user-provided" : "assumed",
+        start_month: paramDirty.startMonth ? "user-provided" : "assumed",
+      },
     });
-  }, [history, deferredInputs, deferredOverrides, deferredExcluded, scenarios]);
+  }, [
+    history,
+    deferredInputs,
+    deferredOverrides,
+    deferredExcluded,
+    scenarios,
+    paramDirty,
+  ]);
 
   return {
     model,
     history,
     inputs,
     setInputs,
+    paramDirty,
     overrides,
     setOverrides,
     scenarios,

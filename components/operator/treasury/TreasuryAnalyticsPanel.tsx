@@ -18,6 +18,7 @@ type Props = {
   accountsData: TreasuryAccountsResponse | null;
   initialView?: AnalyticsView;
   initialStudyId?: string;
+  clientName?: string;
   onSelectPeriod?: (bucket: SummaryBucket, periodStart: string) => void;
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
   onViewChange?: (view: AnalyticsView) => void;
@@ -30,6 +31,7 @@ export function TreasuryAnalyticsPanel({
   accountsData,
   initialView = "forecast",
   initialStudyId,
+  clientName,
   onSelectPeriod,
   onPick,
   onViewChange,
@@ -139,6 +141,7 @@ export function TreasuryAnalyticsPanel({
           accountsData={accountsData}
           initialStudyId={initialStudyId}
           embedded
+          clientName={clientName}
           onPick={onPick}
         />
       </section>
