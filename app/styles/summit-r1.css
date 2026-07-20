@@ -42,8 +42,10 @@
    stack below. No webfont @import: keeps every surface self-contained and offline,
    CSP-safe, and sends no client IP to a font CDN on a client-facing financial page. */
 
-/* ---- role tokens only; NO state colour here (the fix) ---- */
-:root{
+/* ---- role tokens ONLY under [data-r1] (Spec 47 Gate 4).
+   Previously on :root — that clobbered Continuity --font-* on every
+   surface that imports this file (operator BCN, /client/bcn). ---- */
+[data-r1]{
   --font-ui:'Arimo',Arial,'Liberation Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   --font-mono:'Arimo',Arial,'Liberation Sans',ui-monospace,monospace;
   --font-display:'Arimo',Arial,'Liberation Sans',system-ui,sans-serif;

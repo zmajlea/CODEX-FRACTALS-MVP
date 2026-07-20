@@ -19,7 +19,7 @@ const HEADER = `/* GENERATED from Summit_R1_UX-UI_v1.0/html/assets/summit-r1.css
    [data-brand] block, never a literal hex in a component. */
 `;
 
-const SKIP = /^(:root|\[data-brand)/;
+const SKIP = /^(\[data-brand)/;
 
 function scopeSelectorList(selectorList) {
   return selectorList
@@ -27,6 +27,8 @@ function scopeSelectorList(selectorList) {
     .map((raw) => {
       const s = raw.trim();
       if (!s || SKIP.test(s)) return raw.trimEnd() === raw ? s : raw;
+      // Spec 47 Gate 4 — :root role tokens must not clobber Continuity fonts.
+      if (s === ":root") return "[data-r1]";
       if (s === "*") return "[data-r1] *";
       if (/^(html|body)\b/.test(s)) return "[data-r1]";
       return `[data-r1] ${s}`;
