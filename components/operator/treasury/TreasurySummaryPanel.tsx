@@ -520,6 +520,15 @@ export function TreasurySummaryPanel({
                 />
               </label>
             </div>
+            {rangePickable() && onPick ? (
+              <div className="lp-act" style={{ margin: 0 }}>
+                <PickButton
+                  variant="header"
+                  pickable={rangePickable()!}
+                  onPick={onPick}
+                />
+              </div>
+            ) : null}
           </div>
           <p className="meta" style={{ margin: "0 0 6px" }}>
             This view: {thisViewLine}.
