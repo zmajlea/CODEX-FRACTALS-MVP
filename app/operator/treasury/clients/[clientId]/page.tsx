@@ -59,14 +59,34 @@ export default async function OperatorTreasuryClientPage({
     "Client";
   const clientEmail = clientUser?.user?.email ?? "";
 
+  const { data: clientsData } = await supabase.rpc("list_operator_treasury_clients", {
+    p_tenant_id: ctx.tenantId,
+  });
+  const portfolioRow = (
+    Array.isArray(clientsData) ? clientsData : []
+  ).find(
+    (row) =>
+      typeof row === "object" &&
+      row !== null &&
+      "client_user_id" in row &&
+      (row as { client_user_id: string }).client_user_id === clientId
+  ) as { watch_note?: string | null } | undefined;
+
+  const watchNote =
+    typeof portfolioRow?.watch_note === "string" && portfolioRow.watch_note.trim()
+      ? portfolioRow.watch_note.trim()
+      : null;
+
   return (
     <OperatorTreasuryClientRecord
       tenantId={ctx.tenantId}
       tenantName={ctx.tenantName}
+      domainSlug={ctx.domainSlug}
       clientUserId={clientId}
       clientName={clientName}
       clientEmail={clientEmail}
       grantId={grant.grantId}
+      watchNote={watchNote}
       initialTab={query.tab}
       initialStudyId={query.study}
       initialDraftId={query.draft}

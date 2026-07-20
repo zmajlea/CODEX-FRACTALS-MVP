@@ -6,7 +6,6 @@ import { createClient } from "@/utils/supabase/client";
 import { BcnContinuityShell } from "@/components/bcn/BcnContinuityShell";
 import type { BcnRailGroup } from "@/components/bcn/BcnRail";
 import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
-import { TreasuryAccountsView } from "@/components/treasury/TreasuryAccountsView";
 import { TreasuryConnectionsPanel } from "@/components/operator/treasury/TreasuryConnectionsPanel";
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
@@ -20,8 +19,9 @@ import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRules
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
+import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
-import { formatTreasuryAsOf } from "@/lib/treasury/format";
+import { formatTreasuryAsOf, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
 import { defaultDateRange, periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
@@ -65,10 +65,12 @@ function parseInitialTab(value: string | undefined): Tab {
 type Props = {
   tenantId: string;
   tenantName: string;
+  domainSlug: string;
   clientUserId: string;
   clientName: string;
   clientEmail: string;
   grantId: string | null;
+  watchNote?: string | null;
   initialTab?: string;
   initialStudyId?: string;
   /** Stage 8 — deep-link into Recommendations draft composer. */
@@ -97,12 +99,26 @@ function dataThroughLine(data: TreasuryAccountsResponse | null): string | null {
   return dates[dates.length - 1] ?? null;
 }
 
+function formatOverviewThrough(iso: string | null): string {
+  if (!iso) return "—";
+  const d = iso.slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat(TREASURY_DISPLAY_LOCALE, {
+      dateStyle: "medium",
+    }).format(new Date(`${d}T12:00:00`));
+  } catch {
+    return d;
+  }
+}
+
 export function OperatorTreasuryClientRecord({
   tenantName,
+  domainSlug,
   clientUserId,
   clientName,
   clientEmail,
   grantId,
+  watchNote,
   initialTab,
   initialStudyId,
   initialDraftId,
@@ -226,6 +242,19 @@ export function OperatorTreasuryClientRecord({
     await supabase.auth.signOut();
     router.push(PORTAL_LOGIN);
   }, [router, supabase]);
+
+  const switchTab = useCallback(
+    (next: Tab) => {
+      setTab(next);
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?tab=${next}`,
+        { scroll: false }
+      );
+    },
+    [clientUserId, router]
+  );
+
+  const demo = isDemoTenant(domainSlug);
 
   const railGroups: BcnRailGroup[] = useMemo(
     () => [
@@ -488,12 +517,14 @@ export function OperatorTreasuryClientRecord({
         />
 
         {/* Spec 35: record header = identity only. Sync → Connections; Suspend/Revoke → Profile. */}
-        <div className="panel p-4 mb-4">
-          <p className="font-medium font-head text-lg">{clientName}</p>
-          <p className="text-sm text-codex-muted">{clientEmail}</p>
-          {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
-          <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
-        </div>
+        {tab !== "overview" ? (
+          <div className="panel p-4 mb-4">
+            <p className="font-medium font-head text-lg">{clientName}</p>
+            <p className="text-sm text-codex-muted">{clientEmail}</p>
+            {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
+            <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
+          </div>
+        ) : null}
 
         {actionMsg ? <p className="panel-note mb-4">{actionMsg}</p> : null}
 
@@ -511,27 +542,47 @@ export function OperatorTreasuryClientRecord({
 
         {tab === "overview" ? (
           <>
+            <div className="hubhead">
+              <div>
+                <div className="eyebrow">Treasury record</div>
+                <h1 className="title">{clientName}</h1>
+              </div>
+            </div>
+
+            {demo && csvOnly ? (
+              <span className="illus">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 3.5 19 6v6c0 4.4-3 7.4-7 8.7C8 19.4 5 16.4 5 12V6l7-2.5Z" />
+                </svg>
+                Illustrative data, imported from CSV through{" "}
+                {formatOverviewThrough(dataThrough ?? data?.last_synced_at ?? null)}
+              </span>
+            ) : null}
+
             <TreasuryOverviewTiles
-              institutions={data?.institutions ?? []}
-              lastSyncedAt={data?.last_synced_at ?? null}
-              needsLabelCount={needsLabelCount}
-              onNeedsReviewClick={() => setTab("transactions")}
-              sourceCount={data?.institutions.length ?? 0}
-              accountCount={accountCount}
-              csvOnly={csvOnly}
-              transactionCount={data?.transaction_count}
-              onPick={handleOverviewPick}
-            />
-            <TreasuryAccountsView
+              clientUserId={clientUserId}
+              clientName={clientName}
+              tenantName={tenantName}
               institutions={data?.institutions ?? []}
               transactions={data?.transactions ?? []}
-              loading={loading}
-              error={error}
-              readOnly
-              hideTotals
-              title={`${clientName}'s accounts`}
-              subtitle={`Managed under ${tenantName}. Read-only operator view.`}
-              showConnectButton={false}
+              lastSyncedAt={data?.last_synced_at ?? null}
+              dataThrough={dataThrough}
+              needsLabelCount={needsLabelCount}
+              accountCount={accountCount}
+              csvOnly={csvOnly}
+              transactionCount={data?.transaction_count ?? 0}
+              watchNote={watchNote}
+              onTabSwitch={switchTab}
+              onPick={handleOverviewPick}
+              rulesRefreshKey={ledgerKey}
             />
           </>
         ) : null}

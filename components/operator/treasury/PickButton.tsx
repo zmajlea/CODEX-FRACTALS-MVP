@@ -9,9 +9,18 @@ type Props = {
   variant: "row" | "header";
   onPick: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
   disabled?: boolean;
+  buttonClassName?: string;
+  ariaLabel?: string;
 };
 
-export function PickButton({ pickable, variant, onPick, disabled }: Props) {
+export function PickButton({
+  pickable,
+  variant,
+  onPick,
+  disabled,
+  buttonClassName,
+  ariaLabel,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -59,10 +68,13 @@ export function PickButton({ pickable, variant, onPick, disabled }: Props) {
       <button
         ref={btnRef}
         type="button"
-        className={variant === "header" ? "pkh" : "pk"}
+        className={
+          buttonClassName ?? (variant === "header" ? "pkh" : "pk")
+        }
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={ariaLabel}
         onClick={openMenu}
         title="Add to draft"
       >
