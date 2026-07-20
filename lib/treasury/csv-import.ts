@@ -563,6 +563,7 @@ export async function upsertCsvAccounts(
         client_user_id: clientUserId,
         account_id: accountId,
         name: label,
+        mask: label,
         type: "depository",
         subtype: "checking",
         current_balance: meta.balance,

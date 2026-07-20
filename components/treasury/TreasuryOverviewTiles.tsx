@@ -60,10 +60,10 @@ function capWord(value: string | null | undefined): string {
 }
 
 function accountRowLabel(acct: TreasuryAccountView): string {
-  const mask = acct.mask ?? "????";
+  const id = acct.mask ?? acct.name ?? "Account";
   const type = capWord(acct.type) || "Account";
   const subtype = capWord(acct.subtype);
-  return subtype ? `${mask} ${type}, ${subtype}` : `${mask} ${type}`;
+  return subtype ? `${id} ${type}, ${subtype}` : `${id} ${type}`;
 }
 
 function allAccounts(institutions: TreasuryInstitutionView[]): TreasuryAccountView[] {

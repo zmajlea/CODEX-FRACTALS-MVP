@@ -259,6 +259,7 @@ export function TreasuryLedgerPanel({
     setApplied(next);
     setDraftPayeeQ(next.q);
     setDraftAccounts(new Set(next.accountIds));
+    setDraftSourceId(next.accountIds.length === 1 ? next.accountIds[0]! : "");
     setDraftAmountMode(next.amountMode);
     setDraftAmountMin(next.amountMin);
     setDraftAmountMax(next.amountMax);
@@ -336,12 +337,15 @@ export function TreasuryLedgerPanel({
 
   function applyFilters() {
     onDateRangeChange(draftDateRange);
-    if (draftSourceId) {
-      setDraftAccounts(new Set([draftSourceId]));
-    }
+    // Source select is the account filter — compose from draftSourceId, not stale Set state.
+    const accountIds = draftSourceId ? [draftSourceId] : [];
+    setDraftAccounts(new Set(accountIds));
     setPage(0);
     setSelected(new Set());
-    setApplied(composeAppliedFromDraft());
+    setApplied({
+      ...composeAppliedFromDraft(),
+      accountIds,
+    });
   }
 
   function submitSearch() {
@@ -349,6 +353,16 @@ export function TreasuryLedgerPanel({
     setPage(0);
     setSelected(new Set());
     setApplied(composeAppliedFromDraft(applied.status, draftPayeeQ.trim()));
+  }
+
+  /** Spec — top-level account lens; same state as Advanced → Source. Default All. */
+  function setTopAccountFilter(accountId: string) {
+    const accountIds = accountId ? [accountId] : [];
+    setDraftSourceId(accountId);
+    setDraftAccounts(new Set(accountIds));
+    setPage(0);
+    setSelected(new Set());
+    setApplied((prev) => ({ ...prev, accountIds }));
   }
 
   function clearAllFilters() {
@@ -515,6 +529,26 @@ export function TreasuryLedgerPanel({
   const allStatusCount =
     needsLabelCount + suggestedTotalCount + labeledCount;
 
+  const topAccountValue =
+    applied.accountIds.length === 1 && applied.accountIds[0]
+      ? applied.accountIds[0]
+      : "";
+
+  const accountSelectOptions = useMemo(
+    () =>
+      institutions.flatMap((inst) =>
+        inst.accounts.map((acct) => ({
+          id: acct.account_id,
+          name:
+            acct.mask ??
+            acct.name ??
+            acct.account_id.replace(/^csv:/, "") ??
+            "Account",
+        }))
+      ),
+    [institutions]
+  );
+
   const activeChips: { key: string; label: string; clear: () => void }[] = [];
   if (applied.from || applied.to) {
     activeChips.push({
@@ -538,11 +572,11 @@ export function TreasuryLedgerPanel({
     applied.accountIds.length < allAccountIds.length
   ) {
     const acctId = applied.accountIds[0]!;
+    const acct = institutions
+      .flatMap((i) => i.accounts)
+      .find((a) => a.account_id === acctId);
     const acctLabel =
-      institutions
-        .flatMap((i) => i.accounts)
-        .find((a) => a.account_id === acctId)?.name ??
-      acctId.replace(/^csv:/, "");
+      acct?.mask ?? acct?.name ?? acctId.replace(/^csv:/, "");
     activeChips.push({
       key: "source",
       label: `Source: ${acctLabel} CSV import`,
@@ -671,6 +705,25 @@ export function TreasuryLedgerPanel({
           ))}
         </div>
 
+        {accountSelectOptions.length > 0 ? (
+          <label className="flex items-center gap-2 text-sm" style={{ margin: 0 }}>
+            <span className="treasury-meta">Account</span>
+            <select
+              className="field-input"
+              aria-label="Account"
+              value={topAccountValue}
+              onChange={(e) => setTopAccountFilter(e.target.value)}
+            >
+              <option value="">All accounts</option>
+              {accountSelectOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <div className="tx-search">
           <input
             type="text"
@@ -717,7 +770,7 @@ export function TreasuryLedgerPanel({
                 id="txf-src"
                 aria-label="Source"
                 value={draftSourceId}
-                onChange={(e) => setDraftSourceId(e.target.value)}
+                onChange={(e) => setTopAccountFilter(e.target.value)}
               >
                 <option value="">Any source</option>
                 {sourceOptions.map((opt) => (
