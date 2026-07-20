@@ -51,7 +51,7 @@ export function ClientShellFrame({
 
   return (
     <div
-      className="app cs min-h-screen"
+      className={`app cs min-h-screen${treasuryR1 ? " rail-pinned" : ""}`}
       id="app"
       data-brand={dataBrand}
       data-bcn-tenant={tenantId}

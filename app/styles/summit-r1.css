@@ -293,27 +293,59 @@
    rail's biggest a11y failure was icon-only, no names. S03 section 5.)
    ============================================================ */
 [data-r1] .rec-row{ display:flex; align-items:stretch; min-height:calc(100vh - 52px); }
+[data-r1] .rec-row .rail{
+  position:sticky; top:52px; align-self:flex-start;
+  height:calc(100vh - 52px); overflow-y:auto; overflow-x:hidden;
+}
 [data-r1] .rail{ width:216px; flex:0 0 216px; background:var(--rail); border-right:1px solid var(--line);
   display:flex; flex-direction:column; padding:16px 0; }
 [data-r1] .rail-head{ padding:0 16px 14px; border-bottom:1px solid var(--line); margin-bottom:10px; }
 [data-r1] .rail-head .rh-name{ font-weight:700; font-size:14px; color:var(--ink); line-height:1.25; }
 [data-r1] .rail-head .rh-label{ font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); margin-top:3px; }
 [data-r1] .rail-nav{ display:flex; flex-direction:column; gap:1px; padding:0 8px; }
-[data-r1] .ritem{ display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:6px;
-  font-size:13px; color:var(--rail-ink); text-decoration:none; border-left:2px solid transparent; cursor:pointer; }
-[data-r1] .ritem:hover{ background:color-mix(in srgb,var(--brand) 6%, transparent); color:var(--ink); }
-[data-r1] .ritem.on{ background:color-mix(in srgb,var(--brand) 10%, transparent); color:var(--brand);
+[data-r1] .rail .ritem,
+[data-r1] .app-rail .ritem{ display:flex; align-items:center; gap:9px; width:100%; box-sizing:border-box;
+  padding:8px 10px; border-radius:6px; font-size:13px; color:var(--rail-ink); text-decoration:none;
+  border-left:2px solid transparent; cursor:pointer; }
+[data-r1] .rail .ritem:hover,
+[data-r1] .app-rail .ritem:hover{ background:color-mix(in srgb,var(--brand) 6%, transparent); color:var(--ink); }
+[data-r1] .rail .ritem.on,
+[data-r1] .app-rail .ritem.on{ background:color-mix(in srgb,var(--brand) 10%, transparent); color:var(--brand);
   font-weight:700; border-left-color:var(--brand); }
-[data-r1] .ritem .rbadge{ margin-left:auto; font-size:11px; font-weight:700; color:var(--su-await);
+[data-r1] .rail .ritem .rbadge,
+[data-r1] .app-rail .ritem .rbadge{ margin-left:auto; font-size:11px; font-weight:700; color:var(--su-await);
   background:color-mix(in srgb,var(--su-await) 14%, var(--paper-2)); border-radius:999px; padding:1px 8px; }
-[data-r1] .ritem.stub{ opacity:.5; pointer-events:none; }
-[data-r1] .ritem.stub .rbadge{ background:none; color:var(--mute); }
+[data-r1] .rail .ritem.stub,
+[data-r1] .app-rail .ritem.stub{ opacity:.5; pointer-events:none; }
+[data-r1] .rail .ritem.stub .rbadge,
+[data-r1] .app-rail .ritem.stub .rbadge{ background:none; color:var(--mute); }
 [data-r1] .rail-foot{ margin-top:auto; padding:12px 16px 0; border-top:1px solid var(--line); margin-top:auto; }
 [data-r1] .rail-foot .rf-ctl{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
 [data-r1] .rail-foot .rf-ctl a{ font-size:12px; color:var(--slate); text-decoration:none; }
 [data-r1] .rail-foot .rf-ctl a:hover{ color:var(--brand); }
 [data-r1] .rail-foot .rf-id{ font-size:10.5px; color:var(--mute); letter-spacing:.02em; }
 [data-r1] .rec-main{ flex:1; min-width:0; padding:36px 48px 80px; max-width:1180px; }
+
+/* R1 app shell — fixed left rail like Ana demo (labeled, always expanded, stays put while main scrolls) */
+[data-r1] .app-rail{
+  position:fixed; left:0; top:52px; bottom:0; width:216px; z-index:30;
+  overflow-y:auto; overflow-x:hidden; box-shadow:none;
+}
+[data-r1] .app-rail .rgroup{ padding:0 8px; }
+[data-r1] .app-rail .rlabel{ padding:12px 2px 5px; }
+[data-r1] .app-rail .rback{
+  margin:0 -8px; padding:6px 16px 10px;
+}
+[data-r1] .app-main{ margin-left:216px; }
+[data-r1] .app.rail-pinned .app-rail{ width:216px; }
+[data-r1] .app.rail-pinned .app-main{ margin-left:216px; }
+[data-r1] .app:not(.rail-pinned) .app-rail:hover{ width:216px; box-shadow:none; }
+[data-r1] .app:not(.rail-pinned) .app-rail:not(:hover) :is(.ri-t,.rlabel,.ri-dot,.ri-badge,.rbadge,.sealnib,.mod-chev,.modswitch,.ms-here){ display:revert !important; }
+[data-r1] .app:not(.rail-pinned) .app-rail:not(:hover) .ritem{
+  justify-content:flex-start; padding-left:14px; padding-right:14px; gap:8px;
+}
+[data-r1] .app:not(.rail-pinned) .app-rail:not(:hover) :is(.ritem > svg){ width:16px; height:16px; }
+
 @media (max-width:800px){ [data-r1] .rec-row{ flex-direction:column; } [data-r1] .rail{ width:auto; flex:0 0 auto; }
   [data-r1] .rail-nav{ flex-flow:row wrap; } [data-r1] .rail-foot{ margin-top:16px; } }
 
@@ -526,6 +558,7 @@
 /* rail: grouped icon nav, active highlight (kept), badge, back link, brand foot */
 [data-r1] .rail .rlabel{ font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute);
   font-weight:700; padding:12px 16px 5px; }
+[data-r1] .app-rail .rgroup .rlabel{ padding:12px 2px 5px; }
 [data-r1] .rail .rlabel:first-child{ padding-top:2px; }
 [data-r1] .rail .ritem > svg{ width:16px; height:16px; flex:0 0 auto; }
 [data-r1] .rail .rback{ display:flex; align-items:center; gap:8px; padding:6px 16px 10px; font-size:12.5px;

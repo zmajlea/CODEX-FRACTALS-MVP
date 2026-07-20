@@ -60,7 +60,7 @@ export function BcnContinuityShell({
   showBcnSolutionLine = mode === "operator",
   tokenOverrides = {},
 }: Props) {
-  const [railPinned, setRailPinned] = useState(false);
+  const [railPinned, setRailPinned] = useState(dataR1 ?? false);
 
   const appClass = [
     "app",
