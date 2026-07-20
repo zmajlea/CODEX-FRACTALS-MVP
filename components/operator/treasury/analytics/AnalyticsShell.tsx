@@ -19,6 +19,10 @@ import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
 type Props = {
   clientUserId: string;
   accountsData: TreasuryAccountsResponse | null;
+  /** Spec 50 — controlled account scope (shared with Forecast). */
+  accounts: { id: string; name: string }[];
+  accountId: string;
+  onAccountIdChange: (id: string) => void;
   initialStudyId?: string;
   /** Spec 46 Stage 7 — inside Analytics Analyzer subtab. */
   embedded?: boolean;
@@ -60,22 +64,14 @@ function driftLine(d: DriftEntry): string {
 export function AnalyticsShell({
   clientUserId,
   accountsData,
+  accounts,
+  accountId,
+  onAccountIdChange,
   initialStudyId,
   embedded = false,
   clientName,
   onPick,
 }: Props) {
-  const accounts = useMemo(() => {
-    const list: { id: string; name: string }[] = [];
-    for (const inst of accountsData?.institutions ?? []) {
-      for (const a of inst.accounts) {
-        list.push({ id: a.account_id, name: a.name ?? a.account_id });
-      }
-    }
-    return list;
-  }, [accountsData]);
-
-  const [accountId, setAccountId] = useState("");
   const [studies, setStudies] = useState<TreasuryStudyRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [studyId, setStudyId] = useState<string | null>(null);
@@ -87,10 +83,6 @@ export function AnalyticsShell({
   const [message, setMessage] = useState<string | null>(null);
 
   const modelState = useSpendPlanModel(clientUserId, accountId);
-
-  useEffect(() => {
-    if (!accountId && accounts[0]) setAccountId(accounts[0].id);
-  }, [accounts, accountId]);
 
   const refreshList = useCallback(async () => {
     setListLoading(true);
@@ -121,7 +113,7 @@ export function AnalyticsShell({
     if (!pendingLoad) return;
     const row = pendingLoad;
     if (accountId !== row.scope.accountId) {
-      setAccountId(row.scope.accountId);
+      onAccountIdChange(row.scope.accountId);
       return;
     }
     if (!modelState.history || modelState.loading) return;
@@ -162,6 +154,7 @@ export function AnalyticsShell({
   }, [
     pendingLoad,
     accountId,
+    onAccountIdChange,
     modelState.history,
     modelState.loading,
     modelState.currentSnapshot,
@@ -469,7 +462,7 @@ export function AnalyticsShell({
           clientUserId={clientUserId}
           accountsData={accountsData}
           accountId={accountId}
-          onAccountIdChange={setAccountId}
+          onAccountIdChange={onAccountIdChange}
           modelState={modelState}
           studyId={studyId}
           embedded={embedded}

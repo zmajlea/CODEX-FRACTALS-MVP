@@ -33,6 +33,10 @@ type Props = {
   hasSyncedData?: boolean;
   /** Spec 46 Stage 7 — inside Analytics subtabs (Ana forecast shape). */
   embedded?: boolean;
+  /** Spec 50 — shared account scope with Analyzer. */
+  accounts?: { id: string; name: string }[];
+  accountId?: string;
+  onAccountIdChange?: (id: string) => void;
   onSelectPeriod?: (bucket: SummaryBucket, periodStart: string) => void;
   /** Stage 8b — shared useOptimisticPick.pick */
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
@@ -275,6 +279,9 @@ export function TreasurySummaryPanel({
   clientUserId,
   hasSyncedData = true,
   embedded = false,
+  accounts = [],
+  accountId = "",
+  onAccountIdChange,
   onSelectPeriod,
   onPick,
 }: Props) {
@@ -286,6 +293,11 @@ export function TreasurySummaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [drillRow, setDrillRow] = useState<TreasurySummaryRow | null>(null);
   const [forecastDrill, setForecastDrill] = useState<TreasuryForecastPeriod | null>(null);
+
+  const accountName =
+    accounts.find((a) => a.id === accountId)?.name ??
+    forecast?.account_name ??
+    accountId;
 
   /** Operator `since` always wins — periods derive from the window, never clamped to defaultPeriods. */
   const periods = useMemo(() => {
@@ -323,14 +335,24 @@ export function TreasurySummaryPanel({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Wait for shared account default before calling (avoids 400 flash).
+    if (accounts.length > 0 && !accountId) {
+      setLoading(false);
+      return;
+    }
     const summaryParams = new URLSearchParams({
       granularity,
       periods: String(periods),
     });
+    // Spec 50: accountId required only when the client has accounts.
+    const forecastQs = new URLSearchParams({ granularity });
+    if (accounts.length > 0 && accountId) {
+      forecastQs.set("accountId", accountId);
+    }
     const [summaryRes, forecastRes] = await Promise.all([
       fetch(`/api/operator/treasury/clients/${clientUserId}/summary?${summaryParams}`),
       fetch(
-        `/api/operator/treasury/clients/${clientUserId}/forecast?granularity=${granularity}`
+        `/api/operator/treasury/clients/${clientUserId}/forecast?${forecastQs}`
       ),
     ]);
 
@@ -346,10 +368,16 @@ export function TreasurySummaryPanel({
       setForecast((await forecastRes.json()) as TreasuryForecastResponse);
     } else {
       setForecast(null);
+      if (forecastRes.status >= 400) {
+        const body = (await forecastRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (body.error) setError(body.error);
+      }
     }
 
     setLoading(false);
-  }, [clientUserId, granularity, periods]);
+  }, [clientUserId, granularity, periods, accounts.length, accountId]);
 
   useEffect(() => {
     void load();
@@ -401,13 +429,15 @@ export function TreasurySummaryPanel({
       return null;
     }
     if (!forecast.periods.length) return null;
+    if (!accountId) return null;
     const asOf =
       forecast.as_of?.slice(0, 10) ??
       forecast.data_span?.last ??
       todayIso();
+    const scopeLabel = accountName || accountId;
     const label = lowPoint
-      ? `Projected low point, ${periodLabel(granularity, lowPoint.period_start)}`
-      : `Forecast as of ${asOf}`;
+      ? `Projected low point, ${periodLabel(granularity, lowPoint.period_start)} · ${scopeLabel}`
+      : `Forecast as of ${asOf} · ${scopeLabel}`;
     const sublabel = lowPoint
       ? formatTreasuryMoney(lowPoint.closing, forecast.currency)
       : `${forecast.periods.length} periods`;
@@ -417,6 +447,8 @@ export function TreasurySummaryPanel({
         granularity,
         asOf,
         projected: true,
+        accountId,
+        accountName: scopeLabel,
         ...(lowPoint
           ? {
               lowPointPeriod: lowPoint.period_start,
@@ -427,9 +459,10 @@ export function TreasurySummaryPanel({
       snap: {
         projected: true,
         caveat: FORECAST_BOUNDARY_CAVEAT,
-        engineLabel: FORECAST_ENGINE_LABEL,
+        engineLabel: `${FORECAST_ENGINE_LABEL} · for account ${scopeLabel}`,
         label,
         sublabel,
+        accountName: scopeLabel,
         ...(lowPoint ? { amount: lowPoint.closing, direction: "in" as const } : {}),
       },
       label,
@@ -469,6 +502,7 @@ export function TreasurySummaryPanel({
         <>
           <p className="engine-label">
             {FORECAST_ENGINE_LABEL}
+            {accountName ? ` · for account ${accountName}` : ""}
             {dataSpanLine ? `. ${dataSpanLine}` : ""}
           </p>
           <div
@@ -497,6 +531,26 @@ export function TreasurySummaryPanel({
                 </button>
               ))}
             </div>
+            {accounts.length > 0 && onAccountIdChange ? (
+              <label
+                className="flex items-center gap-2 text-sm"
+                style={{ margin: 0 }}
+              >
+                <span className="treasury-meta">Account</span>
+                <select
+                  className="field-input"
+                  value={accountId}
+                  onChange={(e) => onAccountIdChange(e.target.value)}
+                  aria-label="Forecast account"
+                >
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div className="adv-body" style={{ margin: 0, padding: "6px 12px" }}>
               <label
                 className="meta"
@@ -646,7 +700,10 @@ export function TreasurySummaryPanel({
               {lowPoint ? (
                 embedded ? (
                   <div className="lowpoint">
-                    <div className="lp-l">Projected low point, monthly</div>
+                    <div className="lp-l">
+                      Projected low point, monthly
+                      {accountName ? ` · ${accountName}` : ""}
+                    </div>
                     <div className="lp-n num">
                       {formatTreasuryMoney(lowPoint.closing, forecast.currency)}
                     </div>

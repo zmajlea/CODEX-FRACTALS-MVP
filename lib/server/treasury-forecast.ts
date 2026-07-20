@@ -98,15 +98,17 @@ function maxIso(a: string, b: string): string {
   return a >= b ? a : b;
 }
 
-/** Full-book posted_date span — a fact about the book, never a query window. */
+/** Posted_date span for one account — a fact about that account's book. */
 async function fetchBookDataSpan(
   admin: AdminClient,
-  clientUserId: string
+  clientUserId: string,
+  accountId: string
 ): Promise<{ first: string; last: string } | null> {
   const { data: firstRow } = await admin
     .from("treasury_transactions")
     .select("posted_date")
     .eq("client_user_id", clientUserId)
+    .eq("account_id", accountId)
     .eq("is_removed", false)
     .eq("pending", false)
     .not("posted_date", "is", null)
@@ -118,6 +120,7 @@ async function fetchBookDataSpan(
     .from("treasury_transactions")
     .select("posted_date")
     .eq("client_user_id", clientUserId)
+    .eq("account_id", accountId)
     .eq("is_removed", false)
     .eq("pending", false)
     .not("posted_date", "is", null)
@@ -134,7 +137,8 @@ async function fetchBookDataSpan(
 export async function computeTreasuryForecast(
   admin: AdminClient,
   clientUserId: string,
-  granularity: SummaryGranularity
+  granularity: SummaryGranularity,
+  accountId: string
 ): Promise<TreasuryForecastResponse> {
   const today = todayIso();
   const horizon = HORIZON[granularity];
@@ -155,7 +159,7 @@ export async function computeTreasuryForecast(
   const recurringLookbackStart = subtractDays(today, RECURRING_LOOKBACK_DAYS);
   const lookbackStartUnclamped = minIso(recurringLookbackStart, earliestBaselineStart);
 
-  const data_span = await fetchBookDataSpan(admin, clientUserId);
+  const data_span = await fetchBookDataSpan(admin, clientUserId, accountId);
 
   // Query window covers both recurrence lookback and full baseline periods, clamped to the book.
   let lookbackFrom = lookbackStartUnclamped;
@@ -167,10 +171,16 @@ export async function computeTreasuryForecast(
   }
   const lookbackTo = data_span ? minIso(today, data_span.last) : today;
 
-  const { data: accounts } = await admin
+  const { data: accountRow } = await admin
     .from("treasury_accounts")
-    .select("current_balance, iso_currency_code")
-    .eq("client_user_id", clientUserId);
+    .select("current_balance, iso_currency_code, name, account_id")
+    .eq("client_user_id", clientUserId)
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (!accountRow) {
+    throw new Error(`Account not found for client: ${accountId}`);
+  }
 
   const allTxs = await fetchAllRows((from, to) =>
     admin
@@ -179,6 +189,7 @@ export async function computeTreasuryForecast(
         "posted_date, amount, direction, iso_currency_code, normalized_merchant, raw_name, merchant_name, label"
       )
       .eq("client_user_id", clientUserId)
+      .eq("account_id", accountId)
       .eq("is_removed", false)
       .eq("pending", false)
       .gte("posted_date", lookbackFrom)
@@ -192,6 +203,7 @@ export async function computeTreasuryForecast(
     .from("treasury_transactions")
     .select("id", { count: "exact", head: true })
     .eq("client_user_id", clientUserId)
+    .eq("account_id", accountId)
     .eq("is_removed", false)
     .eq("pending", true);
 
@@ -204,31 +216,9 @@ export async function computeTreasuryForecast(
   const rules = (rulesData ?? []) as TreasuryRuleRow[];
   const txs = (allTxs ?? []) as TxRow[];
 
-  const currencyCounts = new Map<string, number>();
-  for (const tx of txs) {
-    const cur = tx.iso_currency_code ?? "USD";
-    currencyCounts.set(cur, (currencyCounts.get(cur) ?? 0) + 1);
-  }
-  let currency = "USD";
-  let maxCount = 0;
-  for (const [cur, count] of currencyCounts) {
-    if (count > maxCount) {
-      maxCount = count;
-      currency = cur;
-    }
-  }
+  const currency = accountRow.iso_currency_code ?? "USD";
 
-  const otherCurrencies = [
-    ...new Set(
-      (accounts ?? [])
-        .map((a) => a.iso_currency_code ?? "USD")
-        .filter((c) => c !== currency)
-    ),
-  ];
-
-  const seed_balance = (accounts ?? [])
-    .filter((a) => (a.iso_currency_code ?? "USD") === currency)
-    .reduce((sum, a) => sum + Number(a.current_balance ?? 0), 0);
+  const seed_balance = Number(accountRow.current_balance ?? 0);
 
   const as_of = await getLastTransactionsSyncedAt(admin, clientUserId);
 
@@ -260,9 +250,14 @@ export async function computeTreasuryForecast(
     primaryTxs.length > 0 ? Math.round((unlabeled / primaryTxs.length) * 100) : 100;
 
   const excludedBase = {
-    other_currencies: otherCurrencies,
+    other_currencies: [] as string[],
     pending_count: pendingCount ?? 0,
     unlabeled_share_pct,
+  };
+
+  const accountMeta = {
+    account_id: accountId,
+    account_name: accountRow.name ?? accountId,
   };
 
   if (primaryTxs.length === 0 || historyPeriods.size < 2) {
@@ -278,6 +273,7 @@ export async function computeTreasuryForecast(
       insufficient_history: true,
       history_days,
       data_span,
+      ...accountMeta,
     };
   }
 
@@ -306,6 +302,7 @@ export async function computeTreasuryForecast(
         : "Cannot project — no data span.",
       history_days,
       data_span,
+      ...accountMeta,
     };
   }
 
@@ -447,11 +444,37 @@ export async function computeTreasuryForecast(
     baseline_periods: baselineK,
     periods,
     excluded: {
-      other_currencies: otherCurrencies,
+      other_currencies: [],
       pending_count: pendingCount ?? 0,
       unlabeled_share_pct,
     },
     history_days,
     data_span,
+    ...accountMeta,
+  };
+}
+
+/** Empty-book response — zero accounts / no accountId yet (Spec 49 empty gate clients). */
+export function emptyTreasuryForecast(
+  granularity: SummaryGranularity
+): TreasuryForecastResponse {
+  const horizon = HORIZON[granularity];
+  const baselineK = BASELINE_PERIODS[granularity];
+  return {
+    granularity,
+    horizon,
+    currency: "USD",
+    seed_balance: 0,
+    as_of: null,
+    baseline_periods: baselineK,
+    periods: [],
+    excluded: {
+      other_currencies: [],
+      pending_count: 0,
+      unlabeled_share_pct: 100,
+    },
+    insufficient_history: true,
+    history_days: 0,
+    data_span: null,
   };
 }
