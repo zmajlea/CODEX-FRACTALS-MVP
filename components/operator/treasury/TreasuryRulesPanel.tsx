@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
-import { formatTreasuryMoney } from "@/lib/treasury/format";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryRuleRow, TreasuryTransactionRow } from "@/lib/treasury/types";
 
 type Props = {
   clientUserId: string;
+  demo?: boolean;
   draftRule?: Partial<TreasuryRuleRow> | null;
   onClearDraft?: () => void;
   onGoToTransactions?: () => void;
-  /** Stay on Rules; open the new rule’s Suggested queue */
+  /** Stay on Rules; open the new rule's Suggested queue */
   onRuleSaved?: (suggestedCount: number, ruleId: string | null) => void;
-  /** Open this rule’s Suggested queue (ledger return leg) */
+  /** Open this rule's Suggested queue (ledger return leg) */
   openRuleQueueId?: string | null;
   onOpenRuleQueueConsumed?: () => void;
   /** Stage 8b — shared useOptimisticPick.pick */
@@ -22,6 +22,11 @@ type Props = {
 };
 
 type QueueTab = "suggested" | "confirmed";
+
+type PreviewState = {
+  total: number;
+  samples: TreasuryTransactionRow[];
+} | null;
 
 function formatAppliedAt(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -40,18 +45,18 @@ function formatAppliedAt(iso: string | null | undefined): string {
   }
 }
 
-function queueLine(r: TreasuryRuleRow): string {
+function formatRuleCounts(r: TreasuryRuleRow): string {
   const suggested = r.suggested_count ?? 0;
   const confirmed = r.confirmed_count ?? 0;
-  if (r.last_applied_at == null) {
-    return `${suggested} suggested · ${confirmed} confirmed · Never applied`;
-  }
-  const applied = formatAppliedAt(r.last_applied_at);
-  return `${suggested} suggested · ${confirmed} confirmed · applied ${applied}`;
+  const applied = r.last_applied_at
+    ? `Applied ${formatAppliedAt(r.last_applied_at)}.`
+    : "Never applied.";
+  return `${suggested} Suggested, ${confirmed} Confirmed. ${applied}`;
 }
 
 export function TreasuryRulesPanel({
   clientUserId,
+  demo = false,
   draftRule,
   onClearDraft,
   onGoToTransactions,
@@ -71,6 +76,8 @@ export function TreasuryRulesPanel({
   const [msg, setMsg] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewState>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [queueTab, setQueueTab] = useState<QueueTab>("suggested");
@@ -79,8 +86,6 @@ export function TreasuryRulesPanel({
   const [queuePage, setQueuePage] = useState(0);
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
-
-  // pick via shared onPick (Stage 8b)
 
   function rulePickable(r: TreasuryRuleRow): Pickable {
     const suggested = r.suggested_count ?? 0;
@@ -117,6 +122,7 @@ export function TreasuryRulesPanel({
     setAmountMin(draftRule.amount_min != null ? String(draftRule.amount_min) : "");
     setAmountMax(draftRule.amount_max != null ? String(draftRule.amount_max) : "");
     setDirection((draftRule.direction as "in" | "out") ?? "");
+    setAdvancedOpen(true);
   }, [draftRule]);
 
   useEffect(() => {
@@ -163,6 +169,35 @@ export function TreasuryRulesPanel({
     }
     void loadQueue(expandedId, queueTab, queuePage);
   }, [expandedId, queueTab, queuePage, loadQueue]);
+
+  async function runPreview() {
+    const q = matchMerchant.trim();
+    if (!q) {
+      setPreview(null);
+      return;
+    }
+    setPreviewBusy(true);
+    try {
+      const params = new URLSearchParams({ q, limit: "3", page: "0" });
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/transactions?${params}`
+      );
+      if (!res.ok) {
+        setPreview(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        transactions: TreasuryTransactionRow[];
+        total: number;
+      };
+      setPreview({
+        total: data.total ?? data.transactions.length,
+        samples: data.transactions,
+      });
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
 
   async function createRule(fromDraft = false) {
     const res = await fetch(
@@ -301,321 +336,287 @@ export function TreasuryRulesPanel({
     }
   }
 
-  const dirLabel = direction === "in" ? "in" : direction === "out" ? "out" : "any";
   const queuePageCount = Math.max(1, Math.ceil(queueTotal / 50));
 
   return (
-    <div className="space-y-4">
-      {draftRule ? (
-        <div className="panel p-4 border-l-4 border-amber-400">
-          <h3 className="font-head text-lg mb-3">Confirm new rule</h3>
-          <p className="text-sm mb-4 leading-relaxed">
-            When the payee contains <strong>{matchMerchant || "…"}</strong>, amount{" "}
-            <strong>
-              {amountMin && amountMax
-                ? `${formatTreasuryMoney(Number(amountMin), "USD")}–${formatTreasuryMoney(Number(amountMax), "USD")}`
-                : "any"}
-            </strong>
-            , direction <strong>{dirLabel}</strong> → suggest category{" "}
-            <strong>{assignLabel || "…"}</strong>.
-          </p>
-          <div className="grid gap-2 max-w-lg mb-4">
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Rule name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Match merchant"
-              value={matchMerchant}
-              onChange={(e) => setMatchMerchant(e.target.value)}
-            />
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Assign category"
-              value={assignLabel}
-              onChange={(e) => setAssignLabel(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <input
-                className="border rounded px-2 py-1 text-sm flex-1"
-                placeholder="Amount min"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
-              />
-              <input
-                className="border rounded px-2 py-1 text-sm flex-1"
-                placeholder="Amount max"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void createRule(true)}
-          >
-            Save rule &amp; find matches
-          </button>
+    <>
+      <div className="hubhead">
+        <div>
+          <div className="eyebrow">Treasury record</div>
+          <h1 className="title">Rules</h1>
         </div>
-      ) : (
-        <div className="panel p-4">
-          <h3 className="font-head text-lg mb-2">How categorization rules work</h3>
-          <ol className="text-sm space-y-2 mb-4 list-decimal list-inside text-codex-muted">
-            <li>Categorize a transaction in the ledger</li>
-            <li>Make a rule from that categorized row</li>
-            <li>Confirm the suggestions it finds</li>
-          </ol>
-          <p className="text-xs text-codex-muted mb-4">
-            Rules propose categories; nothing is applied until you confirm.
-          </p>
-          {onGoToTransactions ? (
-            <button type="button" className="btn" onClick={onGoToTransactions}>
-              Go categorize a transaction
-            </button>
-          ) : null}
-        </div>
-      )}
-
-      <div className="panel p-4">
-        <button
-          type="button"
-          className="text-sm underline text-codex-muted mb-3"
-          onClick={() => setAdvancedOpen((o) => !o)}
-        >
-          {advancedOpen ? "Hide" : "Create a rule manually (advanced)"}
-        </button>
-        {advancedOpen ? (
-          <div className="grid gap-2 max-w-lg">
-            <input
-              className="border rounded px-2 py-1"
-              placeholder="Rule name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <input
-              className="border rounded px-2 py-1"
-              placeholder="Match merchant"
-              value={matchMerchant}
-              onChange={(e) => setMatchMerchant(e.target.value)}
-            />
-            <input
-              className="border rounded px-2 py-1"
-              placeholder="Assign category"
-              value={assignLabel}
-              onChange={(e) => setAssignLabel(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <input
-                className="border rounded px-2 py-1 flex-1"
-                placeholder="Amount min"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
-              />
-              <input
-                className="border rounded px-2 py-1 flex-1"
-                placeholder="Amount max"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
-              />
-            </div>
-            <select
-              className="border rounded px-2 py-1"
-              value={direction}
-              onChange={(e) => setDirection(e.target.value as "in" | "out" | "")}
-            >
-              <option value="">Any direction</option>
-              <option value="out">Out</option>
-              <option value="in">In</option>
-            </select>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => void createRule(false)}
-            >
-              Save rule
-            </button>
-          </div>
-        ) : null}
-        {msg ? <p className="text-sm text-codex-muted mt-3">{msg}</p> : null}
       </div>
 
-      <div className="panel p-4">
-        <h3 className="font-head text-lg mb-3">Your rules</h3>
-        {rulesLoading ? (
-          <p className="text-sm text-codex-muted">Loading rules…</p>
-        ) : rules.length === 0 ? (
-          <p className="text-sm text-codex-muted">
-            No rules yet — categorize a transaction and use &quot;Make rule&quot; to get
-            started.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {rules.map((r) => {
-              const open = expandedId === r.id;
-              return (
-                <li
-                  key={r.id}
-                  className="border-b border-sealed-bone/60 pb-3"
+      <p className="span-line">
+        Turn a one-off categorization into a pattern, so the next lines like it are
+        recognized for you to confirm.
+        {demo ? (
+          <>
+            {" "}
+            <span className="mark illustrative">Illustrative</span>
+          </>
+        ) : null}
+      </p>
+
+      <div className="explainer">
+        <h2>How categorization rules work</h2>
+        <ol>
+          <li>Categorize a transaction in the ledger.</li>
+          <li>Make a rule from that categorized row.</li>
+          <li>Confirm the suggestions it finds.</li>
+        </ol>
+        <p className="promise">
+          Rules propose categories; nothing is applied until you confirm.
+        </p>
+        {onGoToTransactions ? (
+          <button type="button" className="btn" onClick={onGoToTransactions}>
+            Go categorize a transaction
+          </button>
+        ) : null}
+      </div>
+
+      <details
+        className="adv-filter"
+        open={advancedOpen}
+        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary>Create a rule manually (advanced)</summary>
+        <div className="grid gap-2 max-w-lg mt-2">
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            placeholder="When payee contains"
+            value={matchMerchant}
+            onChange={(e) => setMatchMerchant(e.target.value)}
+          />
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            placeholder="Category"
+            value={assignLabel}
+            onChange={(e) => setAssignLabel(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary text-sm w-fit"
+            disabled={previewBusy || !matchMerchant.trim()}
+            onClick={() => void runPreview()}
+          >
+            {previewBusy ? "Previewing…" : "Preview matches"}
+          </button>
+          {preview ? (
+            <div className="preview" aria-live="polite">
+              <div
+                className={
+                  preview.total > 0 ? "preview-count" : "preview-count zero"
+                }
+              >
+                {preview.total > 0
+                  ? `${preview.total.toLocaleString()} transaction${preview.total === 1 ? "" : "s"} match this rule`
+                  : "No transactions match this rule yet."}
+              </div>
+              {preview.total > 0 ? (
+                <>
+                  <div className="preview-basis">Full book, payee or memo contains.</div>
+                  <ul className="preview-list">
+                    {preview.samples.map((tx) => (
+                      <li key={tx.id}>
+                        <span className="pl-d">{tx.posted_date ?? "—"}</span>
+                        <span className="pl-p">
+                          {tx.merchant_name ?? tx.normalized_merchant ?? "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="btn text-sm w-fit"
+            disabled={!matchMerchant.trim() || !assignLabel.trim()}
+            onClick={() => void createRule(Boolean(draftRule))}
+          >
+            {draftRule ? "Save rule & find matches" : "Save rule"}
+          </button>
+        </div>
+      </details>
+
+      {msg ? <p className="text-sm text-codex-muted mb-3">{msg}</p> : null}
+
+      <h2 className="rs-h">Your rules</h2>
+
+      {rulesLoading ? (
+        <p className="text-sm text-codex-muted">Loading rules…</p>
+      ) : rules.length === 0 ? (
+        <p className="text-sm text-codex-muted">
+          No rules yet — categorize a transaction and use + rule to get started.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {rules.map((r) => {
+            const open = expandedId === r.id;
+            return (
+              <div key={r.id} className="rule-card">
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => {
+                    if (open) setExpandedId(null);
+                    else {
+                      setExpandedId(r.id);
+                      setQueueTab("suggested");
+                      setQueuePage(0);
+                    }
+                  }}
                 >
-                  <div className="flex justify-between gap-4">
+                  <div className="rc-logic">
+                    When payee contains <span className="k">{r.match_merchant}</span>,
+                    Category: <span className="k">{r.assign_label}</span>
+                  </div>
+                  <div className="rc-counts">{formatRuleCounts(r)}</div>
+                </button>
+                <div className="rc-foot">
+                  <button
+                    type="button"
+                    className={`chip ${r.active ? "active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void toggleRule(r);
+                    }}
+                  >
+                    {r.active ? <span className="dot" /> : null}
+                    {r.active ? "Active" : "Paused"}
+                  </button>
+                  {r.active ? (
                     <button
                       type="button"
-                      className="text-left flex-1"
-                      onClick={() => {
-                        if (open) {
-                          setExpandedId(null);
-                        } else {
-                          setExpandedId(r.id);
-                          setQueueTab("suggested");
-                          setQueuePage(0);
-                        }
+                      className="ra"
+                      disabled={busyRuleId === r.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void reapplyRule(r);
                       }}
                     >
-                      <p className="text-sm">
-                        When payee contains <strong>&quot;{r.match_merchant}&quot;</strong> →
-                        Category: <strong>{r.assign_label}</strong>
-                      </p>
-                      <p className="text-xs text-codex-muted mt-1">
-                        {queueLine(r)}
-                        {r.active ? " · ACTIVE" : " · PAUSED"}
-                      </p>
-                      <p className="text-xs text-codex-muted mt-1">{r.name}</p>
+                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
                     </button>
-                    <div className="flex flex-col gap-1 shrink-0 items-stretch">
-                      {onPick ? (
-                        <PickButton
-                          variant="row"
-                          pickable={rulePickable(r)}
-                          onPick={onPick}
-                        />
-                      ) : null}
-                      <button
-                        type="button"
-                        className="btn btn-secondary text-xs"
-                        onClick={() => void toggleRule(r)}
-                      >
-                        {r.active ? "Active" : "Paused"}
-                      </button>
-                      {r.active ? (
+                  ) : null}
+                  {onPick ? (
+                    <PickButton
+                      variant="row-draft"
+                      pickable={rulePickable(r)}
+                      onPick={onPick}
+                      buttonClassName="row-pick"
+                    />
+                  ) : null}
+                </div>
+
+                {open ? (
+                  <div className="mt-3 border-t border-sealed-bone/60 pt-3">
+                    <div className="flex flex-wrap gap-3 mb-3 text-sm">
+                      {(
+                        [
+                          {
+                            id: "suggested" as const,
+                            label: `Suggested (${r.suggested_count ?? 0})`,
+                          },
+                          {
+                            id: "confirmed" as const,
+                            label: `Confirmed (${r.confirmed_count ?? 0})`,
+                          },
+                        ] as const
+                      ).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          className={`btn btn-secondary text-xs ${queueTab === t.id ? "on" : ""}`}
+                          onClick={() => {
+                            setQueueTab(t.id);
+                            setQueuePage(0);
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                      {queueTab === "suggested" && (r.suggested_count ?? 0) > 0 ? (
                         <button
                           type="button"
-                          className="btn btn-secondary text-xs"
-                          disabled={busyRuleId === r.id}
-                          onClick={() => void reapplyRule(r)}
+                          className="btn text-xs"
+                          disabled={confirmBusy}
+                          onClick={() => void confirmAllForRule(r)}
                         >
-                          {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                          Confirm all {r.suggested_count}
                         </button>
                       ) : null}
                     </div>
-                  </div>
 
-                  {open ? (
-                    <div className="mt-3 pl-1">
-                      <div className="flex flex-wrap gap-3 mb-3 text-sm">
-                        {(
-                          [
-                            {
-                              id: "suggested" as const,
-                              label: `Suggested (${r.suggested_count ?? 0})`,
-                            },
-                            {
-                              id: "confirmed" as const,
-                              label: `Confirmed (${r.confirmed_count ?? 0})`,
-                            },
-                          ] as const
-                        ).map((t) => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            className={`btn btn-secondary text-xs ${queueTab === t.id ? "on" : ""}`}
-                            onClick={() => {
-                              setQueueTab(t.id);
-                              setQueuePage(0);
-                            }}
-                          >
-                            {t.label}
-                          </button>
+                    {queueLoading ? (
+                      <p className="text-sm text-codex-muted">Loading queue…</p>
+                    ) : queueRows.length === 0 ? (
+                      <p className="text-sm text-codex-muted">
+                        No {queueTab} transactions for this rule.
+                      </p>
+                    ) : (
+                      <div className="txtable txtable-extended">
+                        <div className="txhead">
+                          <span />
+                          <span>Date</span>
+                          <span>Source</span>
+                          <span>Payee / Memo</span>
+                          <span>Category</span>
+                          <span className="ta-r">Amount</span>
+                          <span>Status</span>
+                        </div>
+                        {queueRows.map((tx) => (
+                          <TreasuryTxRow
+                            key={tx.id}
+                            tx={tx}
+                            showSelect={false}
+                            onConfirm={() =>
+                              void patchTx(tx.id, { confirmSuggestion: true })
+                            }
+                            onReject={() =>
+                              void patchTx(tx.id, { rejectSuggestion: true })
+                            }
+                          />
                         ))}
-                        {queueTab === "suggested" && (r.suggested_count ?? 0) > 0 ? (
-                          <button
-                            type="button"
-                            className="btn text-xs"
-                            disabled={confirmBusy}
-                            onClick={() => void confirmAllForRule(r)}
-                          >
-                            Confirm all {r.suggested_count}
-                          </button>
-                        ) : null}
                       </div>
+                    )}
 
-                      {queueLoading ? (
-                        <p className="text-sm text-codex-muted">Loading queue…</p>
-                      ) : queueRows.length === 0 ? (
-                        <p className="text-sm text-codex-muted">
-                          No {queueTab} transactions for this rule.
-                        </p>
-                      ) : (
-                        <div className="txtable txtable-extended">
-                          <div className="txhead">
-                            <span />
-                            <span>Date</span>
-                            <span>Source</span>
-                            <span>Payee / Memo</span>
-                            <span>Category</span>
-                            <span className="ta-r">Amount</span>
-                            <span>Status</span>
-                          </div>
-                          {queueRows.map((tx) => (
-                            <TreasuryTxRow
-                              key={tx.id}
-                              tx={tx}
-                              showSelect={false}
-                              onConfirm={() =>
-                                void patchTx(tx.id, { confirmSuggestion: true })
-                              }
-                              onReject={() =>
-                                void patchTx(tx.id, { rejectSuggestion: true })
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
+                    {queueTotal > 50 ? (
+                      <div className="flex gap-2 items-center mt-3">
+                        <button
+                          type="button"
+                          className="btn btn-secondary text-xs"
+                          disabled={queuePage <= 0}
+                          onClick={() => setQueuePage((p) => Math.max(0, p - 1))}
+                        >
+                          Previous
+                        </button>
+                        <span className="text-xs text-codex-muted">
+                          Page {queuePage + 1} of {queuePageCount}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary text-xs"
+                          disabled={queuePage + 1 >= queuePageCount}
+                          onClick={() => setQueuePage((p) => p + 1)}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                      {queueTotal > 50 ? (
-                        <div className="flex gap-2 items-center mt-3">
-                          <button
-                            type="button"
-                            className="btn btn-secondary text-xs"
-                            disabled={queuePage <= 0}
-                            onClick={() => setQueuePage((p) => Math.max(0, p - 1))}
-                          >
-                            Previous
-                          </button>
-                          <span className="text-xs text-codex-muted">
-                            Page {queuePage + 1} of {queuePageCount}
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-secondary text-xs"
-                            disabled={queuePage + 1 >= queuePageCount}
-                            onClick={() => setQueuePage((p) => p + 1)}
-                          >
-                            Next
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
+      <p className="meta" style={{ marginTop: 12 }}>
+        Suggested and Confirmed mean exactly what they mean on Transactions. Nothing
+        labels itself: a rule proposes, you confirm.
+      </p>
+    </>
   );
 }

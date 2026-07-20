@@ -633,6 +633,7 @@ export function OperatorTreasuryClientRecord({
         {tab === "rules" ? (
           <TreasuryRulesPanel
             clientUserId={clientUserId}
+            demo={demo}
             draftRule={ruleDraft}
             onClearDraft={() => setRuleDraft(null)}
             onGoToTransactions={() => setTab("transactions")}
