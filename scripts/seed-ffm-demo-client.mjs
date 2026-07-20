@@ -57,6 +57,7 @@ async function ensureAuthUser(admin, email, password, displayName) {
     const { error } = await admin.auth.admin.updateUserById(user.id, {
       password,
       email_confirm: true,
+      user_metadata: { full_name: displayName },
     });
     if (error) throw new Error(`updateUser: ${error.message}`);
   }
@@ -169,6 +170,19 @@ async function main() {
   const treasuryModuleId = await resolveModuleId(admin, "treasury");
   const tenantId = await resolveTenantId(admin);
   await ensureClientGrant(admin, tenantId, client.id, treasuryModuleId, operatorRow.id);
+
+  // Stage 2d — per-client operator portfolio chrome copy (demo tenant).
+  await admin.from("treasury_client_operator_profile").upsert(
+    {
+      distributor_tenant_id: tenantId,
+      client_user_id: client.id,
+      industry: "Medical clinic",
+      next_note: "Insurance reimbursements, steady weekly",
+      watch_note: "Clean recurring book, low risk",
+      attention_reason: null,
+    },
+    { onConflict: "distributor_tenant_id,client_user_id" }
+  );
 
   console.log("\n--- FFM demo client ready ---");
   console.log("Client:", FFM_DEMO_EMAIL, "/", FFM_DEMO_PASSWORD);

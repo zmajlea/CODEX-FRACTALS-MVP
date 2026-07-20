@@ -57,6 +57,7 @@ export default async function OperatorTreasuryPage({ searchParams }: Props) {
     <OperatorTreasuryPortfolio
       tenantId={ctx.tenantId}
       tenantName={ctx.tenantName}
+      domainSlug={ctx.domainSlug}
       credits={ctx.credits}
       initialClients={clients}
       treasurySeatCost={treasurySeatCost}
