@@ -70,7 +70,23 @@ async function main() {
       ? earliestBaselineStart
       : recurringLookbackStart;
 
-  const result = await computeTreasuryForecast(admin, client.id, "month");
+  const result = await computeTreasuryForecast(
+    admin,
+    client.id,
+    "month",
+    // Spec 50 — pick first account on the bench client
+    (
+      await admin
+        .from("treasury_accounts")
+        .select("account_id")
+        .eq("client_user_id", client.id)
+        .limit(1)
+        .maybeSingle()
+    ).data?.account_id ??
+      (() => {
+        throw new Error("bench client has no accounts");
+      })()
+  );
   const periods = result.periods ?? [];
   const closings = periods.map((p) => p.closing);
   const seed = result.seed_balance;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
@@ -38,9 +38,32 @@ export function TreasuryAnalyticsPanel({
 }: Props) {
   const [view, setView] = useState<AnalyticsView>(initialView);
 
+  const accounts = useMemo(() => {
+    const list: { id: string; name: string }[] = [];
+    for (const inst of accountsData?.institutions ?? []) {
+      for (const a of inst.accounts) {
+        list.push({ id: a.account_id, name: a.name ?? a.account_id });
+      }
+    }
+    return list;
+  }, [accountsData]);
+
+  const [accountId, setAccountId] = useState("");
+
   useEffect(() => {
     setView(initialView);
   }, [initialView]);
+
+  // Default to first account when list arrives or current id disappears.
+  useEffect(() => {
+    if (accounts.length === 0) {
+      if (accountId) setAccountId("");
+      return;
+    }
+    if (!accountId || !accounts.some((a) => a.id === accountId)) {
+      setAccountId(accounts[0]!.id);
+    }
+  }, [accounts, accountId]);
 
   const showView = useCallback(
     (next: AnalyticsView) => {
@@ -125,6 +148,9 @@ export function TreasuryAnalyticsPanel({
           clientUserId={clientUserId}
           hasSyncedData={hasSyncedData}
           embedded
+          accounts={accounts}
+          accountId={accountId}
+          onAccountIdChange={setAccountId}
           onSelectPeriod={onSelectPeriod}
           onPick={onPick}
         />
@@ -139,6 +165,9 @@ export function TreasuryAnalyticsPanel({
         <AnalyticsShell
           clientUserId={clientUserId}
           accountsData={accountsData}
+          accounts={accounts}
+          accountId={accountId}
+          onAccountIdChange={setAccountId}
           initialStudyId={initialStudyId}
           embedded
           clientName={clientName}

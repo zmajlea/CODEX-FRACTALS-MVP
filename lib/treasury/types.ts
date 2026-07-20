@@ -183,6 +183,9 @@ export type TreasuryForecastResponse = {
   refuse_reason?: string;
   data_span?: { first: string; last: string } | null;
   history_days?: number;
+  /** Spec 50 — scoped account (absent on empty-book response). */
+  account_id?: string;
+  account_name?: string;
 };
 
 export type TreasuryRuleRow = {

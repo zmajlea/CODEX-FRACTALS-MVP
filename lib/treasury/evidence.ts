@@ -71,6 +71,8 @@ export type ProjectedFigureSnap = {
   caveat?: string;
   engineLabel?: string;
   startMonth?: string;
+  /** Spec 50 — account the projected figure is scoped to. */
+  accountName?: string;
 };
 
 /** Reference + recipe union. Recipe `id` is a draft-local key for remove, not a row ref. */
@@ -1121,11 +1123,23 @@ export async function resolveEvidenceLive(
       const g =
         typeof ev.params.granularity === "string" ? ev.params.granularity : "month";
       const preSnap = ev.snap as ProjectedFigureSnap | undefined;
+      const accountName =
+        preSnap?.accountName ??
+        (typeof ev.params.accountName === "string"
+          ? ev.params.accountName
+          : typeof ev.params.accountId === "string"
+            ? ev.params.accountId
+            : undefined);
+      const baseLabel =
+        preSnap?.label ?? (asOf ? `Forecast as of ${asOf}` : "Forecast");
       items.push({
         kind: "forecast",
         id: ev.id,
         available: true,
-        label: preSnap?.label ?? (asOf ? `Forecast as of ${asOf}` : "Forecast"),
+        label:
+          accountName && !baseLabel.includes(accountName)
+            ? `${baseLabel} · ${accountName}`
+            : baseLabel,
         sublabel: preSnap?.sublabel ?? g,
         amount: preSnap?.amount,
         direction: preSnap?.direction,
@@ -1334,6 +1348,13 @@ export async function snapshotEvidence(
           engineLabel:
             pre.engineLabel ??
             (projected ? FORECAST_ENGINE_LABEL : undefined),
+          accountName:
+            pre.accountName ??
+            (typeof ev.params.accountName === "string"
+              ? ev.params.accountName
+              : typeof ev.params.accountId === "string"
+                ? ev.params.accountId
+                : undefined),
         };
         return { ...ev, snap };
       }

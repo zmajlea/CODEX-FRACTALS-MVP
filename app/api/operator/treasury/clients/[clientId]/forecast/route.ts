@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { writeOperatorTreasuryReadAudit } from "@/lib/server/operator-treasury-audit";
-import { computeTreasuryForecast } from "@/lib/server/treasury-forecast";
+import {
+  computeTreasuryForecast,
+  emptyTreasuryForecast,
+} from "@/lib/server/treasury-forecast";
 import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
@@ -28,12 +31,40 @@ export async function GET(request: Request, context: RouteContext) {
     surface: "forecast",
   });
 
-  const granularity = parseGranularity(new URL(request.url));
+  const url = new URL(request.url);
+  const granularity = parseGranularity(url);
+  const accountIdParam = url.searchParams.get("accountId")?.trim() || null;
 
   try {
-    const result = await computeTreasuryForecast(guard.admin, clientId, granularity);
+    const { count: accountCount } = await guard.admin
+      .from("treasury_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("client_user_id", clientId);
+
+    // Spec 50 amendment: empty books must not 400 — same insufficient empty as today.
+    if ((accountCount ?? 0) === 0) {
+      return NextResponse.json(emptyTreasuryForecast(granularity));
+    }
+
+    if (!accountIdParam) {
+      return NextResponse.json(
+        { error: "accountId is required when the client has accounts" },
+        { status: 400 }
+      );
+    }
+
+    const result = await computeTreasuryForecast(
+      guard.admin,
+      clientId,
+      granularity,
+      accountIdParam
+    );
     return NextResponse.json(result);
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to compute forecast";
+    if (message.startsWith("Account not found")) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     console.error("[operator/treasury/forecast]", err);
     return NextResponse.json({ error: "Failed to compute forecast" }, { status: 500 });
   }
