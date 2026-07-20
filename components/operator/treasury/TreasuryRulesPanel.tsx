@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
@@ -86,6 +87,7 @@ export function TreasuryRulesPanel({
   const [queuePage, setQueuePage] = useState(0);
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [labels, setLabels] = useState<string[]>([]);
 
   function rulePickable(r: TreasuryRuleRow): Pickable {
     const suggested = r.suggested_count ?? 0;
@@ -113,6 +115,18 @@ export function TreasuryRulesPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/labels`
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { labels: string[] };
+        setLabels(data.labels);
+      }
+    })();
+  }, [clientUserId]);
 
   useEffect(() => {
     if (!draftRule) return;
@@ -388,11 +402,12 @@ export function TreasuryRulesPanel({
             value={matchMerchant}
             onChange={(e) => setMatchMerchant(e.target.value)}
           />
-          <input
-            className="border rounded px-2 py-1 text-sm w-full"
-            placeholder="Category"
+          <CategoryPicker
             value={assignLabel}
-            onChange={(e) => setAssignLabel(e.target.value)}
+            categories={labels}
+            onChange={setAssignLabel}
+            placeholder="Category to assign"
+            aria-label="Category to assign"
           />
           <button
             type="button"

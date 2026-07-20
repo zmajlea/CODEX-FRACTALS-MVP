@@ -1,6 +1,7 @@
 "use client";
 
 import { formatSuMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
+import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
@@ -109,18 +110,14 @@ export function TreasuryTxRow({
       <td className="memo">{memo}</td>
       <td>
         {editing ? (
-          <div className="space-y-1">
-            <input
-              list={`label-suggestions-${tx.id}`}
-              className="cat-field w-full"
+          <div className="space-y-1 row-catpick">
+            <CategoryPicker
               value={labelDraft}
-              onChange={(e) => onLabelDraftChange?.(e.target.value)}
+              categories={labels}
+              onChange={(v) => onLabelDraftChange?.(v)}
+              placeholder="Category"
+              aria-label="Category"
             />
-            <datalist id={`label-suggestions-${tx.id}`}>
-              {labels.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
             <textarea
               className="w-full border rounded px-2 py-1 text-xs"
               rows={2}

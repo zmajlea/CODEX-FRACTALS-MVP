@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { TreasuryRangeCalendar } from "@/components/operator/treasury/TreasuryRangeCalendar";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import { PickButton } from "@/components/operator/treasury/PickButton";
@@ -289,17 +290,29 @@ export function TreasuryLedgerPanel({
     return () => window.clearTimeout(t);
   }, [focusTxId, loading, transactions, onFocusTxConsumed]);
 
-  useEffect(() => {
-    void (async () => {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/labels`
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { labels: string[] };
-        setLabels(data.labels);
-      }
-    })();
+  const refreshLabels = useCallback(async () => {
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/labels`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { labels: string[] };
+      setLabels(data.labels);
+    }
   }, [clientUserId]);
+
+  useEffect(() => {
+    void refreshLabels();
+  }, [refreshLabels]);
+
+  function rememberLabel(label: string) {
+    const t = label.trim();
+    if (!t) return;
+    setLabels((prev) =>
+      prev.some((l) => l.toLowerCase() === t.toLowerCase())
+        ? prev
+        : [...prev, t].sort((a, b) => a.localeCompare(b))
+    );
+  }
 
   function composeAppliedFromDraft(
     status: StatusFilter = applied.status,
@@ -381,6 +394,7 @@ export function TreasuryLedgerPanel({
         body: JSON.stringify(body),
       }
     );
+    if (typeof body.label === "string") rememberLabel(body.label);
     setEditingId(null);
     void load(applied, page, pageSize);
   }
@@ -406,6 +420,7 @@ export function TreasuryLedgerPanel({
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Bulk label failed");
       }
+      rememberLabel(label);
       setSelected(new Set());
       setBulkLabel("");
       void load(applied, page, pageSize);
@@ -834,18 +849,15 @@ export function TreasuryLedgerPanel({
       {selected.size > 0 ? (
         <div className="tx-bulk-bar mb-4 flex flex-wrap gap-2 items-center">
           <span className="text-sm font-medium">{selected.size} selected</span>
-          <input
-            list="bulk-label-suggestions"
-            className="border rounded px-2 py-1 text-sm min-w-[160px]"
-            placeholder="Category"
+          <CategoryPicker
             value={bulkLabel}
-            onChange={(e) => setBulkLabel(e.target.value)}
+            categories={labels}
+            onChange={setBulkLabel}
+            placeholder="Category"
+            aria-label="Bulk category"
+            disabled={bulkBusy}
+            className="min-w-[200px]"
           />
-          <datalist id="bulk-label-suggestions">
-            {labels.map((l) => (
-              <option key={l} value={l} />
-            ))}
-          </datalist>
           <button
             type="button"
             className="btn btn-primary text-xs"
