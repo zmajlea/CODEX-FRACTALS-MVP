@@ -156,24 +156,26 @@ export function TreasuryTxRow({
       </td>
       <td>{anaStatusChip(tx)}</td>
       <td className="row-act">
-        {isUncategorized && onStartEdit ? (
-          <button type="button" className="ra" onClick={() => onStartEdit()}>
-            Categorize
-          </button>
-        ) : null}
-        {isSuggested && onConfirm ? (
-          <button type="button" className="ra" onClick={() => onConfirm()}>
-            Confirm
-          </button>
-        ) : null}
-        {isConfirmed && onMakeRule ? (
-          <button type="button" className="ra" onClick={() => onMakeRule()}>
-            + rule
-          </button>
-        ) : null}
-        {onPick ? (
-          <PickButton variant="row-draft" pickable={rowPickable} onPick={onPick} />
-        ) : null}
+        <div className="row-act-in">
+          {isUncategorized && onStartEdit ? (
+            <button type="button" className="ra" onClick={() => onStartEdit()}>
+              Categorize
+            </button>
+          ) : null}
+          {isSuggested && onConfirm ? (
+            <button type="button" className="ra" onClick={() => onConfirm()}>
+              Confirm
+            </button>
+          ) : null}
+          {isConfirmed && onMakeRule ? (
+            <button type="button" className="ra" onClick={() => onMakeRule()}>
+              + rule
+            </button>
+          ) : null}
+          {onPick ? (
+            <PickButton variant="row-draft" pickable={rowPickable} onPick={onPick} />
+          ) : null}
+        </div>
       </td>
     </tr>
   );

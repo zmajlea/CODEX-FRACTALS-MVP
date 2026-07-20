@@ -1869,6 +1869,11 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
 .rtx-amt.out{ color:var(--ink); }
 .rtx-amt.in{ color:var(--su-pos); }
 
+/* Spec 48B — Ana divergence: .row-act was inline-flex on <td> (breaks table layout when memos wrap).
+   Keep the <td> as a table cell; move flex to .row-act-in. Do not hand-edit summit-r1.css. */
+[data-r1] td.row-act{ display:table-cell; vertical-align:middle; }
+[data-r1] .row-act-in{ display:inline-flex; gap:8px; align-items:center; }
+
 @media (max-width:820px){
   [data-brand="summit"] .ct-hero-grid{ grid-template-columns:1fr; }
   .ct-head-row,.ct-row{ grid-template-columns:1fr; }

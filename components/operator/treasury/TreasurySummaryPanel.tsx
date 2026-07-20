@@ -758,26 +758,28 @@ export function TreasurySummaryPanel({
                             {formatTreasuryMoney(p.closing, forecast.currency)}
                           </td>
                           <td className="row-act">
-                            {onPick ? (
-                              <PickButton
-                                variant="row"
-                                pickable={{
-                                  kind: "figure",
-                                  params: {
-                                    metric: "forecast_closing",
-                                    from: p.period_start,
-                                    to: periodEnd(granularity, p.period_start),
-                                    granularity,
-                                  },
-                                  label: periodLabel(granularity, p.period_start),
-                                  sublabel: formatTreasuryMoney(
-                                    p.closing,
-                                    forecast.currency
-                                  ),
-                                }}
-                                onPick={onPick}
-                              />
-                            ) : null}
+                            <div className="row-act-in">
+                              {onPick ? (
+                                <PickButton
+                                  variant="row"
+                                  pickable={{
+                                    kind: "figure",
+                                    params: {
+                                      metric: "forecast_closing",
+                                      from: p.period_start,
+                                      to: periodEnd(granularity, p.period_start),
+                                      granularity,
+                                    },
+                                    label: periodLabel(granularity, p.period_start),
+                                    sublabel: formatTreasuryMoney(
+                                      p.closing,
+                                      forecast.currency
+                                    ),
+                                  }}
+                                  onPick={onPick}
+                                />
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ))}
