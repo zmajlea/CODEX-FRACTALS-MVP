@@ -1,16 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { BcnContinuityShell } from "@/components/bcn/BcnContinuityShell";
-import { BcnIcon } from "@/components/bcn/BcnIcon";
 import type { BcnRailGroup } from "@/components/bcn/BcnRail";
 import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
 import { InviteClientModal } from "@/components/platform/InviteClientModal";
+import { TreasuryPortfolioClientCard } from "@/components/operator/treasury/TreasuryPortfolioClientCard";
+import { treasuryPortfolioRailGroups } from "@/components/operator/treasury/treasuryPortfolioRail";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
-import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 
 export type OperatorTreasuryClientRow = {
   grant_id: string;
@@ -23,6 +23,11 @@ export type OperatorTreasuryClientRow = {
   total_cash: number;
   total_cash_by_currency: Record<string, number>;
   last_synced_at: string | null;
+  needs_label_count?: number;
+  industry?: string | null;
+  next_note?: string | null;
+  watch_note?: string | null;
+  attention_reason?: string | null;
 };
 
 type ActiveModule = {
@@ -31,30 +36,29 @@ type ActiveModule = {
   status: string;
 };
 
+type PortfolioView = "cards" | "list";
+
+const VIEW_STORAGE_KEY = "summit.portfolioView";
+
 type Props = {
   tenantId: string;
   tenantName: string;
+  domainSlug: string;
   credits: number;
   initialClients: OperatorTreasuryClientRow[];
   treasurySeatCost?: number;
 };
 
-function primaryCashDisplay(row: OperatorTreasuryClientRow): string {
-  const entries = Object.entries(row.total_cash_by_currency ?? {});
-  if (entries.length === 1) {
-    return formatTreasuryMoney(entries[0]![1], entries[0]![0]);
-  }
-  if (entries.length > 1) {
-    return entries
-      .map(([cur, amt]) => formatTreasuryMoney(amt, cur))
-      .join(" · ");
-  }
-  return formatTreasuryMoney(row.total_cash, "USD");
+function readStoredView(): PortfolioView {
+  if (typeof window === "undefined") return "cards";
+  const v = window.localStorage.getItem(VIEW_STORAGE_KEY);
+  return v === "list" ? "list" : "cards";
 }
 
 export function OperatorTreasuryPortfolio({
   tenantId,
   tenantName,
+  domainSlug,
   credits,
   initialClients,
   treasurySeatCost = 1,
@@ -67,6 +71,18 @@ export function OperatorTreasuryPortfolio({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
+  const [view, setView] = useState<PortfolioView>("cards");
+
+  const demo = isDemoTenant(domainSlug);
+
+  useEffect(() => {
+    setView(readStoredView());
+  }, []);
+
+  const setPortfolioView = useCallback((next: PortfolioView) => {
+    setView(next);
+    window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,42 +138,30 @@ export function OperatorTreasuryPortfolio({
   );
 
   const railGroups: BcnRailGroup[] = useMemo(
-    () => [
-      {
-        label: "Portfolio",
-        items: [
-          {
-            id: "treasury-inbox",
-            icon: "inbox",
-            label: "Inbox",
-            badge: inboxUnread,
-            href: "/operator/treasury/inbox",
-          },
-          {
-            id: "treasury-clients",
-            icon: "grid",
-            label: "Portfolio Dashboard",
-            active: true,
-          },
-          {
-            id: "operator-home",
-            icon: "people",
-            label: "Operator home",
-            href: "/operator",
-          },
-        ],
-      },
-    ],
+    () => treasuryPortfolioRailGroups({ inboxUnread, active: "portfolio" }),
     [inboxUnread]
   );
 
-  const seatsUsed = clients.length;
+  const attentionClients = useMemo(
+    () =>
+      clients.filter((c) => {
+        const reason = c.attention_reason?.trim();
+        return Boolean(reason);
+      }),
+    [clients]
+  );
+
+  const inviteDisabled =
+    credits < treasurySeatCost || treasuryModules.length === 0;
+
+  const activeCount = clients.length;
 
   return (
     <>
       <BcnContinuityShell
         mode="operator"
         dataBrand="summit"
+        dataR1
         wordmark={defaultWordmark("summit")}
         homeHref="/operator"
         recordPill={{
@@ -173,101 +177,168 @@ export function OperatorTreasuryPortfolio({
         <section className="view on" aria-label="Operator treasury portfolio">
           <div className="hubhead">
             <div>
-              <div className="eyebrow">{tenantName}</div>
+              <div className="eyebrow">Your firm</div>
               <h1 className="title">Portfolio Dashboard</h1>
-              <p className="text-sm text-codex-muted mt-1">
-                {seatsUsed} active client{seatsUsed === 1 ? "" : "s"} · cache-only
-                balances (as-of dates shown per client)
-              </p>
             </div>
-            <div className="mh-meta">
-              <div className="big">{credits}</div>
-              <div className="sub">credits remaining</div>
-            </div>
-          </div>
-
-          <div className="panel mb-4 p-4 text-sm text-codex-muted">
-            Treasury seats used: <strong>{seatsUsed}</strong> · Credits remaining:{" "}
-            <strong>{credits}</strong>
-            {treasurySeatCost > 1 ? (
-              <> · {treasurySeatCost} credits per treasury seat</>
-            ) : null}
-          </div>
-
-          <div className="nextstep mb-6">
-            <span className="ns-ic">
-              <BcnIcon name="inbox" />
-            </span>
-            <div>
-              <div className="ns-k">Manage access</div>
-              <div className="ns-t">Invite a client to Treasury</div>
-            </div>
-            <span className="grow" />
-            <button
-              type="button"
-              className="btn"
-              disabled={credits < treasurySeatCost || treasuryModules.length === 0}
-              onClick={() => setInviteOpen(true)}
-            >
-              Invite client ›
-            </button>
-          </div>
-
-          {loading ? <p className="panel-note">Refreshing…</p> : null}
-
-          {clients.length === 0 ? (
-            <div className="panel p-8 text-center">
-              <p className="text-codex-muted mb-4">
-                No Treasury clients yet. Invite a client to link their banks.
-              </p>
+            <div className="ph-right">
               <button
                 type="button"
                 className="btn"
-                disabled={credits < treasurySeatCost}
+                disabled={inviteDisabled}
                 onClick={() => setInviteOpen(true)}
               >
-                Invite first client
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ width: 15, height: 15 }}
+                  aria-hidden
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New client
               </button>
-            </div>
-          ) : (
-            <div className="cards3">
-              {clients.map((row) => (
-                <article key={row.grant_id} className="panel p-5 flex flex-col gap-3">
-                  <div>
-                    <h2 className="font-head text-lg">{row.client_name}</h2>
-                    <p className="text-sm text-codex-muted">{row.client_email}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-codex-muted">
-                      Aggregate cash
-                    </p>
-                    <p className="text-2xl tabular-nums font-medium">
-                      {primaryCashDisplay(row)}
-                    </p>
-                  </div>
-                  <p className="text-sm text-codex-muted">
-                    {row.institution_count} institution
-                    {row.institution_count === 1 ? "" : "s"} · {row.account_count} account
-                    {row.account_count === 1 ? "" : "s"}
-                  </p>
-                  <p className="text-xs text-codex-muted">
-                    As of {formatTreasuryAsOf(row.last_synced_at)}
-                  </p>
-                  <span className="inline-flex">
-                    <span className="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 uppercase tracking-wide">
-                      {row.status}
-                    </span>
-                  </span>
-                  <Link
-                    href={`/operator/treasury/clients/${row.client_user_id}`}
-                    className="btn btn-secondary mt-auto self-start"
+              <div className="pv-toggle" role="group" aria-label="View">
+                <button
+                  type="button"
+                  className={`pv-btn${view === "cards" ? " on" : ""}`}
+                  aria-pressed={view === "cards"}
+                  onClick={() => setPortfolioView("cards")}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
                   >
-                    Open ›
-                  </Link>
-                </article>
-              ))}
+                    <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+                    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
+                    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
+                    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+                  </svg>
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  className={`pv-btn${view === "list" ? " on" : ""}`}
+                  aria-pressed={view === "list"}
+                  onClick={() => setPortfolioView("list")}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+                    <path d="M14 3.5V8h4" />
+                  </svg>
+                  List
+                </button>
+              </div>
+              <div className="mh-meta">
+                <div className="big num">{activeCount}</div>
+                <div className="sub">Active clients</div>
+              </div>
             </div>
-          )}
+          </div>
+
+          {demo ? (
+            <span className="illus">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 3.5 19 6v6c0 4.4-3 7.4-7 8.7C8 19.4 5 16.4 5 12V6l7-2.5Z" />
+              </svg>
+              Illustrative data, from the three sample books
+            </span>
+          ) : null}
+
+          {attentionClients.length > 0 ? (
+            <div className="su-attn">
+              <span className="su-attn-ic">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 3.5c2 3 5 4.5 5 8.5a5 5 0 0 1-10 0c0-1.6.6-2.7 1.4-3.7.3 1 .9 1.7 1.8 2 .2-2.8 1-4.9.8-6.8Z" />
+                </svg>
+              </span>
+              <div className="su-attn-b">
+                <b>
+                  {attentionClients.length} client{attentionClients.length === 1 ? "" : "s"}{" "}
+                  {attentionClients.length === 1 ? "needs" : "need"} attention
+                </b>
+                <span>
+                  {attentionClients
+                    .map((c) => `${c.client_name}, ${(c.attention_reason?.trim() ?? "").toLowerCase()}`)
+                    .join(". ")}
+                  .
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {loading ? <p className="panel-note">Refreshing…</p> : null}
+
+          <div
+            className="clgrid"
+            style={view === "list" ? { gridTemplateColumns: "1fr" } : undefined}
+          >
+            {clients.map((row) => (
+              <TreasuryPortfolioClientCard key={row.grant_id} row={row} demo={demo} />
+            ))}
+            <button
+              type="button"
+              className="addcard"
+              disabled={inviteDisabled}
+              onClick={() => setInviteOpen(true)}
+            >
+              <span className="ac-plus">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+              <span className="ac-t">New client record</span>
+              <span className="ac-s">Create a record and assign it to you</span>
+            </button>
+          </div>
+
+          {demo ? (
+            <p className="meta" style={{ marginTop: 18 }}>
+              FFM Demo&apos;s record is built as the instrument in this slice (Open record). The
+              other clients show their real portfolio figures; their records open the same pattern
+              with their own data in production.
+            </p>
+          ) : null}
         </section>
       </BcnContinuityShell>
 

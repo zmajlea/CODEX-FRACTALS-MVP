@@ -137,10 +137,10 @@ export function TreasuryClientCashTrend() {
   }, [data]);
 
   return (
-    <section className="ct-chart-panel treasury-section" aria-label="Cash flow by month">
-      <h2 className="sec-title">Cash flow by month</h2>
+    <section className="cash-hero" style={{ marginTop: 22 }} aria-label="Cash flow by month">
+      <div className="ch-l">Cash flow by month</div>
       {loading ? (
-        <p className="treasury-muted">Loading cash flow…</p>
+        <p className="meta">Loading cash flow…</p>
       ) : error ? (
         <p className="panel-note" role="alert">
           {error}
@@ -148,7 +148,7 @@ export function TreasuryClientCashTrend() {
       ) : data ? (
         <>
           <NetCashChart rows={data.rows} currency={data.primary_currency} granularity={data.granularity} />
-          <p className="treasury-meta-fine mt-3">
+          <p className="meta" style={{ marginTop: 8 }}>
             Net of receipts and disbursements in {data.primary_currency}.
             {excludedNote
               ? ` Other currencies (${excludedNote}) are shown separately and not combined.`

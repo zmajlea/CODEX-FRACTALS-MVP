@@ -1,48 +1,43 @@
 "use client";
 
+import { formatSuMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
+import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
-import { formatSuMoney } from "@/lib/treasury/format";
 import type { Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
 
-export function txStatusChip(tx: TreasuryTransactionRow) {
-  if (tx.suggestion_status === "suggested" && tx.suggested_label) {
-    return (
-      <span className="txchip rev">
-        <span className="dot" />
-        Suggested
-      </span>
-    );
-  }
-  if (tx.label && tx.label_source === "rule_confirmed") {
-    return (
-      <span className="txchip sld">
-        <span className="dot" />
-        Rule-confirmed
-      </span>
-    );
-  }
-  if (tx.label) {
-    return (
-      <span className="txchip cln">
-        <span className="dot" />
-        Categorized
-      </span>
-    );
-  }
-  return (
-    <span className="txchip rev">
-      <span className="dot" />
-      Uncategorized
-    </span>
-  );
+export function txSourceDisplay(tx: TreasuryTransactionRow): string {
+  const acct = tx.account;
+  const id =
+    tx.account_id?.replace(/^csv:/, "") ??
+    acct?.mask ??
+    acct?.name ??
+    "—";
+  const kind = acct?.institution_name ?? "CSV import";
+  return `${id} ${kind}`;
 }
 
-export function txSourceLabel(tx: TreasuryTransactionRow): string {
-  const acct = tx.account;
-  if (!acct) return "—";
-  const name = acct.name ?? "Account";
-  return acct.mask ? `${name} · ${acct.mask}` : name;
+function formatTxDate(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat(TREASURY_DISPLAY_LOCALE, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(iso.length === 10 ? `${iso}T12:00:00` : iso));
+  } catch {
+    return iso;
+  }
+}
+
+function anaStatusChip(tx: TreasuryTransactionRow) {
+  if (tx.suggestion_status === "suggested") {
+    return <span className="chip suggested">Suggested</span>;
+  }
+  if (tx.label) {
+    return <span className="chip confirmed">Confirmed</span>;
+  }
+  return <span className="chip uncategorized">Uncategorized</span>;
 }
 
 type Props = {
@@ -61,10 +56,10 @@ type Props = {
   onReject?: () => void;
   onStartEdit?: () => void;
   onMakeRule?: () => void;
-  /** Spec 36 return leg — open the producing rule’s queue */
-  onOpenRuleQueue?: (ruleId: string) => void;
-  onPick?: (draftKind: import("@/lib/treasury/pickable").DraftKind, pickable: import("@/lib/treasury/pickable").Pickable) => void;
-  /** Stage 8a-4 — scroll/highlight target from basket jump */
+  onPick?: (
+    draftKind: import("@/lib/treasury/pickable").DraftKind,
+    pickable: Pickable
+  ) => void;
   highlighted?: boolean;
 };
 
@@ -81,76 +76,48 @@ export function TreasuryTxRow({
   onDescDraftChange,
   onSaveLabel,
   onConfirm,
-  onReject,
   onStartEdit,
   onMakeRule,
-  onOpenRuleQueue,
   onPick,
   highlighted = false,
 }: Props) {
-  const payee = tx.merchant_name ?? tx.normalized_merchant ?? "—";
+  const memo = tx.raw_name ?? tx.description ?? tx.merchant_name ?? tx.normalized_merchant ?? "—";
+  const payee = tx.merchant_name ?? tx.normalized_merchant ?? memo;
   const rowPickable: Pickable = {
     kind: "transaction",
     ref: tx.id,
     label: payee,
     sublabel: tx.posted_date ?? undefined,
   };
+  const isUncategorized = !tx.label && tx.suggestion_status !== "suggested";
+  const isSuggested = tx.suggestion_status === "suggested";
+  const isConfirmed = !!tx.label;
 
   return (
-    <div
-      className={`txr ${tx.suggestion_status === "suggested" ? "r-review" : ""}${highlighted ? " focus-hit" : ""}`}
-      data-tx-id={tx.id}
-    >
+    <tr className={highlighted ? "focus-hit" : undefined} data-tx-id={tx.id}>
       {showSelect ? (
-        <span>
+        <td>
           <input
             type="checkbox"
             checked={selected}
             aria-label={`Select transaction ${tx.id}`}
             onChange={(e) => onToggleSelect?.(e.target.checked)}
           />
-        </span>
-      ) : (
-        <span />
-      )}
-      <span className="txr-date">{tx.posted_date ?? "—"}</span>
-      <span className="txr-source">
-        <b title={tx.account?.institution_name ?? undefined}>{txSourceLabel(tx)}</b>
-        <em>{tx.account?.institution_name ?? ""}</em>
-      </span>
-      <span className="txr-payee">
-        <b>{tx.merchant_name ?? tx.normalized_merchant ?? "—"}</b>
-        <em>{tx.raw_name ?? tx.description ?? ""}</em>
-        {tx.pending ? <span className="txr-flag">Pending</span> : null}
-        {tx.suggestion_explanation && tx.suggested_by_rule_id && onOpenRuleQueue ? (
-          <button
-            type="button"
-            className="txr-explain text-xs text-left underline text-codex-muted hover:text-ink block mt-1"
-            title="Open this rule’s Suggested queue"
-            onClick={() => onOpenRuleQueue(tx.suggested_by_rule_id!)}
-          >
-            {tx.suggestion_explanation}
-          </button>
-        ) : tx.suggestion_explanation ? (
-          <span className="txr-explain text-xs text-codex-muted block mt-1">
-            {tx.suggestion_explanation}
-          </span>
-        ) : null}
-      </span>
-      <span className="txr-catcell">
+        </td>
+      ) : null}
+      <td>{formatTxDate(tx.posted_date)}</td>
+      <td className="src">{txSourceDisplay(tx)}</td>
+      <td className="memo">{memo}</td>
+      <td>
         {editing ? (
-          <div className="space-y-1 w-full">
-            <input
-              list={`label-suggestions-${tx.id}`}
-              className="w-full border rounded px-2 py-1 text-sm"
+          <div className="space-y-1 row-catpick">
+            <CategoryPicker
               value={labelDraft}
-              onChange={(e) => onLabelDraftChange?.(e.target.value)}
+              categories={labels}
+              onChange={(v) => onLabelDraftChange?.(v)}
+              placeholder="Category"
+              aria-label="Category"
             />
-            <datalist id={`label-suggestions-${tx.id}`}>
-              {labels.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
             <textarea
               className="w-full border rounded px-2 py-1 text-xs"
               rows={2}
@@ -158,72 +125,64 @@ export function TreasuryTxRow({
               onChange={(e) => onDescDraftChange?.(e.target.value)}
               placeholder="Description"
             />
-            <button
-              type="button"
-              className="btn btn-secondary text-xs"
-              onClick={() => onSaveLabel?.()}
-            >
+            <button type="button" className="btn ghost text-xs" onClick={() => onSaveLabel?.()}>
               Save
             </button>
           </div>
         ) : (
-          <>
-            <span className={`txr-cat ${!tx.label ? "none" : ""}`}>
-              {tx.label ?? "Uncategorized"}
-            </span>
-            {tx.suggestion_status === "suggested" && tx.suggested_label ? (
-              <span className="txr-flag">Suggested: {tx.suggested_label}</span>
-            ) : null}
-          </>
+          <span
+            className={`cat-field${isUncategorized ? " empty" : ""}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => onStartEdit?.()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onStartEdit?.();
+              }
+            }}
+          >
+            {tx.label ?? "Add a category"}
+          </span>
         )}
-      </span>
-      <span className={`txr-amt rtx-amt ta-r ${tx.direction === "in" ? "in" : "out"}`}>
-        {formatSuMoney(Number(tx.amount), tx.direction)}
-      </span>
-      <span className="txr-status flex flex-col gap-1 items-start">
-        {onPick ? (
-          <span className="txr-pick mb-1" onClick={(e) => e.stopPropagation()}>
-            <PickButton variant="row" pickable={rowPickable} onPick={onPick} />
-          </span>
-        ) : null}
-        {txStatusChip(tx)}
-        {tx.suggestion_status === "suggested" ? (
-          <span className="txr-actions flex gap-2 flex-nowrap">
-            <button
-              type="button"
-              className="btn btn-secondary text-xs shrink-0"
-              onClick={() => onConfirm?.()}
-            >
-              Confirm
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary text-xs shrink-0"
-              onClick={() => onReject?.()}
-            >
-              Reject
-            </button>
-          </span>
-        ) : !tx.label ? (
-          onStartEdit ? (
-            <button
-              type="button"
-              className="btn btn-secondary text-xs"
-              onClick={() => onStartEdit()}
-            >
+      </td>
+      <td className="amtcell">
+        <span className={`amt ${tx.direction === "in" ? "in" : "out"} num`}>
+          {formatSuMoney(Number(tx.amount), tx.direction)}
+        </span>
+      </td>
+      <td>{anaStatusChip(tx)}</td>
+      <td className="row-act">
+        <div className="row-act-in">
+          {isUncategorized && onStartEdit ? (
+            <button type="button" className="ra" onClick={() => onStartEdit()}>
               Categorize
             </button>
-          ) : null
-        ) : onMakeRule ? (
-          <button
-            type="button"
-            className="btn btn-secondary text-xs"
-            onClick={() => onMakeRule()}
-          >
-            Make rule
-          </button>
-        ) : null}
-      </span>
-    </div>
+          ) : null}
+          {isSuggested && onConfirm ? (
+            <button type="button" className="ra" onClick={() => onConfirm()}>
+              Confirm
+            </button>
+          ) : null}
+          {isConfirmed && onMakeRule ? (
+            <button type="button" className="ra" onClick={() => onMakeRule()}>
+              + rule
+            </button>
+          ) : null}
+          {onPick ? (
+            <PickButton variant="row-draft" pickable={rowPickable} onPick={onPick} />
+          ) : null}
+        </div>
+      </td>
+    </tr>
   );
+}
+
+/** @deprecated Spec 46 — use ana chip classes on table rows. */
+export function txStatusChip(tx: TreasuryTransactionRow) {
+  return anaStatusChip(tx);
+}
+
+export function txSourceLabel(tx: TreasuryTransactionRow): string {
+  return txSourceDisplay(tx);
 }

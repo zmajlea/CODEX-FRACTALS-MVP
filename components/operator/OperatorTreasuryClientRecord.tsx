@@ -1,26 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { BcnContinuityShell } from "@/components/bcn/BcnContinuityShell";
 import type { BcnRailGroup } from "@/components/bcn/BcnRail";
 import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
-import { TreasuryAccountsView } from "@/components/treasury/TreasuryAccountsView";
 import { TreasuryConnectionsPanel } from "@/components/operator/treasury/TreasuryConnectionsPanel";
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
 import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
+import { TreasuryRecordCrumb } from "@/components/operator/treasury/TreasuryRecordCrumb";
+import { TreasuryRecordRailBack } from "@/components/operator/treasury/TreasuryRecordRailBack";
 import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
 import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
-import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
-import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
+import {
+  TreasuryAnalyticsPanel,
+  type AnalyticsView,
+} from "@/components/operator/treasury/TreasuryAnalyticsPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
+import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
-import { formatTreasuryAsOf } from "@/lib/treasury/format";
+import { formatTreasuryAsOf, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
 import { defaultDateRange, periodEnd, periodLabel } from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
@@ -35,7 +38,6 @@ import type {
 type Tab =
   | "profile"
   | "overview"
-  | "summary"
   | "analytics"
   | "transactions"
   | "rules"
@@ -45,7 +47,6 @@ type Tab =
 const VALID_TABS: Tab[] = [
   "profile",
   "overview",
-  "summary",
   "analytics",
   "transactions",
   "rules",
@@ -54,21 +55,33 @@ const VALID_TABS: Tab[] = [
 ];
 
 function parseInitialTab(value: string | undefined): Tab {
-  if (value === "spend-plan") return "analytics";
+  if (value === "spend-plan" || value === "summary") return "analytics";
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
   return "overview";
 }
 
+function parseInitialAnalyticsView(
+  tabParam: string | undefined,
+  viewParam: string | undefined
+): AnalyticsView {
+  if (viewParam === "analyzer" || viewParam === "forecast") return viewParam;
+  if (tabParam === "spend-plan") return "analyzer";
+  return "forecast";
+}
+
 type Props = {
   tenantId: string;
   tenantName: string;
+  domainSlug: string;
   clientUserId: string;
   clientName: string;
   clientEmail: string;
   grantId: string | null;
+  watchNote?: string | null;
   initialTab?: string;
+  initialAnalyticsView?: string;
   initialStudyId?: string;
   /** Stage 8 — deep-link into Recommendations draft composer. */
   initialDraftId?: string;
@@ -96,13 +109,28 @@ function dataThroughLine(data: TreasuryAccountsResponse | null): string | null {
   return dates[dates.length - 1] ?? null;
 }
 
+function formatOverviewThrough(iso: string | null): string {
+  if (!iso) return "—";
+  const d = iso.slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat(TREASURY_DISPLAY_LOCALE, {
+      dateStyle: "medium",
+    }).format(new Date(`${d}T12:00:00`));
+  } catch {
+    return d;
+  }
+}
+
 export function OperatorTreasuryClientRecord({
   tenantName,
+  domainSlug,
   clientUserId,
   clientName,
   clientEmail,
   grantId,
+  watchNote,
   initialTab,
+  initialAnalyticsView,
   initialStudyId,
   initialDraftId,
 }: Props) {
@@ -111,6 +139,9 @@ export function OperatorTreasuryClientRecord({
   const wordmark = defaultWordmark(SUMMIT_BRAND);
   const [who, setWho] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(() => parseInitialTab(initialTab));
+  const [analyticsView, setAnalyticsView] = useState<AnalyticsView>(() =>
+    parseInitialAnalyticsView(initialTab, initialAnalyticsView)
+  );
   const [focusDraftId, setFocusDraftId] = useState<string | null>(
     () => initialDraftId ?? null
   );
@@ -154,6 +185,7 @@ export function OperatorTreasuryClientRecord({
     pickTransactions,
     pickNotice,
     clearNotice,
+    setNotice,
   } = useOptimisticPick(clientUserId, bumpBasket);
 
   const apiUrl = `/api/operator/treasury/clients/${clientUserId}/accounts`;
@@ -226,25 +258,43 @@ export function OperatorTreasuryClientRecord({
     router.push(PORTAL_LOGIN);
   }, [router, supabase]);
 
+  const switchTab = useCallback(
+    (next: Tab, opts?: { view?: AnalyticsView }) => {
+      setTab(next);
+      const view =
+        next === "analytics" ? (opts?.view ?? analyticsView) : analyticsView;
+      if (next === "analytics" && opts?.view) {
+        setAnalyticsView(opts.view);
+      }
+      const qs = new URLSearchParams({ tab: next });
+      if (next === "analytics" && view !== "forecast") {
+        qs.set("view", view);
+      }
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
+        { scroll: false }
+      );
+    },
+    [analyticsView, clientUserId, router]
+  );
+
+  const syncAnalyticsView = useCallback(
+    (view: AnalyticsView) => {
+      setAnalyticsView(view);
+      const qs = new URLSearchParams({ tab: "analytics" });
+      if (view !== "forecast") qs.set("view", view);
+      router.replace(
+        `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
+        { scroll: false }
+      );
+    },
+    [clientUserId, router]
+  );
+
+  const demo = isDemoTenant(domainSlug);
+
   const railGroups: BcnRailGroup[] = useMemo(
     () => [
-      {
-        label: "Portfolio",
-        items: [
-          {
-            id: "treasury-inbox",
-            icon: "inbox",
-            label: "Inbox",
-            href: "/operator/treasury/inbox",
-          },
-          {
-            id: "treasury-portfolio",
-            icon: "grid",
-            label: "Portfolio Dashboard",
-            href: "/operator/treasury",
-          },
-        ],
-      },
       {
         label: `${clientName} record`,
         reveal: "unlocked",
@@ -286,18 +336,11 @@ export function OperatorTreasuryClientRecord({
             onClick: () => setTab("rules"),
           },
           {
-            id: "summary",
-            icon: "money",
-            label: "Summary",
-            active: tab === "summary",
-            onClick: () => setTab("summary"),
-          },
-          {
             id: "analytics",
             icon: "money",
-            label: "Analyzer",
+            label: "Analytics",
             active: tab === "analytics",
-            onClick: () => setTab("analytics"),
+            onClick: () => switchTab("analytics"),
           },
           {
             id: "recommendations",
@@ -310,7 +353,7 @@ export function OperatorTreasuryClientRecord({
         ],
       },
     ],
-    [clientName, tab, needsLabelCount, recUnread]
+    [clientName, tab, needsLabelCount, recUnread, switchTab]
   );
 
   async function suspendAccess() {
@@ -431,8 +474,9 @@ export function OperatorTreasuryClientRecord({
     if (nav.kind === "study") {
       setFocusStudyId(nav.id);
       setTab("analytics");
+      setAnalyticsView("analyzer");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&study=${nav.id}`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=analyzer&study=${nav.id}`,
         { scroll: false }
       );
       return;
@@ -453,9 +497,10 @@ export function OperatorTreasuryClientRecord({
       if (from && to) {
         setDateRange({ preset: "custom", from, to });
       }
-      setTab("summary");
+      setTab("analytics");
+      setAnalyticsView("forecast");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=summary`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=forecast`,
         { scroll: false }
       );
     }
@@ -485,31 +530,33 @@ export function OperatorTreasuryClientRecord({
     <BcnContinuityShell
       mode="operator"
       dataBrand={SUMMIT_BRAND}
+      dataR1
       wordmark={wordmark}
       homeHref="/operator"
       recordPill={{ primary: clientName, secondary: "Treasury" }}
       who={who}
       keyUnlocked
       railGroups={railGroups}
+      railHead={<TreasuryRecordRailBack />}
       onLogout={() => void handleLogout()}
       showBcnSolutionLine
     >
       <div className="view on">
-        <nav className="text-sm text-codex-muted mb-4">
-          <Link href="/operator/treasury" className="hover:text-ink">
-            Portfolio Dashboard
-          </Link>
-          <span className="mx-2">›</span>
-          <span className="text-ink">{clientName}</span>
-        </nav>
+        <TreasuryRecordCrumb
+          clientUserId={clientUserId}
+          clientName={clientName}
+          tab={tab}
+        />
 
         {/* Spec 35: record header = identity only. Sync → Connections; Suspend/Revoke → Profile. */}
-        <div className="panel p-4 mb-4">
-          <p className="font-medium font-head text-lg">{clientName}</p>
-          <p className="text-sm text-codex-muted">{clientEmail}</p>
-          {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
-          <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
-        </div>
+        {tab !== "overview" && tab !== "transactions" ? (
+          <div className="panel p-4 mb-4">
+            <p className="font-medium font-head text-lg">{clientName}</p>
+            <p className="text-sm text-codex-muted">{clientEmail}</p>
+            {prov ? <p className="text-xs text-codex-muted mt-1">{prov}</p> : null}
+            <p className="text-xs text-codex-muted mt-1">{asOfLine}</p>
+          </div>
+        ) : null}
 
         {actionMsg ? <p className="panel-note mb-4">{actionMsg}</p> : null}
 
@@ -527,46 +574,63 @@ export function OperatorTreasuryClientRecord({
 
         {tab === "overview" ? (
           <>
+            <div className="hubhead">
+              <div>
+                <div className="eyebrow">Treasury record</div>
+                <h1 className="title">{clientName}</h1>
+              </div>
+            </div>
+
+            {demo && csvOnly ? (
+              <span className="illus">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 3.5 19 6v6c0 4.4-3 7.4-7 8.7C8 19.4 5 16.4 5 12V6l7-2.5Z" />
+                </svg>
+                Illustrative data, imported from CSV through{" "}
+                {formatOverviewThrough(dataThrough ?? data?.last_synced_at ?? null)}
+              </span>
+            ) : null}
+
             <TreasuryOverviewTiles
-              institutions={data?.institutions ?? []}
-              lastSyncedAt={data?.last_synced_at ?? null}
-              needsLabelCount={needsLabelCount}
-              onNeedsReviewClick={() => setTab("transactions")}
-              sourceCount={data?.institutions.length ?? 0}
-              accountCount={accountCount}
-              csvOnly={csvOnly}
-              transactionCount={data?.transaction_count}
-              onPick={handleOverviewPick}
-            />
-            <TreasuryAccountsView
+              clientUserId={clientUserId}
+              clientName={clientName}
+              tenantName={tenantName}
               institutions={data?.institutions ?? []}
               transactions={data?.transactions ?? []}
-              loading={loading}
-              error={error}
-              readOnly
-              hideTotals
-              title={`${clientName}'s accounts`}
-              subtitle={`Managed under ${tenantName}. Read-only operator view.`}
-              showConnectButton={false}
+              lastSyncedAt={data?.last_synced_at ?? null}
+              dataThrough={dataThrough}
+              needsLabelCount={needsLabelCount}
+              accountCount={accountCount}
+              csvOnly={csvOnly}
+              transactionCount={data?.transaction_count ?? 0}
+              watchNote={watchNote}
+              onTabSwitch={switchTab}
+              onPick={handleOverviewPick}
+              rulesRefreshKey={ledgerKey}
             />
           </>
         ) : null}
 
-        {tab === "summary" ? (
-          <TreasurySummaryPanel
+        {tab === "analytics" ? (
+          <TreasuryAnalyticsPanel
             clientUserId={clientUserId}
+            demo={demo}
             hasSyncedData={hasSyncedData}
+            accountsData={data}
+            initialView={analyticsView}
+            initialStudyId={focusStudyId ?? initialStudyId}
+            clientName={clientName}
             onSelectPeriod={handleSelectPeriod}
             onPick={sharedPick}
-          />
-        ) : null}
-
-        {tab === "analytics" ? (
-          <AnalyticsShell
-            clientUserId={clientUserId}
-            accountsData={data}
-            initialStudyId={focusStudyId ?? initialStudyId}
-            onPick={sharedPick}
+            onViewChange={syncAnalyticsView}
           />
         ) : null}
 
@@ -574,6 +638,7 @@ export function OperatorTreasuryClientRecord({
           <TreasuryLedgerPanel
             key={ledgerKey}
             clientUserId={clientUserId}
+            demo={demo}
             institutions={data?.institutions ?? []}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
@@ -597,6 +662,7 @@ export function OperatorTreasuryClientRecord({
         {tab === "rules" ? (
           <TreasuryRulesPanel
             clientUserId={clientUserId}
+            demo={demo}
             draftRule={ruleDraft}
             onClearDraft={() => setRuleDraft(null)}
             onGoToTransactions={() => setTab("transactions")}
@@ -644,9 +710,11 @@ export function OperatorTreasuryClientRecord({
 
       <DraftsRail
         clientUserId={clientUserId}
+        clientName={clientName}
         refreshKey={basketKey}
         pickNotice={pickNotice}
         onClearPickNotice={clearNotice}
+        onSetPickNotice={setNotice}
         onOpenDraft={(draftId) => {
           setTab("recommendations");
           setFocusDraftId(draftId);

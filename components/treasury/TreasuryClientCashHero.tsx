@@ -10,35 +10,45 @@ type AccountRow = {
   name: string;
   mask: string | null;
   institution: string;
+  isCsv: boolean;
   balance: number;
   currency: string;
+  type: string | null;
+  subtype: string | null;
 };
 
 type Props = {
   institutions: TreasuryInstitutionView[];
   lastSyncedAt: string | null;
+  loading?: boolean;
 };
 
-function currencySymbol(code: string): string {
-  if (code === "EUR") return "€";
-  if (code === "USD") return "$";
-  return code;
+function accountSourceLabel(isCsv: boolean): string {
+  return isCsv ? "Imported (CSV)" : "Bank feed";
 }
 
-export function TreasuryClientCashHero({ institutions, lastSyncedAt }: Props) {
+export function TreasuryClientCashHero({
+  institutions,
+  lastSyncedAt,
+  loading = false,
+}: Props) {
   const totals = useMemo(() => sumBalancesByCurrency(institutions), [institutions]);
 
   const accounts = useMemo((): AccountRow[] => {
     const rows: AccountRow[] = [];
     for (const inst of institutions) {
+      const isCsv = inst.item_id === "csv-manual";
       for (const acct of inst.accounts) {
         rows.push({
           account_id: acct.account_id,
           name: acct.name ?? "Account",
           mask: acct.mask,
           institution: inst.institution_name ?? "Linked",
+          isCsv,
           balance: acct.current_balance ?? 0,
           currency: acct.iso_currency_code ?? "USD",
+          type: acct.type ?? null,
+          subtype: acct.subtype ?? null,
         });
       }
     }
@@ -50,73 +60,45 @@ export function TreasuryClientCashHero({ institutions, lastSyncedAt }: Props) {
     : null;
   const primaryCurrency = primary?.[0] ?? "USD";
   const primaryTotal = primary?.[1] ?? 0;
-  const secondary = totals.filter(([c]) => c !== primaryCurrency);
 
-  const maxByCurrency = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const acct of accounts) {
-      const abs = Math.abs(acct.balance);
-      map.set(acct.currency, Math.max(map.get(acct.currency) ?? 0, abs));
-    }
-    return map;
-  }, [accounts]);
-
-  const accountCount = accounts.length;
-  const institutionCount = institutions.length;
   const asOfLabel = lastSyncedAt
     ? formatTreasuryAsOf(lastSyncedAt)
-    : "From your imported book";
+    : "your last import";
+
+  if (loading && accounts.length === 0) {
+    return (
+      <section className="cash-hero" aria-label="Cash position">
+        <div className="ch-l">Cash position</div>
+        <p className="meta">Loading…</p>
+      </section>
+    );
+  }
 
   return (
-    <section className="ct-hero treasury-section" aria-label="Cash position">
-      <p className="eyebrow">Cash position</p>
-      <div className="ct-hero-grid">
-        <div>
-          <div>
-            <span className="ct-hero-primary">{formatTreasuryMoney(primaryTotal, primaryCurrency)}</span>
-            <span className="ct-currency-chip">{primaryCurrency}</span>
-          </div>
-          {secondary.map(([cur, amt]) => (
-            <div key={cur}>
-              <p className="ct-hero-secondary">
-                + {currencySymbol(cur)}
-                {Math.abs(amt).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
-                held in {cur}
-              </p>
-              <p className="ct-hero-fine">Currencies are not converted or combined.</p>
-            </div>
-          ))}
-        </div>
-        <div>
-          {accounts.map((acct) => {
-            const max = maxByCurrency.get(acct.currency) ?? 1;
-            const pct = Math.max(4, (Math.abs(acct.balance) / max) * 100);
-            const isLead = Math.abs(acct.balance) === max;
-            return (
-              <div key={acct.account_id} className="ct-acct-row">
-                <div>
-                  <div className="ct-acct-name">
-                    {acct.name}
-                    {acct.mask ? ` · ····${acct.mask}` : ""}
-                  </div>
-                  <div className="ct-acct-sub">{acct.institution}</div>
-                </div>
-                <div className="ct-acct-bal">{formatTreasuryMoney(acct.balance, acct.currency)}</div>
-                <div className="ct-acct-bar">
-                  <span
-                    className={`ct-acct-bar-fill ${isLead ? "lead" : "rest"}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+    <section className="cash-hero" aria-label="Cash position">
+      <div className="ch-l">Cash position</div>
+      <div className="ch-n num">
+        {formatTreasuryMoney(primaryTotal, primaryCurrency)} {primaryCurrency}
       </div>
-      <p className="ct-hero-foot">
-        As of {asOfLabel} · {accountCount} book account{accountCount === 1 ? "" : "s"} + {institutionCount}{" "}
-        institution{institutionCount === 1 ? "" : "s"}
-      </p>
+      <div className="meta">As of {asOfLabel}.</div>
+      {accounts.map((acct) => {
+        const label = acct.mask
+          ? `${acct.name} · ····${acct.mask}`
+          : acct.name;
+        const meta = [acct.type, acct.subtype].filter(Boolean).join(", ");
+        return (
+          <div key={acct.account_id} className="acct-bar">
+            <span>
+              {label}
+              {meta ? ` ${meta}` : ""}{" "}
+              <span className="ab-src">{accountSourceLabel(acct.isCsv)}</span>
+            </span>
+            <span className="amt num">
+              {formatTreasuryMoney(acct.balance, acct.currency)}
+            </span>
+          </div>
+        );
+      })}
     </section>
   );
 }

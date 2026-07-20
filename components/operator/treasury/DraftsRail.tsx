@@ -2,13 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
-import type { DraftKind } from "@/lib/treasury/pickable";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   ResolvedEvidenceItem,
   TreasuryRecommendationRow,
 } from "@/lib/treasury/types";
-import type { Evidence } from "@/lib/treasury/evidence";
+import type { Evidence, ProjectedFigureSnap } from "@/lib/treasury/evidence";
 import { evidenceRunningTotal } from "@/lib/treasury/evidence";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
+import {
+  consumeDraftsPickAnnounce,
+  getDraftsDrawerOpen,
+  getLastPickKind,
+  setDraftsDrawerOpenFromUi,
+  subscribeDraftsDrawer,
+} from "@/lib/treasury/drafts-drawer-session";
 
 type DraftBundle = {
   draft: TreasuryRecommendationRow;
@@ -54,6 +62,44 @@ function itemLabel(item: ResolvedEvidenceItem): string {
   return "Item no longer available";
 }
 
+function itemFig(
+  item: ResolvedEvidenceItem,
+  snap?: ProjectedFigureSnap
+): { text: string; dir: "in" | "out" | null } {
+  if ("amount" in item && typeof item.amount === "number") {
+    const dir =
+      "direction" in item && (item.direction === "in" || item.direction === "out")
+        ? item.direction
+        : null;
+    return {
+      text: formatEvidenceAmount(item.amount, dir),
+      dir,
+    };
+  }
+  if (typeof snap?.amount === "number") {
+    return {
+      text: formatEvidenceAmount(snap.amount, snap.direction),
+      dir: snap.direction ?? null,
+    };
+  }
+  if ("sublabel" in item && item.sublabel) return { text: item.sublabel, dir: null };
+  if (snap?.sublabel) return { text: snap.sublabel, dir: null };
+  return { text: itemLabel(item), dir: null };
+}
+
+function projectedSnap(
+  bundle: DraftBundle,
+  idx: number
+): ProjectedFigureSnap | undefined {
+  const raw = bundle?.draft.evidence?.[idx];
+  if (!raw || !("snap" in raw) || !raw.snap || typeof raw.snap !== "object") {
+    return undefined;
+  }
+  const snap = raw.snap as ProjectedFigureSnap;
+  if (snap.projected || snap.caveat || snap.engineLabel) return snap;
+  return undefined;
+}
+
 function navFromEvidence(ev: Evidence | undefined): EvidenceNavRequest | null {
   if (!ev) return null;
   if (ev.kind === "transaction" && ev.id) {
@@ -92,16 +138,92 @@ function navBlockedReason(item: ResolvedEvidenceItem): string | null {
   return `No jump target for ${item.kind} yet`;
 }
 
+const REF_KINDS = new Set([
+  "transaction",
+  "study",
+  "rule",
+  "account",
+  "import",
+  "recommendation",
+]);
+
+function evidenceToPickable(
+  ev: Evidence,
+  item: ResolvedEvidenceItem
+): Pickable | null {
+  const label = itemLabel(item);
+  const sublabel =
+    "sublabel" in item && item.sublabel
+      ? item.sublabel
+      : "amount" in item && typeof item.amount === "number"
+        ? formatEvidenceAmount(
+            item.amount,
+            "direction" in item ? item.direction : null
+          )
+        : undefined;
+
+  if (REF_KINDS.has(ev.kind)) {
+    const id = "id" in ev ? ev.id : undefined;
+    if (!id) return null;
+    return {
+      kind: ev.kind as Pickable["kind"],
+      ref: id,
+      label,
+      sublabel,
+      snap:
+        "snap" in ev && ev.snap && typeof ev.snap === "object"
+          ? (ev.snap as Record<string, unknown>)
+          : undefined,
+    };
+  }
+
+  if (!("params" in ev) || !ev.params || Object.keys(ev.params).length === 0) {
+    return null;
+  }
+  return {
+    kind: ev.kind as Pickable["kind"],
+    params: ev.params,
+    label,
+    sublabel,
+    snap:
+      "snap" in ev && ev.snap && typeof ev.snap === "object"
+        ? (ev.snap as Record<string, unknown>)
+        : undefined,
+  };
+}
+
+function peekLine(
+  bundle: DraftBundle,
+  kind: DraftKind
+): string {
+  if (!bundle || bundle.items.length === 0) {
+    return kind === "question"
+      ? "Nothing in this question yet."
+      : "Nothing in this recommendation yet.";
+  }
+  const first = bundle.items[0]!;
+  const snap = projectedSnap(bundle, 0);
+  const fig = itemFig(first, snap);
+  return fig.text;
+}
+
+function itemKey(item: ResolvedEvidenceItem, idx: number): string {
+  return "id" in item && item.id ? item.id : `${item.kind}-${idx}`;
+}
+
 export function DraftsRail({
   clientUserId,
+  clientName = "this client",
   refreshKey,
   onOpenChange,
   onOpenDraft,
   onNavigateEvidence,
   pickNotice,
   onClearPickNotice,
+  onSetPickNotice,
 }: {
   clientUserId: string;
+  clientName?: string;
   refreshKey: number;
   /** Stage 7b — parent reflows main content while drawer is open. */
   onOpenChange?: (open: boolean) => void;
@@ -112,13 +234,18 @@ export function DraftsRail({
   /** Spec 43 / 8b-3 — duplicate / error acknowledgement. */
   pickNotice?: string | null;
   onClearPickNotice?: () => void;
+  /** Spec 46e 9a — Move collision reuses the same notice channel. */
+  onSetPickNotice?: (msg: string) => void;
 }) {
   const [data, setData] = useState<DraftsPayload>({
     recommendation: null,
     question: null,
   });
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(() => getDraftsDrawerOpen());
   const [pulse, setPulse] = useState(false);
+  const [expanded, setExpanded] = useState<DraftKind>("recommendation");
+  const [settleKey, setSettleKey] = useState<string | null>(null);
+  const [srText, setSrText] = useState("");
   const [updating, setUpdating] = useState<{
     recommendation?: boolean;
     question?: boolean;
@@ -128,7 +255,12 @@ export function DraftsRail({
     recommendation?: string;
     question?: string;
   }>({});
+  const [moving, setMoving] = useState(false);
   const snapshotRef = useRef<DraftsPayload | null>(null);
+  const prevItemKeysRef = useRef<{ recommendation: Set<string>; question: Set<string> }>({
+    recommendation: new Set(),
+    question: new Set(),
+  });
 
   const load = useCallback(async () => {
     const res = await fetch(
@@ -150,16 +282,49 @@ export function DraftsRail({
     void load();
   }, [load, refreshKey]);
 
-  // Pick pulses the tab + bumps the badge count only — never auto-opens (Stage 7b).
   useEffect(() => {
-    if (refreshKey > 0) {
+    return subscribeDraftsDrawer(() => {
+      setDrawerOpen(getDraftsDrawerOpen());
+    });
+  }, []);
+
+  // Pick settle: pulse if drawer stayed closed; expand target kind; announce
+  useEffect(() => {
+    if (refreshKey <= 0) return;
+    const kind = getLastPickKind();
+    if (kind) setExpanded(kind);
+    if (!getDraftsDrawerOpen()) {
       setPulse(true);
       const t = window.setTimeout(() => setPulse(false), 450);
       return () => window.clearTimeout(t);
     }
+    const announce = consumeDraftsPickAnnounce();
+    if (announce) setSrText(announce);
   }, [refreshKey]);
 
-  // 8a-1 — when a pick lands while the drawer is open, show Updating… until load settles
+  // After load, mark the newly added chip for settle animation
+  useEffect(() => {
+    const kinds: DraftKind[] = ["recommendation", "question"];
+    for (const kind of kinds) {
+      const bundle = data[kind];
+      const prev = prevItemKeysRef.current[kind];
+      const next = new Set(
+        (bundle?.items ?? []).map((it, i) => itemKey(it, i))
+      );
+      if (refreshKey > 0) {
+        for (const k of next) {
+          if (!prev.has(k)) {
+            setSettleKey(`${kind}:${k}`);
+            const t = window.setTimeout(() => setSettleKey(null), 400);
+            prevItemKeysRef.current[kind] = next;
+            return () => window.clearTimeout(t);
+          }
+        }
+      }
+      prevItemKeysRef.current[kind] = next;
+    }
+  }, [data, refreshKey]);
+
   const prevRefreshRef = useRef(refreshKey);
   useEffect(() => {
     if (
@@ -181,11 +346,12 @@ export function DraftsRail({
     };
   }, [drawerOpen, onOpenChange]);
 
-  // 8a-3 — Esc closes
   useEffect(() => {
     if (!drawerOpen) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setDrawerOpen(false);
+      if (e.key === "Escape") {
+        setDraftsDrawerOpenFromUi(false);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -206,6 +372,14 @@ export function DraftsRail({
     () => (data.question ? evidenceRunningTotal(data.question.items) : null),
     [data.question]
   );
+
+  function toggleDrawer() {
+    setDraftsDrawerOpenFromUi(!getDraftsDrawerOpen());
+  }
+
+  function closeDrawer() {
+    setDraftsDrawerOpenFromUi(false);
+  }
 
   async function removeItem(
     kind: DraftKind,
@@ -311,8 +485,49 @@ export function DraftsRail({
     void load();
   }
 
+  async function moveItem(from: DraftKind, idx: number) {
+    const to: DraftKind = from === "recommendation" ? "question" : "recommendation";
+    const bundle = from === "recommendation" ? data.recommendation : data.question;
+    if (!bundle || moving) return;
+    const item = bundle.items[idx];
+    const ev = bundle.draft.evidence?.[idx] as Evidence | undefined;
+    if (!item || !ev || !("id" in item) || !item.id) return;
+
+    const pickable = evidenceToPickable(ev, item);
+    if (!pickable) {
+      setGroupError((e) => ({
+        ...e,
+        [from]: "Cannot move this evidence kind yet",
+      }));
+      return;
+    }
+
+    setMoving(true);
+    setGroupError((e) => ({ ...e, [from]: undefined, [to]: undefined }));
+    try {
+      const result = await postPickableToDraft(clientUserId, to, pickable);
+      if (result.duplicate) {
+        onSetPickNotice?.(
+          `Already added to this ${to === "question" ? "question" : "recommendation"}.`
+        );
+        // leave-put — do not remove from source
+        return;
+      }
+      await removeItem(from, item.id, item.kind);
+      setExpanded(to);
+      void load();
+    } catch (e) {
+      setGroupError((err) => ({
+        ...err,
+        [from]: e instanceof Error ? e.message : "Move failed",
+      }));
+    } finally {
+      setMoving(false);
+    }
+  }
+
   function openInDrafts(draftId: string) {
-    setDrawerOpen(false);
+    closeDrawer();
     onOpenDraft?.(draftId);
   }
 
@@ -327,115 +542,175 @@ export function DraftsRail({
     const ev = bundle.draft.evidence?.[idx] as Evidence | undefined;
     const nav = navFromEvidence(ev);
     if (!nav) return;
-    setDrawerOpen(false);
+    closeDrawer();
     onNavigateEvidence?.(nav);
   }
 
-  function renderGroup(
-    kind: DraftKind,
-    title: string,
-    bundle: DraftBundle,
-    running: ReturnType<typeof evidenceRunningTotal>
-  ) {
+  function renderAccordion(kind: DraftKind, title: string, bundle: DraftBundle) {
     const n = bundle?.items.length ?? 0;
     const busy = !!updating[kind];
+    const isOpen = expanded === kind;
+    const running =
+      kind === "recommendation" ? recTotal : qTotal;
+    const peek = peekLine(bundle, kind);
+    const moveLabel =
+      kind === "recommendation" ? "Move to question" : "Move to recommendation";
+
     return (
-      <div className="dg" key={kind}>
-        <div className="dg-h">
-          <span className="t">{title}</span>
-          <span className="n">
-            {n} item{n === 1 ? "" : "s"}
-            {running
-              ? ` · ${formatEvidenceAmount(running.total, running.direction)}`
-              : ""}
-            {busy ? <em className="dg-upd"> · Updating…</em> : null}
+      <div className={`dd-acc${isOpen ? " open" : ""}`} key={kind}>
+        <button
+          type="button"
+          className="dd-acc-h"
+          aria-expanded={isOpen}
+          onClick={() => setExpanded(kind)}
+        >
+          <span className="dd-acc-kind">{title}</span>
+          <span className="dd-acc-n">
+            {n}
+            {busy ? " · …" : ""}
           </span>
-          {bundle ? (
-            <button
-              type="button"
-              className="btng"
-              onClick={() => openInDrafts(bundle.draft.id)}
-            >
-              Open in Drafts →
-            </button>
-          ) : null}
-        </div>
-        {groupError[kind] ? (
-          <p className="dg-err" role="alert">
-            {groupError[kind]}
-          </p>
-        ) : null}
-        {n === 0 ? (
-          <p className="dg-hint">Nothing here yet.</p>
-        ) : (
-          <div className="dg-list">
-            {bundle!.items.map((item, idx) => {
-              const key =
-                "id" in item && item.id ? item.id : `${item.kind}-${idx}`;
-              const pendKey =
-                "id" in item && item.id ? `${kind}:${item.id}` : "";
-              const removing = pendKey ? pendingRemove.has(pendKey) : false;
-              const blocked = navBlockedReason(item);
-              const canNav = !blocked && !!onNavigateEvidence;
-              return (
-                <div
-                  key={key}
-                  className={`dit ${item.kind === "transaction" ? "m" : "s"}${canNav ? " nav" : ""}${removing ? " pend" : ""}`}
-                >
-                  <button
-                    type="button"
-                    className="dit-body"
-                    disabled={!canNav}
-                    title={blocked ?? "Open source"}
-                    onClick={() => navigateItem(kind, item, idx)}
-                  >
-                    <span className="kk">{item.kind}</span>
-                    <span className="bd">
-                      {itemLabel(item)}
-                      {item.available &&
-                      item.kind === "transaction" &&
-                      "amount" in item ? (
-                        <em>
-                          {" "}
-                          {formatEvidenceAmount(item.amount, item.direction)}
-                        </em>
-                      ) : null}
-                      {blocked && !item.available ? (
-                        <em className="dit-dead"> — {blocked}</em>
-                      ) : null}
-                    </span>
-                  </button>
-                  {"id" in item && item.id ? (
-                    <button
-                      type="button"
-                      className="rm"
-                      disabled={removing || busy}
-                      onClick={() => void removeItem(kind, item.id!, item.kind)}
-                      aria-label="Remove"
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-            {(bundle?.missingCount ?? 0) > 0 ? (
-              <p className="rec-basket-missing">
-                {bundle!.missingCount} item
-                {bundle!.missingCount === 1 ? "" : "s"} no longer available
+          {!isOpen ? <span className="dd-acc-peek">{peek}</span> : null}
+        </button>
+        {isOpen ? (
+          <div className="dd-acc-body">
+            {bundle ? (
+              <button
+                type="button"
+                className="btng dd-open-desk"
+                onClick={() => openInDrafts(bundle.draft.id)}
+              >
+                Open in Drafts →
+              </button>
+            ) : null}
+            {groupError[kind] ? (
+              <p className="dg-err" role="alert">
+                {groupError[kind]}
               </p>
             ) : null}
-            <button
-              type="button"
-              className="btn ghost sm"
-              style={{ marginTop: 8 }}
-              disabled={busy}
-              onClick={() => void clearDraft(kind)}
-            >
-              {busy ? "Updating…" : "Clear"}
-            </button>
+            {n === 0 ? (
+              <p className="dd-nochips">
+                No figures yet. Use + Add to draft on any surface to add
+                evidence, or seal on your words alone.
+              </p>
+            ) : (
+              <div className="dd-chips">
+                {bundle!.items.map((item, idx) => {
+                  const key = itemKey(item, idx);
+                  const pendKey =
+                    "id" in item && item.id ? `${kind}:${item.id}` : "";
+                  const removing = pendKey
+                    ? pendingRemove.has(pendKey)
+                    : false;
+                  const blocked = navBlockedReason(item);
+                  const canNav = !blocked && !!onNavigateEvidence;
+                  const snap = projectedSnap(bundle, idx);
+                  const fig = itemFig(item, snap);
+                  const settle =
+                    settleKey === `${kind}:${key}` ? " settle" : "";
+                  const figClass =
+                    fig.dir === "in"
+                      ? "dd-chip-fig in"
+                      : fig.dir === "out"
+                        ? "dd-chip-fig out"
+                        : "dd-chip-fig";
+                  const ariaFig = fig.text;
+                  return (
+                    <div
+                      key={key}
+                      className={`dd-chip${settle}${removing ? " pend" : ""}`}
+                      data-chip={idx}
+                      tabIndex={0}
+                      role="group"
+                      aria-label={`Evidence: ${ariaFig}, ${item.kind}. Press Delete to remove.`}
+                      onKeyDown={(e) => {
+                        if (
+                          (e.key === "Delete" || e.key === "Backspace") &&
+                          "id" in item &&
+                          item.id
+                        ) {
+                          e.preventDefault();
+                          void removeItem(kind, item.id!, item.kind);
+                        }
+                      }}
+                    >
+                      <div className="dd-chip-top">
+                        <button
+                          type="button"
+                          className={figClass}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: canNav ? "pointer" : "default",
+                            textAlign: "left",
+                            font: "inherit",
+                          }}
+                          disabled={!canNav}
+                          title={blocked ?? "Open source"}
+                          onClick={() => navigateItem(kind, item, idx)}
+                        >
+                          {fig.text}
+                        </button>
+                        {"id" in item && item.id ? (
+                          <button
+                            type="button"
+                            className="dd-chip-x"
+                            disabled={removing || busy || moving}
+                            onClick={() =>
+                              void removeItem(kind, item.id!, item.kind)
+                            }
+                            aria-label={`Remove ${fig.text} from this draft`}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="dd-chip-prov">
+                        {itemLabel(item)}
+                        {running && idx === 0
+                          ? ` · ${item.kind}`
+                          : ` · ${item.kind}`}
+                      </div>
+                      {snap?.projected && snap.caveat ? (
+                        <div className="dd-chip-caveat">
+                          {snap.caveat}
+                          {snap.engineLabel ? (
+                            <span className="dd-engine">{snap.engineLabel}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {"id" in item && item.id ? (
+                        <button
+                          type="button"
+                          className="btn ghost sm dd-chip-move"
+                          disabled={removing || busy || moving}
+                          onClick={() => void moveItem(kind, idx)}
+                        >
+                          {moveLabel}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {(bundle?.missingCount ?? 0) > 0 ? (
+                  <p className="rec-basket-missing">
+                    {bundle!.missingCount} item
+                    {bundle!.missingCount === 1 ? "" : "s"} no longer available
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  style={{ marginTop: 8 }}
+                  disabled={busy}
+                  onClick={() => void clearDraft(kind)}
+                >
+                  {busy ? "Updating…" : "Clear"}
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -445,7 +720,7 @@ export function DraftsRail({
       <aside
         className={`railtab${pulse && !drawerOpen ? " pulse" : ""}`}
         title="Drafts — everything you pick collects here"
-        onClick={() => setDrawerOpen((o) => !o)}
+        onClick={toggleDrawer}
         aria-expanded={drawerOpen}
       >
         <span className={`ct${total === 0 ? " zero" : ""}`}>{total}</span>
@@ -454,6 +729,7 @@ export function DraftsRail({
 
       <aside
         className={`drawer${drawerOpen ? " open" : ""}`}
+        role="complementary"
         aria-label="Drafts"
       >
         {drawerOpen ? (
@@ -462,22 +738,27 @@ export function DraftsRail({
             className="railtab close-twin"
             title="Close drafts"
             aria-label="Close drafts"
-            onClick={() => setDrawerOpen(false)}
+            onClick={closeDrawer}
           >
             <span className="vt">Close</span>
           </button>
         ) : null}
-        <div className="drawer-h">
-          <b>Drafts</b>
-          <span className="drawer-sub">collector · compose on the desk</span>
+        <div className="dd-head">
+          <div>
+            <div className="dd-title">Drafts</div>
+            <div className="dd-kicker">{clientName} record</div>
+          </div>
           <button
             type="button"
-            className="x"
-            onClick={() => setDrawerOpen(false)}
+            className="dd-close"
+            onClick={closeDrawer}
             aria-label="Close drafts"
           >
             ×
           </button>
+        </div>
+        <div className="dd-sr" role="status" aria-live="polite">
+          {srText}
         </div>
         {pickNotice ? (
           <p className="dg-err" role="status" style={{ margin: "8px 14px 0" }}>
@@ -493,131 +774,19 @@ export function DraftsRail({
             ) : null}
           </p>
         ) : null}
-        <div className="drawer-b">
-          {total === 0 ? (
-            <div className="drafts-empty">
-              <svg
-                viewBox="0 0 264 140"
-                role="img"
-                aria-label="A pick splits into two drafts: Recommendation or Question"
-              >
-                <circle
-                  cx="132"
-                  cy="21"
-                  r="12.5"
-                  fill="var(--paper)"
-                  stroke="var(--accent)"
-                  strokeWidth="1.5"
-                />
-                <path
-                  d="M132 15.5 V26.5 M126.5 21 H137.5"
-                  stroke="var(--brand)"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M132 34 V55"
-                  stroke="var(--brand-2)"
-                  strokeOpacity=".4"
-                  strokeWidth="1.25"
-                />
-                <path
-                  d="M132 55 C132 73 68 71 68 90"
-                  fill="none"
-                  stroke="var(--brand-2)"
-                  strokeOpacity=".4"
-                  strokeWidth="1.25"
-                />
-                <path
-                  d="M132 55 C132 73 196 71 196 90"
-                  fill="none"
-                  stroke="var(--brand-2)"
-                  strokeOpacity=".4"
-                  strokeWidth="1.25"
-                />
-                <rect
-                  x="32"
-                  y="90"
-                  width="72"
-                  height="23"
-                  rx="8"
-                  fill="var(--paper)"
-                  stroke="var(--brand-2)"
-                />
-                <text
-                  x="68"
-                  y="105"
-                  textAnchor="middle"
-                  fontSize="10.5"
-                  fontWeight="600"
-                  fill="var(--brand)"
-                  style={{ fontFamily: "var(--font-ui)" }}
-                >
-                  Recommend
-                </text>
-                <rect
-                  x="160"
-                  y="90"
-                  width="72"
-                  height="23"
-                  rx="8"
-                  fill="var(--paper)"
-                  stroke="var(--brand-2)"
-                />
-                <text
-                  x="196"
-                  y="105"
-                  textAnchor="middle"
-                  fontSize="10.5"
-                  fontWeight="600"
-                  fill="var(--brand)"
-                  style={{ fontFamily: "var(--font-ui)" }}
-                >
-                  Question
-                </text>
-                <text
-                  x="68"
-                  y="128"
-                  textAnchor="middle"
-                  fontSize="9.5"
-                  fill="var(--mute)"
-                  style={{ fontFamily: "var(--font-ui)" }}
-                >
-                  seal & send
-                </text>
-                <text
-                  x="196"
-                  y="128"
-                  textAnchor="middle"
-                  fontSize="9.5"
-                  fill="var(--mute)"
-                  style={{ fontFamily: "var(--font-ui)" }}
-                >
-                  ask client
-                </text>
-              </svg>
-              <p className="de-title">Nothing picked yet</p>
-              <p className="de-body">
-                Hit the <span className="de-plus">+</span> on anything — a
-                transaction, a study, a chart period — and choose which draft it
-                feeds.
-              </p>
-              <p className="de-hint">
-                Both drafts stay open side by side. Open in Drafts → to compose
-                and send from Recommendations.
-              </p>
-            </div>
-          ) : (
-            <>
-              {renderGroup(
-                "recommendation",
-                "Recommendation",
-                data.recommendation,
-                recTotal
-              )}
-              {renderGroup("question", "Question", data.question, qTotal)}
-            </>
+        <div className="dd-body drawer-b">
+          {renderAccordion(
+            "recommendation",
+            "Recommendation",
+            data.recommendation
           )}
+          {renderAccordion("question", "Question", data.question)}
+          {total === 0 ? (
+            <p className="dd-empty-t" style={{ marginTop: 8 }}>
+              Nothing in draft yet. Pick a figure with + Add to draft on any
+              surface, or start here.
+            </p>
+          ) : null}
         </div>
       </aside>
     </>

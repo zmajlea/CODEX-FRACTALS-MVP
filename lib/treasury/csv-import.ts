@@ -53,6 +53,28 @@ const UNKNOWN_UNSIGNED_TYPES = new Set(["transfer", "other"]);
 
 export type SkippedDetail = { row: number; reason: string };
 
+/** Spec 48A — headed CSV with unknown account; reject whole file before any write. */
+export type MissingAccountKind = "missing_column" | "empty_cells";
+
+export class MissingAccountError extends Error {
+  readonly code = "missing_account" as const;
+  readonly kind: MissingAccountKind;
+  readonly rows: number;
+  readonly firstRows: number[];
+
+  constructor(kind: MissingAccountKind, rows: number, firstRows: number[]) {
+    const msg =
+      kind === "missing_column"
+        ? `CSV has no Account column (${rows} data rows)`
+        : `${rows} rows have no value in the Account column`;
+    super(msg);
+    this.name = "MissingAccountError";
+    this.kind = kind;
+    this.rows = rows;
+    this.firstRows = firstRows;
+  }
+}
+
 export type TreasuryImportReconcile = {
   rowsRead: number;
   imported: number;
@@ -270,10 +292,36 @@ export function parseTreasuryCsv(
   };
 
   function resolveAccountRaw(accountRaw: string): string {
-    if (!isEmptyAccount(accountRaw)) return accountRaw.trim() || "default";
+    if (!isEmptyAccount(accountRaw)) return accountRaw.trim();
     if (options.accountLabel?.trim()) return options.accountLabel.trim();
-    if (headerless) return "";
-    return "default";
+    return "";
+  }
+
+  // Spec 48A — account preflight BEFORE sign-convention scan (headed only).
+  // Fail first so resolveAccountRaw never leaves the classifier on an empty set.
+  if (!headerless && !options.accountLabel?.trim()) {
+    const hasAccountColumn = colIndex.has("account");
+    if (!hasAccountColumn) {
+      const firstRows: number[] = [];
+      for (let i = 0; i < Math.min(5, dataLines.length); i++) {
+        firstRows.push(dataStartIndex + i + 1);
+      }
+      throw new MissingAccountError("missing_column", dataLines.length, firstRows);
+    }
+    const emptyRows: number[] = [];
+    for (let i = 0; i < dataLines.length; i++) {
+      const cols = parseCsvLine(dataLines[i]!);
+      if (isEmptyAccount(getCol(cols, "account"))) {
+        emptyRows.push(dataStartIndex + i + 1);
+      }
+    }
+    if (emptyRows.length > 0) {
+      throw new MissingAccountError(
+        "empty_cells",
+        emptyRows.length,
+        emptyRows.slice(0, 5)
+      );
+    }
   }
 
   // Spec 32 — classify Amount sign against Balance (file order) or Type before mapping.
@@ -343,11 +391,19 @@ export function parseTreasuryCsv(
         });
         continue;
       } else {
-        accountRaw = "default";
+        // Spec 48A — headed empty-account path is rejected in preflight above.
+        throw new MissingAccountError("empty_cells", 1, [fileRow]);
       }
     }
 
-    const account = accountRaw.trim() || "default";
+    const account = accountRaw.trim();
+    if (!account) {
+      skippedDetails.push({
+        row: fileRow,
+        reason: "missing account (supply account_label for empty account column)",
+      });
+      continue;
+    }
 
     if (!postedRaw.trim()) {
       skippedDetails.push({ row: fileRow, reason: "missing posted date" });

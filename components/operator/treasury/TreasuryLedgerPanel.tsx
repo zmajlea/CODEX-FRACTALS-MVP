@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { TreasuryRangeCalendar } from "@/components/operator/treasury/TreasuryRangeCalendar";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import { PickButton } from "@/components/operator/treasury/PickButton";
-import { formatRangeLabel } from "@/lib/treasury/period-bounds";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   TreasuryBookStats,
@@ -50,6 +50,8 @@ type Props = {
     amountExact: string;
     status: StatusFilter;
   }> | null;
+  /** Demo tenant — illustrative mark on span-line */
+  demo?: boolean;
   onSeedFiltersConsumed?: () => void;
 };
 
@@ -79,6 +81,23 @@ function formatBookDate(iso: string | null): string {
   }
 }
 
+function dollarize(v: string): string {
+  const t = v.trim();
+  if (!t) return t;
+  return /^[\d,]+(\.\d+)?$/.test(t) ? `$${t}` : t;
+}
+
+function formatSpanLine(book: TreasuryBookStats): string {
+  const parts = [
+    `${book.count.toLocaleString()} transaction${book.count === 1 ? "" : "s"}.`,
+    `${formatBookDate(book.first)} to ${formatBookDate(book.last)}.`,
+    book.last
+      ? `Imported ${formatBookDate(book.last)}.`
+      : null,
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+
 export function TreasuryLedgerPanel({
   clientUserId,
   institutions,
@@ -98,6 +117,7 @@ export function TreasuryLedgerPanel({
   onFocusTxConsumed,
   seedFilters,
   onSeedFiltersConsumed,
+  demo = false,
 }: Props) {
   const [transactions, setTransactions] = useState<TreasuryTransactionRow[]>([]);
   const [book, setBook] = useState<TreasuryBookStats | null>(null);
@@ -117,8 +137,7 @@ export function TreasuryLedgerPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLabel, setBulkLabel] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
-  const sourceRef = useRef<HTMLDivElement>(null);
+  const [draftSourceId, setDraftSourceId] = useState("");
 
   // Draft (composer) vs applied (query)
   const [draftAccounts, setDraftAccounts] = useState<Set<string>>(new Set());
@@ -146,33 +165,10 @@ export function TreasuryLedgerPanel({
     setDraftDateRange(dateRange);
   }, [dateRange]);
 
-  const accountGroups = useMemo(
-    () =>
-      institutions.map((inst) => ({
-        institution: inst.institution_name ?? "Source",
-        accounts: inst.accounts,
-      })),
-    [institutions]
-  );
-
   const allAccountIds = useMemo(
     () => institutions.flatMap((i) => i.accounts.map((a) => a.account_id)),
     [institutions]
   );
-
-  const sourceFilterLabel =
-    draftAccounts.size === 0 || draftAccounts.size === allAccountIds.length
-      ? "Sources: All"
-      : `Sources: ${draftAccounts.size} selected`;
-
-  useEffect(() => {
-    if (!sourceOpen) return;
-    function onPointer(e: MouseEvent) {
-      if (!sourceRef.current?.contains(e.target as Node)) setSourceOpen(false);
-    }
-    document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
-  }, [sourceOpen]);
 
   const buildParams = useCallback(
     (filters: AppliedFilters, pageNum: number, limit: number) => {
@@ -294,17 +290,29 @@ export function TreasuryLedgerPanel({
     return () => window.clearTimeout(t);
   }, [focusTxId, loading, transactions, onFocusTxConsumed]);
 
-  useEffect(() => {
-    void (async () => {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/labels`
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { labels: string[] };
-        setLabels(data.labels);
-      }
-    })();
+  const refreshLabels = useCallback(async () => {
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/labels`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { labels: string[] };
+      setLabels(data.labels);
+    }
   }, [clientUserId]);
+
+  useEffect(() => {
+    void refreshLabels();
+  }, [refreshLabels]);
+
+  function rememberLabel(label: string) {
+    const t = label.trim();
+    if (!t) return;
+    setLabels((prev) =>
+      prev.some((l) => l.toLowerCase() === t.toLowerCase())
+        ? prev
+        : [...prev, t].sort((a, b) => a.localeCompare(b))
+    );
+  }
 
   function composeAppliedFromDraft(
     status: StatusFilter = applied.status,
@@ -328,9 +336,19 @@ export function TreasuryLedgerPanel({
 
   function applyFilters() {
     onDateRangeChange(draftDateRange);
+    if (draftSourceId) {
+      setDraftAccounts(new Set([draftSourceId]));
+    }
     setPage(0);
     setSelected(new Set());
     setApplied(composeAppliedFromDraft());
+  }
+
+  function submitSearch() {
+    onDateRangeChange(draftDateRange);
+    setPage(0);
+    setSelected(new Set());
+    setApplied(composeAppliedFromDraft(applied.status, draftPayeeQ.trim()));
   }
 
   function clearAllFilters() {
@@ -343,6 +361,7 @@ export function TreasuryLedgerPanel({
     setDraftAmountMin("");
     setDraftAmountMax("");
     setDraftAmountExact("");
+    setDraftSourceId("");
     setPage(0);
     setSelected(new Set());
     setApplied({
@@ -375,6 +394,7 @@ export function TreasuryLedgerPanel({
         body: JSON.stringify(body),
       }
     );
+    if (typeof body.label === "string") rememberLabel(body.label);
     setEditingId(null);
     void load(applied, page, pageSize);
   }
@@ -400,6 +420,7 @@ export function TreasuryLedgerPanel({
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Bulk label failed");
       }
+      rememberLabel(label);
       setSelected(new Set());
       setBulkLabel("");
       void load(applied, page, pageSize);
@@ -429,22 +450,6 @@ export function TreasuryLedgerPanel({
     } finally {
       setBulkBusy(false);
     }
-  }
-
-  function toggleAccount(id: string, currentlyChecked: boolean) {
-    setDraftAccounts((prev) => {
-      if (prev.size === 0) {
-        if (currentlyChecked) {
-          return new Set(allAccountIds.filter((aid) => aid !== id));
-        }
-        return prev;
-      }
-      const next = new Set(prev);
-      if (currentlyChecked) next.delete(id);
-      else next.add(id);
-      if (next.size >= allAccountIds.length) return new Set();
-      return next;
-    });
   }
 
   const allLoadedSelected =
@@ -507,30 +512,14 @@ export function TreasuryLedgerPanel({
   const showingTo = Math.min((page + 1) * pageSize, total);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
+  const allStatusCount =
+    needsLabelCount + suggestedTotalCount + labeledCount;
+
   const activeChips: { key: string; label: string; clear: () => void }[] = [];
-  if (applied.status === "needs_label") {
-    activeChips.push({
-      key: "status",
-      label: "Uncategorized",
-      clear: () => setStatusFilter("all"),
-    });
-  } else if (applied.status === "suggested") {
-    activeChips.push({
-      key: "status",
-      label: "Suggested",
-      clear: () => setStatusFilter("all"),
-    });
-  } else if (applied.status === "labeled") {
-    activeChips.push({
-      key: "status",
-      label: "Categorized",
-      clear: () => setStatusFilter("all"),
-    });
-  }
-  if (applied.from && applied.to) {
+  if (applied.from || applied.to) {
     activeChips.push({
       key: "date",
-      label: formatRangeLabel(applied.from, applied.to),
+      label: `Date: ${formatBookDate(applied.from ?? book?.first ?? null)} to ${formatBookDate(applied.to ?? book?.last ?? null)}`,
       clear: () => {
         const all: TreasuryDateRange = { preset: "all" };
         setDraftDateRange(all);
@@ -544,10 +533,54 @@ export function TreasuryLedgerPanel({
       },
     });
   }
+  if (
+    applied.accountIds.length > 0 &&
+    applied.accountIds.length < allAccountIds.length
+  ) {
+    const acctId = applied.accountIds[0]!;
+    const acctLabel =
+      institutions
+        .flatMap((i) => i.accounts)
+        .find((a) => a.account_id === acctId)?.name ??
+      acctId.replace(/^csv:/, "");
+    activeChips.push({
+      key: "source",
+      label: `Source: ${acctLabel} CSV import`,
+      clear: () => {
+        setDraftAccounts(new Set());
+        setDraftSourceId("");
+        setApplied((prev) => ({ ...prev, accountIds: [] }));
+      },
+    });
+  }
+  if (applied.amountMode === "between" && (applied.amountMin || applied.amountMax)) {
+    activeChips.push({
+      key: "amount",
+      label: `Amount: ${dollarize(applied.amountMin || "0")} to ${applied.amountMax ? dollarize(applied.amountMax) : "any"}`,
+      clear: () => {
+        setDraftAmountMin("");
+        setDraftAmountMax("");
+        setApplied((prev) => ({
+          ...prev,
+          amountMin: "",
+          amountMax: "",
+        }));
+      },
+    });
+  } else if (applied.amountMode === "exact" && applied.amountExact) {
+    activeChips.push({
+      key: "amount",
+      label: `Amount: exactly ${dollarize(applied.amountExact)}`,
+      clear: () => {
+        setDraftAmountExact("");
+        setApplied((prev) => ({ ...prev, amountExact: "" }));
+      },
+    });
+  }
   if (applied.q) {
     activeChips.push({
-      key: "q",
-      label: applied.q,
+      key: "payee",
+      label: `Payee: ${applied.q}`,
       clear: () => {
         setDraftPayeeQ("");
         setApplied((prev) => ({ ...prev, q: "" }));
@@ -562,68 +595,269 @@ export function TreasuryLedgerPanel({
     });
   }
 
+  const sourceOptions = useMemo(
+    () =>
+      institutions.flatMap((inst) =>
+        inst.accounts.map((acct) => ({
+          id: acct.account_id,
+          label: `${acct.mask ?? acct.name ?? acct.account_id.replace(/^csv:/, "")} ${inst.institution_name ?? "CSV import"}`,
+        }))
+      ),
+    [institutions]
+  );
+
   return (
-    <div className="panel p-4">
+    <>
       {ruleBanner ? (
         <div className="missgap replied mb-4 flex items-center justify-between gap-3">
           <p className="text-sm">{ruleBanner}</p>
           {onDismissBanner ? (
-            <button type="button" className="btn btn-secondary text-xs" onClick={onDismissBanner}>
+            <button type="button" className="btn ghost text-xs" onClick={onDismissBanner}>
               Dismiss
             </button>
           ) : null}
         </div>
       ) : null}
 
-      <div className="mb-3">
-        <h2 className="font-head text-lg">
-          Transactions
-          {book ? (
-            <span className="text-sm font-normal text-codex-muted ml-2">
-              — {book.count.toLocaleString()} transactions ·{" "}
-              {formatBookDate(book.first)} → {formatBookDate(book.last)}
-              {book.importedAt
-                ? ` · imported ${formatBookDate(book.importedAt.slice(0, 10))}`
-                : ""}
+      <div className="hubhead">
+        <div>
+          <div className="eyebrow">Treasury record</div>
+          <h1 className="title">Transactions</h1>
+        </div>
+      </div>
+
+      {book ? (
+        <p className="span-line">
+          {formatSpanLine(book)}
+          {demo ? (
+            <>
+              {" "}
+              <span className="mark illustrative">Illustrative</span>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+
+      <div className="tx-lens-row">
+        <div className="seg" role="group" aria-label="Status filter">
+          {(
+            [
+              { id: "all" as const, label: "All", count: allStatusCount },
+              {
+                id: "needs_label" as const,
+                label: "Uncategorized",
+                count: needsLabelCount,
+              },
+              {
+                id: "suggested" as const,
+                label: "Suggested",
+                count: suggestedTotalCount,
+              },
+              {
+                id: "labeled" as const,
+                label: "Confirmed",
+                count: labeledCount,
+              },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              aria-pressed={applied.status === opt.id}
+              onClick={() => setStatusFilter(opt.id)}
+            >
+              {opt.label} <span className="cnt">{opt.count.toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="tx-search">
+          <input
+            type="text"
+            className="tx-search-in"
+            placeholder="Search payee or memo"
+            aria-label="Search payee or memo, searches every transaction"
+            value={draftPayeeQ}
+            onChange={(e) => setDraftPayeeQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitSearch();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="btn ghost tx-search-btn"
+            style={{ padding: "7px 14px" }}
+            onClick={submitSearch}
+          >
+            Search
+          </button>
+        </div>
+      </div>
+
+      {!drillRange ? (
+        <details className="adv-filter">
+          <summary>Advanced filter</summary>
+          <div className="adv-body">
+            <div className="txf">
+              <span className="txf-l">Date range</span>
+              <TreasuryRangeCalendar
+                value={draftDateRange}
+                onChange={setDraftDateRange}
+                dataEnd={book?.last}
+              />
+            </div>
+            <div className="txf">
+              <label className="txf-l" htmlFor="txf-src">
+                Source
+              </label>
+              <select
+                id="txf-src"
+                aria-label="Source"
+                value={draftSourceId}
+                onChange={(e) => setDraftSourceId(e.target.value)}
+              >
+                <option value="">Any source</option>
+                {sourceOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="txf">
+              <span className="txf-l">Amount</span>
+              <div className="txf-amt">
+                <div className="mtc" role="group" aria-label="Amount mode">
+                  <button
+                    type="button"
+                    className="txa-between"
+                    aria-pressed={draftAmountMode === "between"}
+                    onClick={() => setDraftAmountMode("between")}
+                  >
+                    Between
+                  </button>
+                  <button
+                    type="button"
+                    className="txa-exact"
+                    aria-pressed={draftAmountMode === "exact"}
+                    onClick={() => setDraftAmountMode("exact")}
+                  >
+                    Exact
+                  </button>
+                </div>
+                <span className="txa-fields">
+                  {draftAmountMode === "between" ? (
+                    <>
+                      <input
+                        type="text"
+                        className="txa-min"
+                        placeholder="Min"
+                        aria-label="Minimum amount"
+                        value={draftAmountMin}
+                        onChange={(e) => setDraftAmountMin(e.target.value)}
+                      />
+                      <span className="txa-to">to</span>
+                      <input
+                        type="text"
+                        className="txa-max"
+                        placeholder="Max"
+                        aria-label="Maximum amount"
+                        value={draftAmountMax}
+                        onChange={(e) => setDraftAmountMax(e.target.value)}
+                      />
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      className="txa-ex"
+                      placeholder="Amount"
+                      aria-label="Exact amount"
+                      value={draftAmountExact}
+                      onChange={(e) => setDraftAmountExact(e.target.value)}
+                    />
+                  )}
+                </span>
+              </div>
+            </div>
+            <div className="txf">
+              <label className="txf-l" htmlFor="txf-pay">
+                Payee or memo contains
+              </label>
+              <input
+                id="txf-pay"
+                type="text"
+                aria-label="Payee or memo contains"
+                value={draftPayeeQ}
+                onChange={(e) => setDraftPayeeQ(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn ghost tx-apply"
+              style={{ padding: "7px 14px" }}
+              onClick={applyFilters}
+            >
+              Apply
+            </button>
+          </div>
+        </details>
+      ) : null}
+
+      {activeChips.length > 0 ? (
+        <div className="tx-chips">
+          {activeChips.map((c) => (
+            <span key={c.key} className="filter-chip">
+              {c.label}
+              <button
+                type="button"
+                className="fc-x"
+                aria-label={`Clear the ${c.key} filter.`}
+                onClick={c.clear}
+              >
+                ×
+              </button>
             </span>
+          ))}
+          {activeChips.length >= 2 ? (
+            <button type="button" className="fc-clear" onClick={clearAllFilters}>
+              Clear all
+            </button>
           ) : null}
-        </h2>
-        <p className="text-xs text-codex-muted mt-1 flex items-center gap-2 flex-wrap">
-          {loading ? <span className="spinner" aria-hidden /> : null}
-          {loading && transactions.length === 0
-            ? "Loading…"
-            : isFiltered
-              ? `Showing ${showingFrom}–${showingTo} of ${total.toLocaleString()} (filtered from ${(book?.count ?? total).toLocaleString()})`
-              : `Showing ${showingFrom}–${showingTo} of ${total.toLocaleString()}`}
-          {loading && transactions.length > 0 ? (
-            <span className="sr-only">Loading page…</span>
-          ) : null}
-          {filteredViewPickable ? (
+        </div>
+      ) : null}
+
+      <p className="meta" style={{ margin: "0 0 10px" }}>
+        {loading && transactions.length === 0
+          ? "Loading…"
+          : `Showing ${showingFrom.toLocaleString()} to ${showingTo.toLocaleString()} of ${total.toLocaleString()}.`}
+        {filteredViewPickable ? (
+          <>
+            {" "}
             <PickButton
               variant="header"
               disabled={bulkBusy}
               pickable={filteredViewPickable}
               onPick={addPickableToDraft}
             />
-          ) : null}
-        </p>
-      </div>
+          </>
+        ) : null}
+      </p>
 
       {selected.size > 0 ? (
         <div className="tx-bulk-bar mb-4 flex flex-wrap gap-2 items-center">
           <span className="text-sm font-medium">{selected.size} selected</span>
-          <input
-            list="bulk-label-suggestions"
-            className="border rounded px-2 py-1 text-sm min-w-[160px]"
-            placeholder="Category"
+          <CategoryPicker
             value={bulkLabel}
-            onChange={(e) => setBulkLabel(e.target.value)}
+            categories={labels}
+            onChange={setBulkLabel}
+            placeholder="Category"
+            aria-label="Bulk category"
+            disabled={bulkBusy}
+            className="min-w-[200px]"
           />
-          <datalist id="bulk-label-suggestions">
-            {labels.map((l) => (
-              <option key={l} value={l} />
-            ))}
-          </datalist>
           <button
             type="button"
             className="btn btn-primary text-xs"
@@ -644,201 +878,13 @@ export function TreasuryLedgerPanel({
           />
           <button
             type="button"
-            className="btn btn-secondary text-xs"
+            className="btn ghost text-xs"
             onClick={() => setSelected(new Set())}
           >
             Clear
           </button>
         </div>
       ) : null}
-
-      {!drillRange ? (
-        <div className="flex flex-wrap gap-3 mb-3 items-center">
-          <TreasuryRangeCalendar
-            value={draftDateRange}
-            onChange={setDraftDateRange}
-            dataEnd={book?.last}
-          />
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-3 mb-3 items-end">
-        <div className="relative" ref={sourceRef}>
-          <button
-            type="button"
-            className="btn btn-secondary text-xs"
-            onClick={() => setSourceOpen((v) => !v)}
-          >
-            {sourceFilterLabel} ▾
-          </button>
-          {sourceOpen ? (
-            <div className="tx-source-menu">
-              <button
-                type="button"
-                className="tx-source-all"
-                onClick={() => setDraftAccounts(new Set())}
-              >
-                All sources
-              </button>
-              {accountGroups.map((g) => (
-                <div key={g.institution} className="tx-source-group">
-                  <p className="tx-source-group-title">{g.institution}</p>
-                  {g.accounts.map((acct) => {
-                    const checked =
-                      draftAccounts.size === 0 ||
-                      draftAccounts.has(acct.account_id);
-                    return (
-                      <label key={acct.account_id} className="tx-source-item">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleAccount(acct.account_id, checked)}
-                        />
-                        <span>
-                          {acct.name ?? "Account"}
-                          {acct.mask ? ` · ${acct.mask}` : ""}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-1 items-center">
-          <span className="text-xs text-codex-muted">Amount:</span>
-          <button
-            type="button"
-            className={`btn btn-secondary text-xs ${draftAmountMode === "between" ? "on" : ""}`}
-            onClick={() => setDraftAmountMode("between")}
-          >
-            Between
-          </button>
-          <button
-            type="button"
-            className={`btn btn-secondary text-xs ${draftAmountMode === "exact" ? "on" : ""}`}
-            onClick={() => setDraftAmountMode("exact")}
-          >
-            Exact
-          </button>
-          {draftAmountMode === "between" ? (
-            <>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="border rounded px-2 py-1 text-sm w-24"
-                placeholder="Min"
-                value={draftAmountMin}
-                onChange={(e) => setDraftAmountMin(e.target.value)}
-              />
-              <span className="text-codex-muted text-xs">–</span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="border rounded px-2 py-1 text-sm w-24"
-                placeholder="Max"
-                value={draftAmountMax}
-                onChange={(e) => setDraftAmountMax(e.target.value)}
-              />
-            </>
-          ) : (
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className="border rounded px-2 py-1 text-sm w-28"
-              placeholder="Exact"
-              value={draftAmountExact}
-              onChange={(e) => setDraftAmountExact(e.target.value)}
-            />
-          )}
-        </div>
-
-        <input
-          type="search"
-          className="border rounded px-2 py-1 text-sm min-w-[200px]"
-          placeholder="Payee / memo contains… (Enter)"
-          value={draftPayeeQ}
-          onChange={(e) => setDraftPayeeQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onDateRangeChange(draftDateRange);
-              setPage(0);
-              setApplied(composeAppliedFromDraft(applied.status, draftPayeeQ.trim()));
-            }
-          }}
-        />
-
-        <button type="button" className="btn btn-secondary text-xs" onClick={applyFilters}>
-          Apply filter
-        </button>
-      </div>
-
-      {activeChips.length > 0 ? (
-        <div className="txactive mb-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="txa-lbl text-codex-muted">Filtering</span>
-          {activeChips.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              className="txchip-active inline-flex items-center gap-1 rounded bg-sealed-bone/60 px-2 py-1"
-              onClick={c.clear}
-            >
-              {c.label} <span className="tca-x">✕</span>
-            </button>
-          ))}
-          <button type="button" className="txa-clear underline" onClick={clearAllFilters}>
-            Clear all
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        {(
-          [
-            { id: "all" as const, label: `All` },
-            {
-              id: "needs_label" as const,
-              label: `Uncategorized (${needsLabelCount})`,
-            },
-            {
-              id: "suggested" as const,
-              label: `Suggested (${suggestedTotalCount})`,
-            },
-            { id: "labeled" as const, label: `Categorized (${labeledCount})` },
-          ] as const
-        ).map((opt) => (
-          <label key={opt.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="tx-status-filter"
-              checked={applied.status === opt.id}
-              onChange={() => setStatusFilter(opt.id)}
-            />
-            {opt.label}
-          </label>
-        ))}
-        <label className="flex items-center gap-1 text-xs text-codex-muted ml-auto">
-          Page size
-          <select
-            className="border rounded px-1 py-0.5"
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(0);
-            }}
-          >
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-            <option value={200}>200</option>
-          </select>
-        </label>
-      </div>
 
       {error ? (
         <p className="panel-note text-cinnabar mb-4" role="alert">
@@ -855,82 +901,91 @@ export function TreasuryLedgerPanel({
             : "No transactions match these filters."}
         </p>
       ) : (
-        <div className="txtable txtable-extended">
-          <div className="txhead">
-            <span>
-              <input
-                type="checkbox"
-                aria-label={`Select all loaded (${transactions.length})`}
-                checked={allLoadedSelected}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelected(new Set(transactions.map((t) => t.id)));
-                  } else {
-                    setSelected(new Set());
-                  }
+        <table className="dtable">
+          <thead>
+            <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  aria-label={`Select all loaded (${transactions.length})`}
+                  checked={allLoadedSelected}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelected(new Set(transactions.map((t) => t.id)));
+                    } else {
+                      setSelected(new Set());
+                    }
+                  }}
+                />
+              </th>
+              <th>Date</th>
+              <th>Source</th>
+              <th>Payee / memo</th>
+              <th>Category</th>
+              <th style={{ textAlign: "right" }}>Amount</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((tx) => (
+              <TreasuryTxRow
+                key={tx.id}
+                tx={tx}
+                highlighted={focusTxId === tx.id}
+                selected={selected.has(tx.id)}
+                onToggleSelect={(checked) => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (checked) next.add(tx.id);
+                    else next.delete(tx.id);
+                    return next;
+                  });
                 }}
+                editing={editingId === tx.id}
+                labelDraft={labelDraft}
+                descDraft={descDraft}
+                labels={labels}
+                onLabelDraftChange={setLabelDraft}
+                onDescDraftChange={setDescDraft}
+                onSaveLabel={() =>
+                  void patchTx(tx.id, {
+                    label: labelDraft,
+                    description: descDraft,
+                  })
+                }
+                onConfirm={() => void patchTx(tx.id, { confirmSuggestion: true })}
+                onStartEdit={() => {
+                  setEditingId(tx.id);
+                  setLabelDraft(tx.label ?? "");
+                  setDescDraft(tx.description ?? "");
+                }}
+                onMakeRule={onMakeRule ? () => onMakeRule(tx) : undefined}
+                onPick={addPickableToDraft}
               />
-            </span>
-            <span>Date</span>
-            <span>Source</span>
-            <span>Payee / Memo</span>
-            <span>Category</span>
-            <span className="ta-r">Amount</span>
-            <span>Status</span>
-          </div>
-          {transactions.map((tx) => (
-            <TreasuryTxRow
-              key={tx.id}
-              tx={tx}
-              highlighted={focusTxId === tx.id}
-              selected={selected.has(tx.id)}
-              onToggleSelect={(checked) => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (checked) next.add(tx.id);
-                  else next.delete(tx.id);
-                  return next;
-                });
-              }}
-              editing={editingId === tx.id}
-              labelDraft={labelDraft}
-              descDraft={descDraft}
-              labels={labels}
-              onLabelDraftChange={setLabelDraft}
-              onDescDraftChange={setDescDraft}
-              onSaveLabel={() =>
-                void patchTx(tx.id, {
-                  label: labelDraft,
-                  description: descDraft,
-                })
-              }
-              onConfirm={() => void patchTx(tx.id, { confirmSuggestion: true })}
-              onReject={() => void patchTx(tx.id, { rejectSuggestion: true })}
-              onStartEdit={() => {
-                setEditingId(tx.id);
-                setLabelDraft(tx.label ?? "");
-                setDescDraft(tx.description ?? "");
-              }}
-              onMakeRule={onMakeRule ? () => onMakeRule(tx) : undefined}
-              onOpenRuleQueue={onOpenRuleQueue}
-              onPick={addPickableToDraft}
-            />
-          ))}
-        </div>
+            ))}
+          </tbody>
+        </table>
       )}
 
       {pendingCount > 0 ? (
-        <p className="text-xs text-codex-muted mt-3">
+        <p className="meta" style={{ marginTop: 12 }}>
           {pendingCount} pending transaction{pendingCount === 1 ? "" : "s"} excluded from summary
           totals.
         </p>
       ) : null}
 
+      <p className="meta" style={{ marginTop: 12 }}>
+        Category is editable on every row, including confirmed rows. Money in is green with a plus;
+        money out is red with a minus. This is the operator&apos;s view; the raw bank memo shows here
+        and is translated to plain language only where a line is cited to a client.
+      </p>
+
       {total > 0 ? (
         <div className="flex flex-wrap gap-2 items-center mt-4">
           <button
             type="button"
-            className="btn btn-secondary text-xs"
+            className="btn ghost text-xs"
             disabled={loading || page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
@@ -939,11 +994,25 @@ export function TreasuryLedgerPanel({
           <span className="text-xs text-codex-muted inline-flex items-center gap-2">
             {loading ? <span className="spinner" aria-hidden /> : null}
             Page {page + 1} of {pageCount}
-            {loading ? <span aria-live="polite">Loading…</span> : null}
+            <label className="inline-flex items-center gap-1 ml-2">
+              Page size
+              <select
+                className="border rounded px-1 py-0.5"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(0);
+                }}
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+            </label>
           </span>
           <button
             type="button"
-            className="btn btn-secondary text-xs"
+            className="btn ghost text-xs"
             disabled={loading || page + 1 >= pageCount}
             onClick={() => setPage((p) => p + 1)}
           >
@@ -951,6 +1020,6 @@ export function TreasuryLedgerPanel({
           </button>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

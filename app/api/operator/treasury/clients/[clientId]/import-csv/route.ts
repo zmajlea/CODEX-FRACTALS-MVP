@@ -6,7 +6,11 @@ import {
 } from "@/lib/server/operator-treasury-route";
 import { upsertTransactions } from "@/lib/server/treasury-ingest";
 import { applyRulesForClient } from "@/lib/server/treasury-rules";
-import { parseTreasuryCsv, upsertCsvAccounts } from "@/lib/treasury/csv-import";
+import {
+  MissingAccountError,
+  parseTreasuryCsv,
+  upsertCsvAccounts,
+} from "@/lib/treasury/csv-import";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
@@ -76,6 +80,19 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json(response);
   } catch (err) {
+    if (err instanceof MissingAccountError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: err.code,
+          kind: err.kind,
+          rows: err.rows,
+          firstRows: err.firstRows,
+          error: err.message,
+        },
+        { status: 400 }
+      );
+    }
     const message = err instanceof Error ? err.message : "Import failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }

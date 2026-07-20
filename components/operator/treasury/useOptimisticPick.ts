@@ -13,6 +13,7 @@ import {
   type PostPickResult,
 } from "@/lib/treasury/post-pickable";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
+import { onEvidencePickSettled } from "@/lib/treasury/drafts-drawer-session";
 
 const EMPTY_RESULT: PostPickResult = { duplicate: false };
 
@@ -39,6 +40,7 @@ export function useOptimisticPick(
           );
           return;
         }
+        onEvidencePickSettled(draftKind);
         onSettled();
       } catch (e) {
         setPickNotice(
@@ -70,6 +72,7 @@ export function useOptimisticPick(
           );
           return;
         }
+        onEvidencePickSettled(draftKind);
         onSettled();
       } catch (e) {
         setPickNotice(
@@ -82,6 +85,10 @@ export function useOptimisticPick(
     [clientUserId, onSettled]
   );
 
+  const setNotice = useCallback((msg: string | null) => {
+    setPickNotice(msg);
+  }, []);
+
   return {
     pick,
     pickTransactions,
@@ -89,6 +96,7 @@ export function useOptimisticPick(
     optimisticPick: null as null,
     pickNotice,
     clearNotice,
+    setNotice,
     picking,
   };
 }

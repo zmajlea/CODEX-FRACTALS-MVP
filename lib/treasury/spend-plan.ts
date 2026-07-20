@@ -727,6 +727,13 @@ export function buildSpendPlanFromHistory(input: {
   bufferAdjusted?: boolean;
   excludedMonths?: string[];
   backtest?: BacktestSpendPlanParams;
+  /** Spec 46d — override decorative plan-param provenance (dirty vs assumed). */
+  paramProvenance?: Partial<
+    Record<
+      "base" | "step" | "step_every_months" | "horizon" | "start_month",
+      InputProvenance
+    >
+  >;
 }): SpendPlanResponse {
   const planStart = parseMonthStart(input.planStartMonth);
   const completeMonths = deriveCompleteMonths(input.monthlyDebits, input.asOf);
@@ -758,41 +765,42 @@ export function buildSpendPlanFromHistory(input: {
   const historyScenario = scenarios.find((s) => s.id === "history-repeats");
   const l0Adjusted = input.fixedL0 != null;
   const indicesAdjusted = input.fixedSeasonalIndices != null;
+  const pp = input.paramProvenance ?? {};
 
   const inputs: SpendPlanInput[] = [
     {
       key: "base",
       label: "Monthly allocation",
       value: input.base,
-      provenance: "user-provided",
+      provenance: pp.base ?? "assumed",
       editable: true,
     },
     {
       key: "step",
       label: "Allocation step-up",
       value: input.step,
-      provenance: "user-provided",
+      provenance: pp.step ?? "assumed",
       editable: true,
     },
     {
       key: "step_every_months",
       label: "Step every (months)",
       value: input.stepEveryMonths ?? 3,
-      provenance: "user-provided",
+      provenance: pp.step_every_months ?? "assumed",
       editable: true,
     },
     {
       key: "horizon",
       label: "Horizon (months)",
       value: input.horizon,
-      provenance: "assumed",
+      provenance: pp.horizon ?? "assumed",
       editable: true,
     },
     {
       key: "start_month",
       label: "Plan start month",
       value: planStart.slice(0, 7),
-      provenance: "assumed",
+      provenance: pp.start_month ?? "assumed",
       editable: true,
     },
     {

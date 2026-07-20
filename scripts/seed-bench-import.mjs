@@ -52,7 +52,13 @@ async function ensureAuthUser(admin, email, password, displayName) {
     user = data.user;
     log("Auth user", `created ${user.id}`);
   } else {
-    log("Auth user", `exists ${user.id}`);
+    log("Auth user", `exists ${user.id} — resetting password + display name`);
+    const { error } = await admin.auth.admin.updateUserById(user.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: displayName },
+    });
+    if (error) throw new Error(`updateUser: ${error.message}`);
   }
 
   const { error: profileErr } = await admin.from("users").upsert({
@@ -146,7 +152,7 @@ async function main() {
     admin,
     BENCH_CLIENT_EMAIL,
     BENCH_CLIENT_PASSWORD,
-    "Bench Import Client"
+    "Ridgeline Gear Co."
   );
 
   const { data: operatorRow, error: opErr } = await admin
@@ -162,6 +168,19 @@ async function main() {
   const treasuryModuleId = await resolveModuleId(admin, "treasury");
   const tenantId = await resolveTenantId(admin);
   await ensureClientGrant(admin, tenantId, bench.id, treasuryModuleId, operatorRow.id);
+
+  // Stage 2d — per-client operator portfolio chrome copy (demo tenant).
+  await admin.from("treasury_client_operator_profile").upsert(
+    {
+      distributor_tenant_id: tenantId,
+      client_user_id: bench.id,
+      industry: "Outdoor gear manufacturing",
+      next_note: "Overseas factory wire before Q3 production",
+      watch_note: "Revenue lags the capex outlay by a season",
+      attention_reason: "Capex timing",
+    },
+    { onConflict: "distributor_tenant_id,client_user_id" }
+  );
 
   console.log("\n--- Bench import client ready ---");
   console.log("Client:", BENCH_CLIENT_EMAIL, `(${bench.id})`);

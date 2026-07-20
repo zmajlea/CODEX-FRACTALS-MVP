@@ -19,6 +19,7 @@ export const OPERATOR_TEST_PASSWORD = "OperatorTest!2026";
 const CLIENT_EMAIL = "journey1-test@codexone.test";
 const TENANT_SLUG = "summit-test-op";
 const TENANT_NAME = "Summit Test Operator";
+const GRANITE_CLIENT_NAME = "Granite Ridge Builders LLC";
 
 function log(step, detail = "") {
   const ts = new Date().toISOString().slice(11, 19);
@@ -232,12 +233,39 @@ async function main() {
     );
   }
   log("Client", `${clientRow.email} (${clientRow.id})`);
+  // Stage 2d — rename the journey1-test record into Ana's "Granite Ridge" card.
+  {
+    const { error: nameErr } = await admin.auth.admin.updateUserById(clientRow.id, {
+      user_metadata: { full_name: GRANITE_CLIENT_NAME },
+    });
+    if (nameErr) throw new Error(`update client full_name: ${nameErr.message}`);
+
+    const { error: displayErr } = await admin.from("users").upsert({
+      id: clientRow.id,
+      email: clientRow.email,
+      display_name: GRANITE_CLIENT_NAME,
+    });
+    if (displayErr) throw new Error(`users upsert: ${displayErr.message}`);
+  }
 
   const treasuryModuleId = await resolveModuleId(admin, "treasury");
   const tenantId = await ensureTenant(admin, operator.id);
   await ensureOperatorRole(admin, operator.id, tenantId);
   await ensureOperatorModule(admin, tenantId, treasuryModuleId, operator.id);
   await ensureClientGrant(admin, tenantId, clientRow.id, treasuryModuleId, operator.id);
+
+  // Stage 2d — per-client operator portfolio chrome copy (demo tenant).
+  await admin.from("treasury_client_operator_profile").upsert(
+    {
+      distributor_tenant_id: tenantId,
+      client_user_id: clientRow.id,
+      industry: "Commercial construction",
+      next_note: "Progress draw, net of 10 percent retention",
+      watch_note: "Pay-when-paid lag can dip cash below plan",
+      attention_reason: "Forecast boundary",
+    },
+    { onConflict: "distributor_tenant_id,client_user_id" }
+  );
 
   await verifySignIn(url, anonKey, OPERATOR_TEST_EMAIL, OPERATOR_TEST_PASSWORD);
 
