@@ -1,5 +1,8 @@
 "use client";
 
+import { TreasuryResetClientDataBlock } from "@/components/operator/treasury/TreasuryResetClientDataBlock";
+import { isProtectedDemoFfmClient } from "@/lib/treasury/is-demo-tenant";
+
 type Contact = {
   name: string;
   role: string;
@@ -14,12 +17,14 @@ type Jurisdiction = {
 };
 
 type Props = {
+  clientUserId: string;
   clientName: string;
   clientEmail: string;
   grantId: string | null;
   busyAction: string | null;
   onSuspend: () => void;
   onRevoke: () => void;
+  onResetComplete?: () => void;
   /** Optional recorded profile fields — show "—" when unknown (do not invent demo facts). */
   legalEntity?: string | null;
   industry?: string | null;
@@ -35,12 +40,14 @@ type Props = {
  * Verbatim chrome from SUMMIT_SECTIONS su-profile / contactsBlock / jurisdictionsBlock.
  */
 export function TreasuryProfilePanel({
+  clientUserId,
   clientName,
   clientEmail,
   grantId,
   busyAction,
   onSuspend,
   onRevoke,
+  onResetComplete,
   legalEntity,
   industry,
   fiscalYearEnd,
@@ -62,6 +69,10 @@ export function TreasuryProfilePanel({
           },
         ];
   const jurisRows = jurisdictions ?? [];
+  const protectedRecord = isProtectedDemoFfmClient({
+    clientId: clientUserId,
+    clientEmail,
+  });
 
   return (
     <div className="space-y-4">
@@ -185,6 +196,13 @@ export function TreasuryProfilePanel({
           <p className="treasury-meta-fine">No active grant on this record.</p>
         )}
       </div>
+
+      <TreasuryResetClientDataBlock
+        clientUserId={clientUserId}
+        clientName={clientName}
+        protectedRecord={protectedRecord}
+        onResetComplete={onResetComplete}
+      />
     </div>
   );
 }

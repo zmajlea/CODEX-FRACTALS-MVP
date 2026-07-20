@@ -591,10 +591,12 @@ export function TreasurySummaryPanel({
       {loading ? (
         <p className="text-sm text-codex-muted">Loading summary…</p>
       ) : rows.length === 0 && !error ? (
-        <p className="text-sm text-codex-muted">
-          {!hasSyncedData
-            ? "No transactions synced yet — Sync from bank or Import CSV."
-            : "No transactions in this window."}
+        <p className="text-sm text-codex-muted" role="status">
+          {embedded
+            ? "Import a book to see this"
+            : !hasSyncedData
+              ? "No transactions synced yet — Sync from bank or Import CSV."
+              : "No transactions in this window."}
         </p>
       ) : (
         <>
@@ -630,9 +632,14 @@ export function TreasurySummaryPanel({
                 }.`}
             </p>
           ) : forecast?.insufficient_history ? (
-            <p className="text-sm text-codex-muted mt-4">
-              Not enough history to project {granularity}ly yet
-              {forecast.history_days != null ? ` — ${forecast.history_days} days synced` : ""}.
+            <p className="text-sm text-codex-muted mt-4" role="status">
+              {embedded && (forecast.history_days == null || forecast.history_days === 0)
+                ? "Import a book to see this"
+                : `Not enough history to project ${granularity}ly yet${
+                    forecast.history_days != null
+                      ? ` — ${forecast.history_days} days synced`
+                      : ""
+                  }.`}
             </p>
           ) : forecast && forecast.periods.length > 0 ? (
             <>

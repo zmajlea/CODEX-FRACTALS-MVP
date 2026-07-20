@@ -558,17 +558,17 @@ function SpendPlanPanelBody({
           </p>
         ) : null}
         {noHistory ? (
-          <p className="treasury-meta text-sm">
-            No outflow history for this account yet.
+          <p className="treasury-meta text-sm" role="status">
+            Import a book to see this
           </p>
         ) : null}
-        {insufficientHistory ? (
+        {!noHistory && insufficientHistory ? (
           <p className="treasury-meta text-sm">
             Fewer than 3 complete months — baselines will be thin.
           </p>
         ) : null}
 
-        {projectionVerdict ? (
+        {!noHistory && projectionVerdict ? (
           <div className={`verdict${projectionVerdict.risk ? " risk" : ""}`}>
             <span className="v-ic">
               {projectionVerdict.risk ? FLAME_ICON : CHECK_ICON}
@@ -580,7 +580,7 @@ function SpendPlanPanelBody({
           </div>
         ) : null}
 
-        {model && inputs ? (
+        {!noHistory && model && inputs ? (
           <>
             <div className="figs">
               <div className="fig">
@@ -937,7 +937,7 @@ function SpendPlanPanelBody({
             {backtestTable}
           </div>
         </>
-      ) : loading ? (
+      ) : loading && !noHistory ? (
         <p className="treasury-meta">Loading Analyzer…</p>
       ) : null}
     </div>
