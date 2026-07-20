@@ -517,7 +517,7 @@ export function OperatorTreasuryClientRecord({
         />
 
         {/* Spec 35: record header = identity only. Sync → Connections; Suspend/Revoke → Profile. */}
-        {tab !== "overview" ? (
+        {tab !== "overview" && tab !== "transactions" ? (
           <div className="panel p-4 mb-4">
             <p className="font-medium font-head text-lg">{clientName}</p>
             <p className="text-sm text-codex-muted">{clientEmail}</p>
@@ -609,6 +609,7 @@ export function OperatorTreasuryClientRecord({
           <TreasuryLedgerPanel
             key={ledgerKey}
             clientUserId={clientUserId}
+            demo={demo}
             institutions={data?.institutions ?? []}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
