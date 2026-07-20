@@ -287,12 +287,11 @@ export function TreasurySummaryPanel({
   const [drillRow, setDrillRow] = useState<TreasurySummaryRow | null>(null);
   const [forecastDrill, setForecastDrill] = useState<TreasuryForecastPeriod | null>(null);
 
+  /** Operator `since` always wins — periods derive from the window, never clamped to defaultPeriods. */
   const periods = useMemo(() => {
-    const meta = GRANULARITIES.find((g) => g.id === granularity);
-    if (embedded && meta) return meta.defaultPeriods;
     const starts = listPeriodStarts(granularity, since, todayIso());
     return Math.min(60, Math.max(1, starts.length || 1));
-  }, [embedded, granularity, since]);
+  }, [granularity, since]);
 
   function periodPickable(row: TreasurySummaryRow): Pickable {
     const from = row.period_start;
@@ -472,17 +471,55 @@ export function TreasurySummaryPanel({
             {FORECAST_ENGINE_LABEL}
             {dataSpanLine ? `. ${dataSpanLine}` : ""}
           </p>
-          <div className="seg" role="group" aria-label="Granularity">
-            {GRANULARITIES.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                aria-pressed={granularity === g.id}
-                onClick={() => setGranularityKeepSince(g.id)}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              className="seg"
+              role="group"
+              aria-label="Granularity"
+              style={{ marginBottom: 0 }}
+            >
+              {GRANULARITIES.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  aria-pressed={granularity === g.id}
+                  onClick={() => setGranularityKeepSince(g.id)}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+            <div className="adv-body" style={{ margin: 0, padding: "6px 12px" }}>
+              <label
+                className="meta"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  margin: 0,
+                }}
               >
-                {g.label}
-              </button>
-            ))}
+                Since
+                <input
+                  type="date"
+                  value={since}
+                  max={todayIso()}
+                  aria-label="History window start"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setSince(v);
+                  }}
+                />
+              </label>
+            </div>
           </div>
           <p className="meta" style={{ margin: "0 0 6px" }}>
             This view: {thisViewLine}.
