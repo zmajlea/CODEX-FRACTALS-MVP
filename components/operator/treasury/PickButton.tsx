@@ -6,7 +6,7 @@ import { assertAbsolutePickParams } from "@/lib/treasury/pickable";
 
 type Props = {
   pickable: Pickable;
-  variant: "row" | "header";
+  variant: "row" | "header" | "row-draft";
   onPick: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
   disabled?: boolean;
   buttonClassName?: string;
@@ -69,12 +69,20 @@ export function PickButton({
         ref={btnRef}
         type="button"
         className={
-          buttonClassName ?? (variant === "header" ? "pkh" : "pk")
+          buttonClassName ??
+          (variant === "header"
+            ? "pkh"
+            : variant === "row-draft"
+              ? "row-pick"
+              : "pk")
         }
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-label={
+          ariaLabel ??
+          (variant === "row-draft" ? "Add this transaction to a draft" : undefined)
+        }
         onClick={openMenu}
         title="Add to draft"
       >
@@ -82,6 +90,8 @@ export function PickButton({
           <>
             <b>+</b> Add to draft
           </>
+        ) : variant === "row-draft" ? (
+          "+ Add to draft"
         ) : (
           "+"
         )}

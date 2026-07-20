@@ -1,6 +1,7 @@
 "use client";
 
 import { formatSuMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { Pickable } from "@/lib/treasury/pickable";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
 
@@ -76,9 +77,17 @@ export function TreasuryTxRow({
   onConfirm,
   onStartEdit,
   onMakeRule,
+  onPick,
   highlighted = false,
 }: Props) {
   const memo = tx.raw_name ?? tx.description ?? tx.merchant_name ?? tx.normalized_merchant ?? "—";
+  const payee = tx.merchant_name ?? tx.normalized_merchant ?? memo;
+  const rowPickable: Pickable = {
+    kind: "transaction",
+    ref: tx.id,
+    label: payee,
+    sublabel: tx.posted_date ?? undefined,
+  };
   const isUncategorized = !tx.label && tx.suggestion_status !== "suggested";
   const isSuggested = tx.suggestion_status === "suggested";
   const isConfirmed = !!tx.label;
@@ -161,6 +170,9 @@ export function TreasuryTxRow({
           <button type="button" className="ra" onClick={() => onMakeRule()}>
             + rule
           </button>
+        ) : null}
+        {onPick ? (
+          <PickButton variant="row-draft" pickable={rowPickable} onPick={onPick} />
         ) : null}
       </td>
     </tr>

@@ -90,8 +90,8 @@ function formatSpanLine(book: TreasuryBookStats): string {
   const parts = [
     `${book.count.toLocaleString()} transaction${book.count === 1 ? "" : "s"}.`,
     `${formatBookDate(book.first)} to ${formatBookDate(book.last)}.`,
-    book.importedAt
-      ? `Imported ${formatBookDate(book.importedAt.slice(0, 10))}.`
+    book.last
+      ? `Imported ${formatBookDate(book.last)}.`
       : null,
   ].filter(Boolean);
   return parts.join(" ");
@@ -949,6 +949,7 @@ export function TreasuryLedgerPanel({
                   setDescDraft(tx.description ?? "");
                 }}
                 onMakeRule={onMakeRule ? () => onMakeRule(tx) : undefined}
+                onPick={addPickableToDraft}
               />
             ))}
           </tbody>
