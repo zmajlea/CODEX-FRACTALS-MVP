@@ -306,7 +306,7 @@ export function OperatorTreasuryPortfolio({
             style={view === "list" ? { gridTemplateColumns: "1fr" } : undefined}
           >
             {clients.map((row) => (
-              <TreasuryPortfolioClientCard key={row.grant_id} row={row} />
+              <TreasuryPortfolioClientCard key={row.grant_id} row={row} demo={demo} />
             ))}
             <button
               type="button"
