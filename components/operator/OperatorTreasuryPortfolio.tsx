@@ -151,8 +151,9 @@ export function OperatorTreasuryPortfolio({
     [clients]
   );
 
-  const inviteDisabled =
-    credits < treasurySeatCost || treasuryModules.length === 0;
+  // R1 — adding clients is off during testing (docs tell Tim; UI must match).
+  const inviteDisabled = true;
+  const inviteOffTitle = "Adding clients is off during R1 testing";
 
   const activeCount = clients.length;
 
@@ -185,7 +186,12 @@ export function OperatorTreasuryPortfolio({
                 type="button"
                 className="btn"
                 disabled={inviteDisabled}
-                onClick={() => setInviteOpen(true)}
+                aria-disabled={inviteDisabled}
+                title={inviteDisabled ? inviteOffTitle : undefined}
+                onClick={() => {
+                  if (inviteDisabled) return;
+                  setInviteOpen(true);
+                }}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -312,7 +318,12 @@ export function OperatorTreasuryPortfolio({
               type="button"
               className="addcard"
               disabled={inviteDisabled}
-              onClick={() => setInviteOpen(true)}
+              aria-disabled={inviteDisabled}
+              title={inviteDisabled ? inviteOffTitle : undefined}
+              onClick={() => {
+                if (inviteDisabled) return;
+                setInviteOpen(true);
+              }}
             >
               <span className="ac-plus">
                 <svg

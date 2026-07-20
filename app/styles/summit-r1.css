@@ -649,6 +649,13 @@
   border:1.5px dashed color-mix(in srgb,var(--brand) 32%, var(--line)); border-radius:var(--radius); background:transparent;
   color:var(--brand); text-decoration:none; text-align:center; padding:22px; transition:background .15s, border-color .15s; }
 [data-r1] .addcard:hover{ background:color-mix(in srgb,var(--brand) 4%, transparent); border-color:var(--brand); }
+[data-r1] .addcard:disabled,
+[data-r1] .addcard[aria-disabled="true"]{ opacity:.42; cursor:not-allowed; color:var(--mute);
+  border-color:var(--line); background:var(--paper-2); }
+[data-r1] .addcard:disabled:hover,
+[data-r1] .addcard[aria-disabled="true"]:hover{ background:var(--paper-2); border-color:var(--line); }
+[data-r1] .addcard:disabled .ac-plus,
+[data-r1] .addcard[aria-disabled="true"] .ac-plus{ background:color-mix(in srgb,var(--mute) 12%, transparent); color:var(--mute); }
 [data-r1] .addcard .ac-plus{ width:42px; height:42px; border-radius:50%; background:color-mix(in srgb,var(--brand) 10%, transparent);
   display:flex; align-items:center; justify-content:center; }
 [data-r1] .addcard .ac-plus svg{ width:20px; height:20px; }
