@@ -3,13 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useClientGrants } from "@/components/platform/ClientGrantsContext";
 import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
-import { TreasuryAccountsView } from "@/components/treasury/TreasuryAccountsView";
 import { TreasuryClientCashHero } from "@/components/treasury/TreasuryClientCashHero";
 import { TreasuryClientCashTrend } from "@/components/treasury/TreasuryClientCashTrend";
 import { TreasuryClientConnections } from "@/components/treasury/TreasuryClientConnections";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
 import { TreasuryClientTreasurerStrip } from "@/components/treasury/TreasuryClientTreasurerStrip";
-import { formatTreasuryAsOf } from "@/lib/treasury/format";
 
 type View = "overview" | "recommendations" | "connections";
 
@@ -55,73 +53,76 @@ export function TreasuryDashboard() {
     { id: "connections", label: "Connections" },
   ];
 
-  const metaLine = tenantName
-    ? `Managed by ${tenantName} · ${
-        data?.last_synced_at
-          ? `bank feed refreshed ${formatTreasuryAsOf(data.last_synced_at)}`
-          : "from your imported book"
-      }`
-    : data?.last_synced_at
-      ? `Bank feed refreshed ${formatTreasuryAsOf(data.last_synced_at)}`
-      : "From your imported book";
+  const srcLine = tenantName
+    ? `Managed by your Summit team, from your imported book.`
+    : "Managed by your Summit team, from your imported book.";
 
   return (
-    <div className="treasury-page p-8">
-      <header className="mb-6">
-        <p className="eyebrow">Treasury</p>
-        <h1 className="title">Your treasury</h1>
-        <p className="treasury-meta mt-2">{metaLine}</p>
-      </header>
-
-      <nav className="treasury-tabs choices" aria-label="Treasury views">
+    <div className="client-wrap">
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="Your treasury"
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`seg${view === t.id ? " on" : ""}`}
+            role="tab"
+            id={`t-${t.id}`}
+            aria-selected={view === t.id}
+            aria-controls={`p-${t.id}`}
             onClick={() => setView(t.id)}
           >
             {t.label}
-            {t.badge ? <span className="treasury-tab-badge">{t.badge}</span> : null}
+            {t.badge ? ` ${t.badge}` : ""}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {view === "overview" ? (
-        <>
-          {error ? (
-            <p className="panel-note mb-4" style={{ color: "var(--su-neg)" }} role="alert">
-              {error}
-            </p>
-          ) : null}
-          <TreasuryClientCashHero
-            institutions={data?.institutions ?? []}
-            lastSyncedAt={data?.last_synced_at ?? null}
-          />
-          <TreasuryClientTreasurerStrip
-            onReviewPending={() => setView("recommendations")}
-            onRecommendationsChange={(_recs, unread) => setRecUnread(unread)}
-          />
-          <TreasuryClientCashTrend />
-          <TreasuryAccountsView
-            embedded
-            institutions={data?.institutions ?? []}
-            transactions={data?.transactions ?? []}
-            loading={loading}
-            error={error}
-            hideTotals
-            transactionCount={data?.transaction_count}
-            showConnectButton={false}
-            onRefresh={() => void load()}
-          />
-        </>
-      ) : null}
+      <section
+        className={`tabpanel${view === "overview" ? " on" : ""}`}
+        id="p-overview"
+        role="tabpanel"
+        aria-labelledby="t-overview"
+        hidden={view !== "overview"}
+      >
+        <h1 className="rh1">Your treasury</h1>
+        <p className="rh-src">{srcLine}</p>
+        {error ? (
+          <p className="panel-note mb-4" style={{ color: "var(--su-neg)" }} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <TreasuryClientCashHero
+          institutions={data?.institutions ?? []}
+          lastSyncedAt={data?.last_synced_at ?? null}
+          loading={loading}
+        />
+        <TreasuryClientTreasurerStrip
+          onReviewPending={() => setView("recommendations")}
+          onRecommendationsChange={(_recs, unread) => setRecUnread(unread)}
+        />
+        <TreasuryClientCashTrend />
+      </section>
 
-      {view === "recommendations" ? (
+      <section
+        className={`tabpanel${view === "recommendations" ? " on" : ""}`}
+        id="p-recommendations"
+        role="tabpanel"
+        aria-labelledby="t-recommendations"
+        hidden={view !== "recommendations"}
+      >
         <TreasuryClientRecommendations onUnreadChange={setRecUnread} />
-      ) : null}
+      </section>
 
-      {view === "connections" ? (
+      <section
+        className={`tabpanel${view === "connections" ? " on" : ""}`}
+        id="p-connections"
+        role="tabpanel"
+        aria-labelledby="t-connections"
+        hidden={view !== "connections"}
+      >
         <TreasuryClientConnections
           institutions={data?.institutions ?? []}
           lastSyncedAt={data?.last_synced_at ?? null}
@@ -129,7 +130,7 @@ export function TreasuryDashboard() {
           onLinked={() => void load()}
           onDisconnected={() => void load()}
         />
-      ) : null}
+      </section>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   isRuleContextCompanion,
   RULE_CONTEXT_MAX_N,
   RULE_CONTEXT_MIN_N,
+  type ProjectedFigureSnap,
 } from "@/lib/treasury/evidence";
 import { ExpandableTxQueryEvidence } from "@/components/treasury/ExpandableTxQueryEvidence";
 import type { DraftKind } from "@/lib/treasury/pickable";
@@ -245,6 +246,57 @@ export function DraftComposer({
                     >
                       ×
                     </button>
+                  ) : null}
+                </div>
+              );
+            }
+            if (
+              item.kind === "forecast" &&
+              item.available === true
+            ) {
+              const raw = draft.evidence[idx];
+              const snap =
+                raw?.kind === "forecast" && raw.snap && typeof raw.snap === "object"
+                  ? (raw.snap as ProjectedFigureSnap)
+                  : undefined;
+              return (
+                <div key={key}>
+                  <div className="req-item">
+                    <span className="ri-d">forecast</span>
+                    <span className="ri-p">
+                      <b>{itemLabel(item)}</b>
+                      {item.sublabel ? <em>{item.sublabel}</em> : null}
+                      {snap?.projected ? (
+                        <em className="chip await" style={{ display: "inline-block", marginTop: 4 }}>
+                          projected
+                        </em>
+                      ) : null}
+                    </span>
+                    <span className="ri-a">
+                      {typeof item.amount === "number"
+                        ? formatEvidenceAmount(item.amount, item.direction)
+                        : snap?.sublabel ?? "—"}
+                    </span>
+                    {"id" in item && item.id ? (
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        disabled={busy}
+                        onClick={() => void removeItem(item.id!, item.kind)}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                  {snap?.projected && snap.caveat ? (
+                    <div className="caveat dd-chip-caveat">
+                      <span>
+                        {snap.caveat}
+                        {snap.engineLabel ? (
+                          <span className="dd-engine">{snap.engineLabel}</span>
+                        ) : null}
+                      </span>
+                    </div>
                   ) : null}
                 </div>
               );

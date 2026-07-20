@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
-  RECOMMENDATION_CATEGORY_LABELS,
-  type RecommendationStatus,
-} from "@/lib/treasury/recommendation-status";
-import { ExecLadder, formatImpactLine } from "@/lib/treasury/recommendation-ui";
+  clientStatusChip,
+  ClientTracker,
+  isAnsweredQuestion,
+} from "@/lib/treasury/recommendation-ui";
 import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 
 type Props = {
@@ -14,17 +13,10 @@ type Props = {
   onRecommendationsChange?: (recs: TreasuryRecommendationRow[], unreadCount: number) => void;
 };
 
-function formatImpactShort(rec: TreasuryRecommendationRow): string {
-  if (rec.impact_amount == null) return "—";
-  const cur = rec.impact_unit ?? "USD";
-  const money = formatTreasuryMoney(rec.impact_amount, cur);
-  if (rec.impact_basis === "per_year") return `${money}/yr`;
-  if (rec.impact_basis === "per_month") return `${money}/mo`;
-  if (rec.impact_basis === "one_time") return `${money} one time`;
-  return money;
-}
-
-export function TreasuryClientTreasurerStrip({ onReviewPending, onRecommendationsChange }: Props) {
+export function TreasuryClientTreasurerStrip({
+  onReviewPending,
+  onRecommendationsChange,
+}: Props) {
   const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,19 +44,29 @@ export function TreasuryClientTreasurerStrip({ onReviewPending, onRecommendation
   );
 
   const awaiting = visible.filter((r) => r.status === "sent").length;
-  const inMotion = visible.filter((r) => r.status === "accepted" || r.status === "in_progress").length;
-  const done = visible.filter((r) => r.status === "done").length;
-
-  const pendingRow = visible.find((r) => r.status === "sent");
-  const inFlight = visible.filter(
+  const inMotion = visible.filter(
     (r) => r.status === "accepted" || r.status === "in_progress"
-  ).slice(0, 2);
+  ).length;
+  const answered = visible.filter((r) => isAnsweredQuestion(r)).length;
+  const done = visible.filter(
+    (r) => r.kind !== "question" && r.status === "done"
+  ).length;
+
+  const previewCards = useMemo(() => {
+    const pending = visible.filter((r) => r.status === "sent").slice(0, 2);
+    const inFlight = visible.filter(
+      (r) =>
+        r.kind !== "question" &&
+        (r.status === "accepted" || r.status === "in_progress")
+    ).slice(0, 1);
+    return [...pending, ...inFlight];
+  }, [visible]);
 
   if (loading) {
     return (
-      <section className="ct-treasurer-panel treasury-section">
-        <p className="treasury-muted">Loading recommendations…</p>
-      </section>
+      <p className="meta" style={{ marginBottom: 20 }}>
+        Loading recommendations…
+      </p>
     );
   }
 
@@ -73,43 +75,43 @@ export function TreasuryClientTreasurerStrip({ onReviewPending, onRecommendation
   }
 
   return (
-    <section className="ct-treasurer-panel treasury-section" aria-label="Your treasurer is working on">
-      <h2 className="sec-title">Your treasurer is working on</h2>
-      <div className="rec-rollup">
-        <span className="rr-i">
-          <b>{awaiting}</b> awaiting your reply
-        </span>
-        <span className="rr-i">
-          <b>{inMotion}</b> in motion
-        </span>
-        <span className="rr-i">
-          <b>{done}</b> done
-        </span>
+    <>
+      <div className="rollup-line">
+        <b>Your Summit team is working on:</b> {awaiting} awaiting your reply,{" "}
+        {inMotion} in motion, {answered} answered, {done} done.
       </div>
 
-      {pendingRow ? (
-        <div className="ct-treasurer-row awaiting">
-          <div className="ct-treasurer-row-main">
-            <div className="ct-treasurer-row-title">{pendingRow.title}</div>
-            <span className="rec-cat">{RECOMMENDATION_CATEGORY_LABELS[pendingRow.category]}</span>
-          </div>
-          <div className="ct-treasurer-row-impact">{formatImpactShort(pendingRow)}</div>
-          <button type="button" className="btn text-xs" onClick={onReviewPending}>
-            Review →
-          </button>
-        </div>
-      ) : null}
+      {previewCards.map((rec) => {
+        const chip = clientStatusChip(rec);
+        const isPending = rec.status === "sent";
+        const showTracker =
+          !isPending &&
+          rec.kind !== "question" &&
+          (rec.status === "accepted" ||
+            rec.status === "in_progress" ||
+            rec.status === "done");
 
-      {inFlight.map((rec) => (
-        <div key={rec.id} className="ct-treasurer-row">
-          <div className="ct-treasurer-row-main">
-            <div className="ct-treasurer-row-title">{rec.title}</div>
-            <span className="rec-cat">{RECOMMENDATION_CATEGORY_LABELS[rec.category]}</span>
-            <ExecLadder status={rec.status as RecommendationStatus} />
-          </div>
-          <div className="ct-treasurer-row-impact">{formatImpactLine(rec)}</div>
-        </div>
-      ))}
-    </section>
+        return (
+          <article key={rec.id} className="rec-card">
+            <div className="rc-top">
+              <span className={chip.className}>{chip.label}</span>
+            </div>
+            <p className="rc-why">{rec.title}</p>
+            {isPending ? (
+              <button
+                type="button"
+                className="tile-act"
+                onClick={onReviewPending}
+              >
+                {rec.kind === "question"
+                  ? "Answer in Recommendations"
+                  : "Review in Recommendations"}
+              </button>
+            ) : null}
+            {showTracker ? <ClientTracker status={rec.status} /> : null}
+          </article>
+        );
+      })}
+    </>
   );
 }
