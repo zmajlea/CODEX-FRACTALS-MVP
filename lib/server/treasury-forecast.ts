@@ -150,11 +150,15 @@ export async function computeTreasuryForecast(
   const today = todayIso();
   const horizon = HORIZON[granularity];
   const baselineK = BASELINE_PERIODS[granularity];
-  const anchor = periodStartOf(granularity, today);
+
+  const data_span = await fetchBookDataSpan(admin, clientUserId, accountId);
+  const anchorDate = data_span?.last ?? today;
+
+  const anchor = periodStartOf(granularity, anchorDate);
   const horizonEnd = shiftPeriods(granularity, anchor, horizon);
 
   // Baseline window: trailing N *complete* periods (exclude unfinished current).
-  const currentPeriod = periodStartOf(granularity, today);
+  const currentPeriod = periodStartOf(granularity, anchorDate);
   const lastCompleteStart = shiftPeriods(granularity, currentPeriod, -1);
   const baselineStarts: string[] = [];
   for (let i = baselineK - 1; i >= 0; i--) {
@@ -165,8 +169,6 @@ export async function computeTreasuryForecast(
   // Two different questions — name them separately so they cannot drift apart again.
   const recurringLookbackStart = subtractDays(today, RECURRING_LOOKBACK_DAYS);
   const lookbackStartUnclamped = minIso(recurringLookbackStart, earliestBaselineStart);
-
-  const data_span = await fetchBookDataSpan(admin, clientUserId, accountId);
 
   // Query window covers both recurrence lookback and full baseline periods, clamped to the book.
   let lookbackFrom = lookbackStartUnclamped;

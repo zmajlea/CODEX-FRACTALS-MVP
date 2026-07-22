@@ -21,6 +21,63 @@ import { fetchAllRows } from "../lib/treasury/fetch-all-rows";
 
 const ROOT = join(__dirname, "..");
 const BENCH_EMAIL = "bench-import@codexone.test";
+const CLIENT1_EMAIL = "r1_gate_client_1@codexone.test";
+const CLIENT1_ACCOUNT = "csv:0625";
+const CLIENT1_RESERVE = "csv:0871";
+/** Captured on main before Spec 54 — monthly low on Client 1 operating account. */
+const CLIENT1_MONTHLY_LOW_BEFORE = 98756.58;
+
+function forecastLow(periods: { closing: number }[]): number | null {
+  if (!periods.length) return null;
+  return Math.min(...periods.map((p) => p.closing));
+}
+
+async function gateClient1Operating(
+  admin: ReturnType<typeof createClient>,
+  clientId: string
+) {
+  console.log("\n=== Spec 54 — Client 1 operating (csv:0625) ===");
+  let failed = false;
+  let monthlyLowAfter: number | null = null;
+
+  for (const g of ["day", "week", "month"] as const) {
+    const r = await computeTreasuryForecast(admin, clientId, g, CLIENT1_ACCOUNT);
+    const low = forecastLow(r.periods);
+    console.log(`  ${g}: refuse=${Boolean(r.refuse_projection)} insufficient=${Boolean(r.insufficient_history)} periods=${r.periods.length} low=${low?.toFixed(2) ?? "n/a"}`);
+    if (r.refuse_projection || r.periods.length === 0) {
+      console.error(`FAIL: ${g} must project on csv:0625`);
+      failed = true;
+    }
+    if (g === "month") monthlyLowAfter = low;
+  }
+
+  if (monthlyLowAfter != null) {
+    const delta = Math.abs(monthlyLowAfter - CLIENT1_MONTHLY_LOW_BEFORE);
+    const pct = (delta / CLIENT1_MONTHLY_LOW_BEFORE) * 100;
+    console.log(`  monthly low delta: ${delta.toFixed(2)} (${pct.toFixed(3)}%) vs before ${CLIENT1_MONTHLY_LOW_BEFORE}`);
+    if (delta > 1 && pct > 0.01) {
+      console.error("FAIL: monthly low moved more than rounding on csv:0625");
+      failed = true;
+    }
+  }
+
+  return failed;
+}
+
+async function gateClient1Reserve(
+  admin: ReturnType<typeof createClient>,
+  clientId: string
+) {
+  console.log("\n=== Spec 54 — Client 1 reserve (csv:0871) — log only, no projection assert ===");
+  for (const g of ["day", "week", "month"] as const) {
+    const r = await computeTreasuryForecast(admin, clientId, g, CLIENT1_RESERVE);
+    const low = forecastLow(r.periods);
+    console.log(
+      `  ${g}: refuse=${Boolean(r.refuse_projection)} insufficient=${Boolean(r.insufficient_history)} periods=${r.periods.length} low=${low?.toFixed(2) ?? "n/a"} reason=${r.refuse_reason ?? "(none)"}`
+    );
+  }
+  // Reserve may honestly refuse or return flat projection — never fail the gate on 0871.
+}
 
 function loadEnvLocal() {
   const raw = readFileSync(join(ROOT, ".env.local"), "utf8");
@@ -211,13 +268,32 @@ async function main() {
   }
 
   if (failed) {
-    console.error("\nFAIL");
+    console.error("\nFAIL (bench)");
     process.exit(1);
   }
 
   console.log(
-    "\nPASS: projects; data_span is the book; January fully inside the book span"
+    "\nPASS (bench): projects; data_span is the book; January fully inside the book span"
   );
+
+  const { data: client1 } = await admin
+    .from("users")
+    .select("id")
+    .ilike("email", CLIENT1_EMAIL)
+    .maybeSingle();
+  if (!client1) {
+    console.error("FAIL: Client 1 missing for Spec 54 gate");
+    process.exit(1);
+  }
+
+  await gateClient1Reserve(admin, client1.id);
+  const client1Failed = await gateClient1Operating(admin, client1.id);
+  if (client1Failed) {
+    console.error("\nFAIL (Client 1 csv:0625)");
+    process.exit(1);
+  }
+
+  console.log("\nPASS Spec 54 Client 1: csv:0625 day/week/month project; monthly low stable");
 }
 
 main().catch((e) => {

@@ -143,12 +143,14 @@ function CashFlowChart({
   bars,
   currency,
   granularity,
+  dividerLabel = "Latest data",
   onHistorySelect,
   onForecastSelect,
 }: {
   bars: ChartBar[];
   currency: string;
   granularity: SummaryGranularity;
+  dividerLabel?: string;
   onHistorySelect: (row: TreasurySummaryRow) => void;
   onForecastSelect: (period: TreasuryForecastPeriod) => void;
 }) {
@@ -206,7 +208,7 @@ function CashFlowChart({
               strokeDasharray="3 3"
             />
             <text className="fc-xlabel t" x={dividerX + 4} y={pad.top + 10} fontSize={8}>
-              today
+              {dividerLabel}
             </text>
           </>
         ) : null}
@@ -347,6 +349,7 @@ export function TreasurySummaryPanel({
     // Spec 50: accountId required only when the client has accounts.
     const forecastQs = new URLSearchParams({ granularity });
     if (accounts.length > 0 && accountId) {
+      summaryParams.set("account_id", accountId);
       forecastQs.set("accountId", accountId);
     }
     const [summaryRes, forecastRes] = await Promise.all([
@@ -415,7 +418,9 @@ export function TreasurySummaryPanel({
         closing: p.closing,
       })
     );
-    return [...history, ...fc];
+    return [...history, ...fc].sort((a, b) =>
+      a.period_start.localeCompare(b.period_start)
+    );
   }, [rows, forecast?.periods]);
 
   const lowPoint = useMemo(() => {
@@ -658,6 +663,11 @@ export function TreasurySummaryPanel({
             bars={chartBars}
             currency={currency}
             granularity={granularity}
+            dividerLabel={
+              forecast?.data_span?.last
+                ? `Latest data · ${forecast.data_span.last.slice(5).replace("-", "/")}`
+                : "Latest data"
+            }
             onHistorySelect={(row) => {
               const full = rows.find((r) => r.period_start === row.period_start);
               setDrillRow(full ?? row);
