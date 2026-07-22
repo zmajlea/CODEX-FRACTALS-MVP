@@ -173,7 +173,7 @@ export function OperatorTreasuryPortfolio({
         keyUnlocked
         railGroups={railGroups}
         onLogout={() => void handleLogout()}
-        showBcnSolutionLine
+        showBcnSolutionLine={false}
       >
         <section className="view on" aria-label="Operator treasury portfolio">
           <div className="hubhead">
