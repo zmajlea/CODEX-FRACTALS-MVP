@@ -143,12 +143,14 @@ function CashFlowChart({
   bars,
   currency,
   granularity,
+  dividerLabel = "Latest data",
   onHistorySelect,
   onForecastSelect,
 }: {
   bars: ChartBar[];
   currency: string;
   granularity: SummaryGranularity;
+  dividerLabel?: string;
   onHistorySelect: (row: TreasurySummaryRow) => void;
   onForecastSelect: (period: TreasuryForecastPeriod) => void;
 }) {
@@ -206,7 +208,7 @@ function CashFlowChart({
               strokeDasharray="3 3"
             />
             <text className="fc-xlabel t" x={dividerX + 4} y={pad.top + 10} fontSize={8}>
-              today
+              {dividerLabel}
             </text>
           </>
         ) : null}
@@ -658,6 +660,11 @@ export function TreasurySummaryPanel({
             bars={chartBars}
             currency={currency}
             granularity={granularity}
+            dividerLabel={
+              forecast?.data_span?.last
+                ? `Latest data · ${forecast.data_span.last.slice(5).replace("-", "/")}`
+                : "Latest data"
+            }
             onHistorySelect={(row) => {
               const full = rows.find((r) => r.period_start === row.period_start);
               setDrillRow(full ?? row);

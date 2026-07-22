@@ -138,6 +138,21 @@ async function main() {
   }
 
   console.log("PASS engine scope", { clientId: client.id, sumBal });
+
+  console.log("\n=== Spec 54 — day/week on gate client 3 (0625 + 0617 only) ===");
+  for (const acct of [a0625, a0617]) {
+    for (const g of ["day", "week"] as const) {
+      const f = await computeTreasuryForecast(admin, client.id, g, acct.account_id);
+      const low = f.periods.length
+        ? Math.min(...f.periods.map((p) => p.closing))
+        : null;
+      console.log(`  ${acct.account_id} ${g}: refuse=${Boolean(f.refuse_projection)} periods=${f.periods.length} low=${low?.toFixed(2) ?? "n/a"} span=${f.data_span?.last ?? "?"}`);
+      if (f.refuse_projection || f.periods.length === 0) {
+        throw new Error(`${acct.account_id} ${g} must project on gate client 3`);
+      }
+    }
+  }
+  console.log("PASS Spec 54 day/week per-account on gate client 3");
 }
 
 main().catch((e) => {
