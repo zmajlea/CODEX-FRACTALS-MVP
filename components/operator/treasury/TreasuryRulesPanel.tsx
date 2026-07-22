@@ -220,7 +220,8 @@ export function TreasuryRulesPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          // Manual advanced form has no name field — derive so API required-name check passes.
+          name: name.trim() || `Rule: ${assignLabel.trim()}`,
           match_merchant: matchMerchant,
           assign_label: assignLabel,
           amount_min: amountMin ? Number(amountMin) : null,
