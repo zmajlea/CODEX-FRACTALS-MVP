@@ -1,5 +1,5 @@
 /**
- * Spec 49A — load FFM book onto r1_gate_client_1: 0625 ONLY, never 0617.
+ * Spec 49A — load FFM book onto r1_gate_client_1: 0625 + 0871 reserve, never 0617.
  * Creates SELECTHEALTH rule and applies suggestions (leave at suggested).
  *
  * Run after: npm run test:seed:r1-gate
@@ -21,7 +21,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLIENT_EMAIL = "r1_gate_client_1@codexone.test";
 const OPERATOR_EMAIL = "r1_gate_operator@codexone.test";
-const CSV_PATH = "docs/summit-ffm-0625.csv";
+const CSV_PATHS = [
+  "docs/summit-ffm-0625.csv",
+  "docs/summit-ffm-0871-reserve.csv",
+] as const;
 
 function loadEnvLocal() {
   try {
@@ -87,21 +90,24 @@ async function main() {
 
   const clientUserId = clientRow.id;
   log(`Client: ${clientRow.email} (${clientUserId})`);
-  log(`Importing ${CSV_PATH} ONLY (0617 forbidden)`);
+  log(`Importing ${CSV_PATHS.join(" + ")} (0617 forbidden)`);
 
-  const csv = readFileSync(join(ROOT, CSV_PATH), "utf8");
-  const parsed = parseTreasuryCsv(csv, clientUserId);
-  const r = parsed.reconcile;
-  console.log(
-    `  Parse: ${parsed.rows.length} rows | in $${r.inflowSum.toLocaleString()} | out $${r.outflowSum.toLocaleString()}`
-  );
-  if (r.rowsNeedingDirection > 0) {
-    throw new Error(`${r.rowsNeedingDirection} null-direction rows`);
+  for (const csvPath of CSV_PATHS) {
+    log(`\n--- ${csvPath} ---`);
+    const csv = readFileSync(join(ROOT, csvPath), "utf8");
+    const parsed = parseTreasuryCsv(csv, clientUserId);
+    const r = parsed.reconcile;
+    console.log(
+      `  Parse: ${parsed.rows.length} rows | in $${r.inflowSum.toLocaleString()} | out $${r.outflowSum.toLocaleString()}`
+    );
+    if (r.rowsNeedingDirection > 0) {
+      throw new Error(`${r.rowsNeedingDirection} null-direction rows in ${csvPath}`);
+    }
+
+    await upsertCsvAccounts(admin, clientUserId, parsed.accountLabels);
+    const result = await upsertTransactions(admin, clientUserId, parsed.rows, "csv");
+    log(`Upsert: inserted ${result.inserted} | updated ${result.updated}`);
   }
-
-  await upsertCsvAccounts(admin, clientUserId, parsed.accountLabels);
-  const result = await upsertTransactions(admin, clientUserId, parsed.rows, "csv");
-  log(`Upsert: inserted ${result.inserted} | updated ${result.updated}`);
 
   // One SELECTHEALTH rule — leave matches at suggested
   const { data: existingRule } = await admin
@@ -155,14 +161,22 @@ async function main() {
     .from("treasury_transactions")
     .select("id", { count: "exact", head: true })
     .eq("client_user_id", clientUserId)
-    .eq("suggestion_status", "suggested")
-    .ilike("suggested_label", "SELECTHEALTH");
-  const { count: uncategorized } = await admin
+    .eq("is_removed", false)
+    .eq("suggestion_status", "suggested");
+  const { count: labeled } = await admin
     .from("treasury_transactions")
     .select("id", { count: "exact", head: true })
     .eq("client_user_id", clientUserId)
     .eq("is_removed", false)
-    .is("label", null);
+    .not("label", "is", null);
+  const { count: needsLabel } = await admin
+    .from("treasury_transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("client_user_id", clientUserId)
+    .eq("is_removed", false)
+    .or(
+      "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
+    );
 
   // Refuse if 0617 somehow present
   const { count: acct0617 } = await admin
@@ -178,10 +192,11 @@ async function main() {
   console.log({
     accounts: accountCount,
     transactions: txCount,
-    uncategorized,
-    selecthealth_suggested: suggested,
+    needs_label: needsLabel,
+    suggested,
+    labeled,
   });
-  console.log("Expect ~1 account, ~1086 txs, ~244 SELECTHEALTH suggested.");
+  console.log("Expect 2 accounts, 1161 txs, 917 needs_label / 244 suggested / 0 labeled.");
 }
 
 main().catch((e) => {
