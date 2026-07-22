@@ -1,12 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
-import { normalizeMerchant } from "@/lib/treasury/normalize";
 import {
   detectCadence,
   merchantMatches,
   type CadenceDetection,
 } from "@/lib/treasury/rule-helpers";
+import { escapeIlike } from "@/lib/treasury/tx-predicate";
 import type { TreasuryRuleRow } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
 
@@ -50,11 +50,14 @@ async function precomputeCadenceByRule(
   const cadenceByRule = new Map<string, CadenceDetection>();
 
   for (const rule of rules) {
+    const safe = escapeIlike(rule.match_merchant);
     const { data: matchedDates } = await admin
       .from("treasury_transactions")
       .select("posted_date")
       .eq("client_user_id", clientUserId)
-      .ilike("normalized_merchant", `%${rule.match_merchant}%`)
+      .or(
+        `normalized_merchant.ilike.%${safe}%,raw_name.ilike.%${safe}%,merchant_name.ilike.%${safe}%,description.ilike.%${safe}%`
+      )
       .eq("is_removed", false)
       .not("posted_date", "is", null)
       .order("posted_date", { ascending: false })
@@ -162,12 +165,22 @@ export async function applyRulesForClient(
   }> = [];
 
   for (const tx of txs) {
-    const normalized = tx.normalized_merchant ?? normalizeMerchant(tx.raw_name, tx.merchant_name);
     const absAmount = Math.abs(Number(tx.amount));
 
     for (const rule of typedRules) {
       if (rejectionSet.has(`${tx.id}:${rule.id}`)) continue;
-      if (!merchantMatches(normalized, rule)) continue;
+      if (
+        !merchantMatches(
+          {
+            normalized_merchant: tx.normalized_merchant,
+            raw_name: tx.raw_name,
+            merchant_name: tx.merchant_name,
+            description: tx.description,
+          },
+          rule
+        )
+      )
+        continue;
       if (rule.direction && tx.direction !== rule.direction) continue;
       if (rule.amount_min != null && absAmount < Number(rule.amount_min)) continue;
       if (rule.amount_max != null && absAmount > Number(rule.amount_max)) continue;

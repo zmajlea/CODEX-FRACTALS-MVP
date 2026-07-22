@@ -13,17 +13,54 @@ function similarity(a: string, b: string): number {
   return matches / maxLen;
 }
 
-export function merchantMatches(normalized: string, rule: TreasuryRuleRow): boolean {
-  const match = rule.match_merchant.toUpperCase();
-  const target = normalized.toUpperCase();
-  if (rule.match_type === "exact") return target === match;
-  if (rule.match_type === "fuzzy") {
-    if (!target || !match) return false;
-    const longer = target.length >= match.length ? target : match;
-    const shorter = target.length < match.length ? target : match;
-    return longer.includes(shorter) || similarity(target, match) > 0.55;
+/** Existing fuzzy logic against one haystack string. */
+function fuzzyHit(target: string, match: string): boolean {
+  if (!target || !match) return false;
+  const longer = target.length >= match.length ? target : match;
+  const shorter = target.length < match.length ? target : match;
+  return longer.includes(shorter) || similarity(target, match) > 0.55;
+}
+
+/** Fields preview searches — Spec 52. */
+export type MerchantMatchFields = {
+  normalized_merchant?: string | null;
+  raw_name?: string | null;
+  merchant_name?: string | null;
+  description?: string | null;
+};
+
+/**
+ * Rule merchant match.
+ * - contains (default): OR across four fields (same as preview q).
+ * - fuzzy: per-field fuzzy OR (no narrower than contains).
+ * - exact: normalized_merchant only (deliberate — raw bank text never equals clean exact).
+ */
+export function merchantMatches(
+  fields: MerchantMatchFields,
+  rule: TreasuryRuleRow
+): boolean {
+  const match = rule.match_merchant.toUpperCase().trim();
+  if (!match) return false;
+
+  if (rule.match_type === "exact") {
+    return (fields.normalized_merchant ?? "").toUpperCase().trim() === match;
   }
-  return target.includes(match);
+
+  const parts = [
+    fields.normalized_merchant,
+    fields.raw_name,
+    fields.merchant_name,
+    fields.description,
+  ]
+    .filter(Boolean)
+    .map((s) => String(s).toUpperCase());
+
+  if (rule.match_type === "fuzzy") {
+    return parts.some((p) => fuzzyHit(p, match));
+  }
+
+  // contains (default)
+  return parts.some((p) => p.includes(match));
 }
 
 export type CadenceDetection = {
