@@ -72,6 +72,24 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
+  // Clear unconfirmed suggestions before the rule row goes (FK would null the id
+  // and leave suggestion_status='suggested' — dangling Suggested rows).
+  const { error: clearErr } = await guard.admin
+    .from("treasury_transactions")
+    .update({
+      suggested_label: null,
+      suggested_by_rule_id: null,
+      suggestion_status: null,
+      suggestion_explanation: null,
+    })
+    .eq("client_user_id", clientId)
+    .eq("suggested_by_rule_id", ruleId)
+    .eq("suggestion_status", "suggested");
+
+  if (clearErr) {
+    return NextResponse.json({ error: clearErr.message }, { status: 500 });
+  }
+
   const { error } = await guard.admin
     .from("treasury_rules")
     .delete()
