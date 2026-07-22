@@ -9,9 +9,9 @@ import {
   clampSummaryPeriods,
   parseSummaryGranularity,
 } from "@/lib/server/treasury-summary-response";
+import { fetchSummaryDataSpan } from "@/lib/server/treasury-summary-data-span";
 import { querySummary } from "@/lib/server/treasury-rules";
-import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
-import { lastNPeriodStarts } from "@/lib/treasury/period-bounds";
+import { lastNPeriodStarts, minIso, todayIso } from "@/lib/treasury/period-bounds";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
@@ -33,31 +33,13 @@ export async function GET(request: Request, context: RouteContext) {
   const periods = clampSummaryPeriods(url.searchParams.get("periods"));
   const accountId = url.searchParams.get("account_id") ?? undefined;
 
-  const { from, to, starts } = lastNPeriodStarts(granularity, periods);
-
   try {
-    const dateRows = await fetchAllRows((rangeFrom, rangeTo) => {
-      let q = guard.admin
-        .from("treasury_transactions")
-        .select("posted_date")
-        .eq("client_user_id", clientId)
-        .eq("is_removed", false)
-        .eq("pending", false)
-        .not("posted_date", "is", null)
-        .order("posted_date", { ascending: true })
-        .order("id", { ascending: true })
-        .range(rangeFrom, rangeTo);
-      if (accountId) q = q.eq("account_id", accountId);
-      return q;
-    });
-
-    let dataFirst: string | null = null;
-    let dataLast: string | null = null;
-    for (const row of dateRows) {
-      const d = row.posted_date as string;
-      if (!dataFirst || d < dataFirst) dataFirst = d;
-      if (!dataLast || d > dataLast) dataLast = d;
-    }
+    const dataSpan = await fetchSummaryDataSpan(guard.admin, clientId, accountId);
+    const dataFirst = dataSpan?.first ?? null;
+    const dataLast = dataSpan?.last ?? null;
+    const today = todayIso();
+    const through = dataLast ? minIso(today, dataLast) : today;
+    const { from, to, starts } = lastNPeriodStarts(granularity, periods, through);
 
     const sparse = await querySummary(guard.admin, clientId, {
       bucket: granularity,

@@ -61,6 +61,14 @@ export function subtractDays(iso: string, days: number): string {
   return addDays(iso, -days);
 }
 
+export function minIso(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+export function maxIso(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
 /** Spec 36: Transactions default is All time (no date filter). */
 export function defaultDateRange(): { preset: "all" } {
   return { preset: "all" };
@@ -204,9 +212,13 @@ export function listPeriodStarts(bucket: SummaryBucket, from: string, to: string
   return starts;
 }
 
-export function lastNPeriodStarts(bucket: SummaryBucket, n: number): { from: string; to: string; starts: string[] } {
+export function lastNPeriodStarts(
+  bucket: SummaryBucket,
+  n: number,
+  through?: string
+): { from: string; to: string; starts: string[] } {
   const clamped = Math.min(Math.max(n, 1), 60);
-  const to = todayIso();
+  const to = through ?? todayIso();
   const anchor = periodStartOf(bucket, to);
   const from = shiftPeriods(bucket, anchor, -(clamped - 1));
   const starts: string[] = [];

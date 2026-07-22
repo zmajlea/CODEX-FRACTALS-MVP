@@ -349,6 +349,7 @@ export function TreasurySummaryPanel({
     // Spec 50: accountId required only when the client has accounts.
     const forecastQs = new URLSearchParams({ granularity });
     if (accounts.length > 0 && accountId) {
+      summaryParams.set("account_id", accountId);
       forecastQs.set("accountId", accountId);
     }
     const [summaryRes, forecastRes] = await Promise.all([
@@ -417,7 +418,9 @@ export function TreasurySummaryPanel({
         closing: p.closing,
       })
     );
-    return [...history, ...fc];
+    return [...history, ...fc].sort((a, b) =>
+      a.period_start.localeCompare(b.period_start)
+    );
   }, [rows, forecast?.periods]);
 
   const lowPoint = useMemo(() => {
