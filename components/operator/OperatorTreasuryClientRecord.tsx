@@ -539,7 +539,7 @@ export function OperatorTreasuryClientRecord({
       railGroups={railGroups}
       railHead={<TreasuryRecordRailBack />}
       onLogout={() => void handleLogout()}
-      showBcnSolutionLine
+      showBcnSolutionLine={false}
     >
       <div className="view on">
         <TreasuryRecordCrumb

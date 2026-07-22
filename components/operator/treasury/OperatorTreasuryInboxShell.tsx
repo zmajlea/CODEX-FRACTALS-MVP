@@ -46,7 +46,7 @@ export function OperatorTreasuryInboxShell({
       who={who}
       keyUnlocked
       railGroups={railGroups}
-      showBcnSolutionLine
+      showBcnSolutionLine={false}
     >
       {children}
     </BcnContinuityShell>

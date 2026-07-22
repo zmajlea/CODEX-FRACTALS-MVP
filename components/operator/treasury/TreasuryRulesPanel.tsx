@@ -276,6 +276,28 @@ export function TreasuryRulesPanel({
     void load();
   }
 
+  async function deleteRule(rule: TreasuryRuleRow) {
+    if (
+      !confirm(
+        `Delete the rule "${rule.match_merchant} → ${rule.assign_label}"? Any of its suggestions that you have not confirmed will be cleared. Confirmed categories stay.`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setMsg(data.error ?? "Delete failed");
+      return;
+    }
+    if (expandedId === rule.id) setExpandedId(null);
+    setMsg(`Deleted rule "${rule.match_merchant} → ${rule.assign_label}".`);
+    void load();
+  }
+
   async function reapplyRule(rule: TreasuryRuleRow) {
     setBusyRuleId(rule.id);
     setMsg(null);
@@ -516,6 +538,16 @@ export function TreasuryRulesPanel({
                       {busyRuleId === r.id ? "Applying…" : "Re-apply"}
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="ra"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void deleteRule(r);
+                    }}
+                  >
+                    Delete
+                  </button>
                   {onPick ? (
                     <PickButton
                       variant="row-draft"
