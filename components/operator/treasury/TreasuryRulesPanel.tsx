@@ -220,7 +220,8 @@ export function TreasuryRulesPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          // Manual advanced form has no name field — derive so API required-name check passes.
+          name: name.trim() || `Rule: ${assignLabel.trim()}`,
           match_merchant: matchMerchant,
           assign_label: assignLabel,
           amount_min: amountMin ? Number(amountMin) : null,
@@ -571,30 +572,34 @@ export function TreasuryRulesPanel({
                         No {queueTab} transactions for this rule.
                       </p>
                     ) : (
-                      <div className="txtable txtable-extended">
-                        <div className="txhead">
-                          <span />
-                          <span>Date</span>
-                          <span>Source</span>
-                          <span>Payee / Memo</span>
-                          <span>Category</span>
-                          <span className="ta-r">Amount</span>
-                          <span>Status</span>
-                        </div>
-                        {queueRows.map((tx) => (
-                          <TreasuryTxRow
-                            key={tx.id}
-                            tx={tx}
-                            showSelect={false}
-                            onConfirm={() =>
-                              void patchTx(tx.id, { confirmSuggestion: true })
-                            }
-                            onReject={() =>
-                              void patchTx(tx.id, { rejectSuggestion: true })
-                            }
-                          />
-                        ))}
-                      </div>
+                      <table className="dtable">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Source</th>
+                            <th>Payee / memo</th>
+                            <th>Category</th>
+                            <th style={{ textAlign: "right" }}>Amount</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {queueRows.map((tx) => (
+                            <TreasuryTxRow
+                              key={tx.id}
+                              tx={tx}
+                              showSelect={false}
+                              onConfirm={() =>
+                                void patchTx(tx.id, { confirmSuggestion: true })
+                              }
+                              onReject={() =>
+                                void patchTx(tx.id, { rejectSuggestion: true })
+                              }
+                            />
+                          ))}
+                        </tbody>
+                      </table>
                     )}
 
                     {queueTotal > 50 ? (

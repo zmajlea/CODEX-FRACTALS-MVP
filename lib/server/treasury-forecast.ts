@@ -57,11 +57,18 @@ function groupKey(normalized: string, direction: string | null): string {
   return `${normalized}|${direction ?? "out"}`;
 }
 
+/**
+ * Spec 52 guardrail: forecast still matches on the single normalized string only.
+ * Wrap as { normalized_merchant } so merchantMatches compiles without widening
+ * recurrence to raw_name / description (rules-engine decision, not this path).
+ */
 function isRuleCovered(
   normalized: string,
   rules: TreasuryRuleRow[]
 ): boolean {
-  return rules.some((rule) => merchantMatches(normalized, rule));
+  return rules.some((rule) =>
+    merchantMatches({ normalized_merchant: normalized }, rule)
+  );
 }
 
 function gapDaysForRule(rule: TreasuryRuleRow | undefined, detected: number): number {
@@ -334,7 +341,9 @@ export async function computeTreasuryForecast(
       amounts: [],
       hasLabel: false,
       ruleCovered: isRuleCovered(normalized, rules),
-      matchingRule: rules.find((r) => merchantMatches(normalized, r)),
+      matchingRule: rules.find((r) =>
+        merchantMatches({ normalized_merchant: normalized }, r)
+      ),
     };
     if (tx.posted_date) g.dates.push(tx.posted_date);
     g.amounts.push(Math.abs(Number(tx.amount)));
