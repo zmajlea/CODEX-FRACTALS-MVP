@@ -496,6 +496,57 @@ export function TreasuryRulesPanel({
     if (expandedId) void refreshFacetsAndQueue(expandedId);
   }
 
+  async function confirmAllSuggested(rule: TreasuryRuleRow) {
+    const n =
+      (facets?.combos ?? []).reduce((a, c) => a + c.count, 0) ||
+      (rule.suggested_count ?? 0);
+    if (n <= 0) return;
+    if (
+      !confirm(
+        `Confirm all ${n} suggested transaction(s) as ${rule.assign_label}?`
+      )
+    ) {
+      return;
+    }
+    setConfirmBusy(true);
+    try {
+      setFacets((prev) =>
+        prev
+          ? { ...prev, combos: [], confirmed: prev.confirmed + n }
+          : prev
+      );
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/transactions/bulk-label`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            confirmAllSuggested: true,
+            ruleId: rule.id,
+          }),
+        }
+      );
+      const data = (await res.json()) as { updated?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Confirm all failed");
+      setNotice({
+        kind: "success",
+        text: `${data.updated ?? 0} confirmed as ${rule.assign_label}.`,
+      });
+      setFacetSel({ kind: "confirmed" });
+      setQueuePage(0);
+      if (expandedId) void loadFacets(expandedId);
+      void load();
+    } catch (e) {
+      setNotice({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Confirm all failed",
+      });
+      if (expandedId) void loadFacets(expandedId);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
   async function confirmBucket(rule: TreasuryRuleRow, labels: string[]) {
     const n =
       facets?.combos.find((c) => comboKey(c.labels) === comboKey(labels))
@@ -815,7 +866,23 @@ export function TreasuryRulesPanel({
                                 </span>
                               </button>
                             </td>
-                            <td className="triage-act" />
+                            <td className="triage-act">
+                              <button
+                                type="button"
+                                className="ra"
+                                disabled={
+                                  confirmBusy ||
+                                  ((facets?.combos ?? []).reduce(
+                                    (a, c) => a + c.count,
+                                    0
+                                  ) ||
+                                    (r.suggested_count ?? 0)) === 0
+                                }
+                                onClick={() => void confirmAllSuggested(r)}
+                              >
+                                Confirm all
+                              </button>
+                            </td>
                           </tr>
                           {(facets?.combos ?? []).map((c) => {
                             const active =
