@@ -26,6 +26,8 @@ type QueueTab = "suggested" | "confirmed";
 
 type PreviewState = {
   total: number;
+  /** Uncategorized (label IS null) matches — what apply will suggest for a new rule. */
+  willSuggest: number;
   samples: TreasuryTransactionRow[];
 } | null;
 
@@ -79,6 +81,7 @@ export function TreasuryRulesPanel({
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [queueTab, setQueueTab] = useState<QueueTab>("suggested");
@@ -192,21 +195,38 @@ export function TreasuryRulesPanel({
     }
     setPreviewBusy(true);
     try {
-      const params = new URLSearchParams({ q, limit: "3", page: "0" });
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/transactions?${params}`
-      );
-      if (!res.ok) {
+      const fullParams = new URLSearchParams({ q, limit: "3", page: "0" });
+      const uncatParams = new URLSearchParams({
+        q,
+        labeled: "false",
+        limit: "1",
+        page: "0",
+      });
+      const [fullRes, uncatRes] = await Promise.all([
+        fetch(
+          `/api/operator/treasury/clients/${clientUserId}/transactions?${fullParams}`
+        ),
+        fetch(
+          `/api/operator/treasury/clients/${clientUserId}/transactions?${uncatParams}`
+        ),
+      ]);
+      if (!fullRes.ok) {
         setPreview(null);
         return;
       }
-      const data = (await res.json()) as {
+      const fullData = (await fullRes.json()) as {
         transactions: TreasuryTransactionRow[];
         total: number;
       };
+      let willSuggest = fullData.total ?? fullData.transactions.length;
+      if (uncatRes.ok) {
+        const uncatData = (await uncatRes.json()) as { total: number };
+        willSuggest = uncatData.total ?? willSuggest;
+      }
       setPreview({
-        total: data.total ?? data.transactions.length,
-        samples: data.transactions,
+        total: fullData.total ?? fullData.transactions.length,
+        willSuggest,
+        samples: fullData.transactions,
       });
     } finally {
       setPreviewBusy(false);
@@ -214,54 +234,74 @@ export function TreasuryRulesPanel({
   }
 
   async function createRule(fromDraft = false) {
-    const res = await fetch(
-      `/api/operator/treasury/clients/${clientUserId}/rules`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // Manual advanced form has no name field — derive so API required-name check passes.
-          name: name.trim() || `Rule: ${assignLabel.trim()}`,
-          match_merchant: matchMerchant,
-          assign_label: assignLabel,
-          amount_min: amountMin ? Number(amountMin) : null,
-          amount_max: amountMax ? Number(amountMax) : null,
-          direction: direction || null,
-          match_type: "contains",
-          source_transaction_id: draftRule?.source_transaction_id ?? null,
-        }),
+    if (createBusy) return;
+    setCreateBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/rules`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // Manual advanced form has no name field — derive so API required-name check passes.
+            name: name.trim() || `Rule: ${assignLabel.trim()}`,
+            match_merchant: matchMerchant,
+            assign_label: assignLabel,
+            amount_min: amountMin ? Number(amountMin) : null,
+            amount_max: amountMax ? Number(amountMax) : null,
+            direction: direction || null,
+            match_type: "contains",
+            source_transaction_id: draftRule?.source_transaction_id ?? null,
+          }),
+        }
+      );
+      const data = (await res.json()) as {
+        suggested?: number;
+        rule?: TreasuryRuleRow;
+        existed?: boolean;
+        error?: string;
+      };
+      if (!res.ok) {
+        setMsg(data.error ?? "Failed to create rule");
+        return;
       }
-    );
-    const data = (await res.json()) as {
-      suggested?: number;
-      rule?: TreasuryRuleRow;
-      error?: string;
-    };
-    if (!res.ok) {
-      setMsg(data.error ?? "Failed to create rule");
-      return;
+      const ruleId = data.rule?.id ?? null;
+      if (data.existed) {
+        setMsg(
+          `A rule for "${matchMerchant.trim()} → ${assignLabel.trim()}" already exists.`
+        );
+        if (ruleId) {
+          setExpandedId(ruleId);
+          setQueueTab("suggested");
+          setQueuePage(0);
+        }
+        void load();
+        return;
+      }
+      const count = data.suggested ?? 0;
+      if (fromDraft) {
+        setMsg("Rule saved. Review suggestions below.");
+        onClearDraft?.();
+        onRuleSaved?.(count, ruleId);
+        if (ruleId) {
+          setExpandedId(ruleId);
+          setQueueTab("suggested");
+          setQueuePage(0);
+        }
+      } else {
+        setMsg(`Rule created. ${count} suggestions applied.`);
+        onClearDraft?.();
+        if (ruleId) {
+          setExpandedId(ruleId);
+          setQueueTab("suggested");
+          setQueuePage(0);
+        }
+      }
+      void load();
+    } finally {
+      setCreateBusy(false);
     }
-    const count = data.suggested ?? 0;
-    const ruleId = data.rule?.id ?? null;
-    if (fromDraft) {
-      setMsg("Rule saved. Review suggestions below.");
-      onClearDraft?.();
-      onRuleSaved?.(count, ruleId);
-      if (ruleId) {
-        setExpandedId(ruleId);
-        setQueueTab("suggested");
-        setQueuePage(0);
-      }
-    } else {
-      setMsg(`Rule created. ${count} suggestions applied.`);
-      onClearDraft?.();
-      if (ruleId) {
-        setExpandedId(ruleId);
-        setQueueTab("suggested");
-        setQueuePage(0);
-      }
-    }
-    void load();
   }
 
   async function toggleRule(rule: TreasuryRuleRow) {
@@ -448,12 +488,14 @@ export function TreasuryRulesPanel({
                 }
               >
                 {preview.total > 0
-                  ? `${preview.total.toLocaleString()} transaction${preview.total === 1 ? "" : "s"} match this rule`
+                  ? `${preview.total.toLocaleString()} match · ${preview.willSuggest.toLocaleString()} will be suggested`
                   : "No transactions match this rule yet."}
               </div>
               {preview.total > 0 ? (
                 <>
-                  <div className="preview-basis">Full book, payee or memo contains.</div>
+                  <div className="preview-basis">
+                    Full book match · uncategorized rows will be suggested.
+                  </div>
                   <ul className="preview-list">
                     {preview.samples.map((tx) => (
                       <li key={tx.id}>
@@ -471,10 +513,16 @@ export function TreasuryRulesPanel({
           <button
             type="button"
             className="btn text-sm w-fit"
-            disabled={!matchMerchant.trim() || !assignLabel.trim()}
+            disabled={
+              createBusy || !matchMerchant.trim() || !assignLabel.trim()
+            }
             onClick={() => void createRule(Boolean(draftRule))}
           >
-            {draftRule ? "Save rule & find matches" : "Save rule"}
+            {createBusy
+              ? "Saving…"
+              : draftRule
+                ? "Save rule & find matches"
+                : "Save rule"}
           </button>
         </div>
       </details>

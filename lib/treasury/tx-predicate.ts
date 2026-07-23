@@ -26,7 +26,8 @@ export type TxFilterInput = {
 };
 
 export function escapeIlike(q: string): string {
-  return q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/,/g, "\\,");
+  // Spec 55 D1 — escape `_` (single-char wildcard in ILIKE) so preview matches apply `.includes`
+  return q.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&").replace(/,/g, "\\,");
 }
 
 type Filterable = {
