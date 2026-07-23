@@ -2,6 +2,15 @@
  * Single Transactions WHERE assembly for the operator ledger.
  * Rows and every scoped count must go through applyTxPredicate / buildTxPredicate —
  * no second builder. Spec 36 names it buildTxPredicate; applyTxPredicate is the same function.
+ *
+ * Spec 58 ledger spine (has_pending_suggestion = trigger-maintained EXISTS):
+ *   needs_label / uncategorised: label IS null AND has_pending_suggestion = false
+ *   suggested:                   label IS null AND has_pending_suggestion = true
+ *   labeled / confirmed:         label IS NOT null
+ *
+ * Rule-queue "suggested" for a specific rule is NOT expressed here alone — the list
+ * route must constrain via treasury_transaction_suggestions.rule_id (!inner / in-ids).
+ * Rule-queue "rejected" likewise uses treasury_rule_rejections in the list route.
  */
 
 export type TxStatusFilter = "all" | "needs_label" | "suggested" | "labeled";
@@ -19,7 +28,7 @@ export type TxFilterInput = {
   amountExact?: number | null;
   /** Spec 44 — rule companion / ledger direction filter */
   direction?: "in" | "out" | null;
-  /** Rule queue: suggested_by_rule_id scope */
+  /** Rule queue: scope to this rule (list route joins suggestions/rejections) */
   ruleId?: string | null;
   /** When ruleId set: suggested | confirmed | rejected */
   ruleQueue?: "suggested" | "confirmed" | "rejected" | null;
@@ -34,7 +43,7 @@ type Filterable = {
   gte: (col: string, val: string) => Filterable;
   lte: (col: string, val: string) => Filterable;
   in: (col: string, vals: string[]) => Filterable;
-  eq: (col: string, val: string) => Filterable;
+  eq: (col: string, val: string | boolean) => Filterable;
   not: (col: string, op: string, val: null) => Filterable;
   is: (col: string, val: null) => Filterable;
   or: (expr: string) => Filterable;
@@ -55,24 +64,25 @@ export function applyTxPredicate<Q extends Filterable>(query: Q, filters: TxFilt
   }
 
   if (filters.ruleId && filters.ruleQueue) {
-    q = q.eq("suggested_by_rule_id", filters.ruleId);
     if (filters.ruleQueue === "suggested") {
-      q = q.eq("suggestion_status", "suggested");
+      // Base: pending suggestions exist. List route further scopes to ruleId.
+      q = q.is("label", null).eq("has_pending_suggestion", true);
     } else if (filters.ruleQueue === "confirmed") {
-      q = q.eq("label_source", "rule_confirmed");
+      q = q
+        .eq("suggested_by_rule_id", filters.ruleId)
+        .eq("label_source", "rule_confirmed");
     } else if (filters.ruleQueue === "rejected") {
-      q = q.eq("suggestion_status", "rejected");
+      // List route replaces this with rejection-table id filter; keep empty-safe base.
+      q = q.eq("id", "00000000-0000-0000-0000-000000000000");
     }
   } else {
     const status = filters.status ?? undefined;
     if (status === "suggested") {
-      q = q.eq("suggestion_status", "suggested");
+      q = q.is("label", null).eq("has_pending_suggestion", true);
     } else if (status === "labeled") {
       q = q.not("label", "is", null);
     } else if (status === "needs_label") {
-      q = q.or(
-        "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
-      );
+      q = q.is("label", null).eq("has_pending_suggestion", false);
     } else if (!status || status === "all") {
       if (filters.labeled === "true") q = q.not("label", "is", null);
       if (filters.labeled === "false") q = q.is("label", null);

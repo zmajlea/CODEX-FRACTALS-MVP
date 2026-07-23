@@ -1007,7 +1007,18 @@ export function TreasuryLedgerPanel({
                     description: descDraft,
                   })
                 }
-                onConfirm={() => void patchTx(tx.id, { confirmSuggestion: true })}
+                onConfirmSuggestion={(ruleId) =>
+                  void patchTx(tx.id, {
+                    confirmSuggestion: true,
+                    ruleId,
+                  })
+                }
+                onRejectSuggestion={(ruleId) =>
+                  void patchTx(tx.id, {
+                    rejectSuggestion: true,
+                    ruleId,
+                  })
+                }
                 onStartEdit={() => {
                   setEditingId(tx.id);
                   setLabelDraft(tx.label ?? "");

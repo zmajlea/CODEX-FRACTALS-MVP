@@ -209,6 +209,27 @@ export async function upsertTransactions(
     }
   }
 
+  // Spec 58 — if a row inherits/keeps a label, drop any pending suggestions
+  const labeledExternalIds = finalPayloads
+    .filter((p) => p.label)
+    .map((p) => p.external_id);
+  if (labeledExternalIds.length > 0) {
+    for (const chunk of chunksOf(labeledExternalIds, PREFETCH_CHUNK)) {
+      const { data: labeledTxs } = await admin
+        .from("treasury_transactions")
+        .select("id")
+        .eq("client_user_id", clientUserId)
+        .eq("source", source)
+        .in("external_id", chunk);
+      const ids = (labeledTxs ?? []).map((t) => t.id);
+      if (ids.length === 0) continue;
+      await admin
+        .from("treasury_transaction_suggestions")
+        .delete()
+        .in("transaction_id", ids);
+    }
+  }
+
   const updated = finalPayloads.filter((p) => existing.has(p.external_id)).length;
   const inserted = finalPayloads.length - updated;
 

@@ -1350,53 +1350,38 @@ export type Database = {
           },
         ]
       }
-      treasury_studies: {
+      treasury_client_operator_profile: {
         Row: {
-          id: string
+          attention_reason: string | null
           client_user_id: string
-          operator_tenant_id: string | null
-          created_by: string | null
-          name: string
-          type: string
-          scope: Json
-          params: Json
-          scenarios: Json
-          derived_snapshot: Json
-          created_at: string
+          distributor_tenant_id: string
+          industry: string | null
+          next_note: string | null
           updated_at: string
+          watch_note: string | null
         }
         Insert: {
-          id?: string
+          attention_reason?: string | null
           client_user_id: string
-          operator_tenant_id?: string | null
-          created_by?: string | null
-          name: string
-          type?: string
-          scope: Json
-          params: Json
-          scenarios: Json
-          derived_snapshot: Json
-          created_at?: string
+          distributor_tenant_id: string
+          industry?: string | null
+          next_note?: string | null
           updated_at?: string
+          watch_note?: string | null
         }
         Update: {
-          id?: string
+          attention_reason?: string | null
           client_user_id?: string
-          operator_tenant_id?: string | null
-          created_by?: string | null
-          name?: string
-          type?: string
-          scope?: Json
-          params?: Json
-          scenarios?: Json
-          derived_snapshot?: Json
-          created_at?: string
+          distributor_tenant_id?: string
+          industry?: string | null
+          next_note?: string | null
           updated_at?: string
+          watch_note?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "treasury_studies_operator_tenant_id_fkey"
-            columns: ["operator_tenant_id"]
+            foreignKeyName: "treasury_client_operator_profile_distributor_tenant_id_fkey"
+            columns: ["distributor_tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
@@ -1408,9 +1393,9 @@ export type Database = {
           anchor_ref: Json | null
           anchor_type: string
           category: string
+          client_response: string | null
           client_seen_at: string | null
           client_user_id: string
-          client_response: string | null
           created_at: string
           created_by: string | null
           decided_at: string | null
@@ -1437,9 +1422,9 @@ export type Database = {
           anchor_ref?: Json | null
           anchor_type?: string
           category: string
+          client_response?: string | null
           client_seen_at?: string | null
           client_user_id: string
-          client_response?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -1466,9 +1451,9 @@ export type Database = {
           anchor_ref?: Json | null
           anchor_type?: string
           category?: string
+          client_response?: string | null
           client_seen_at?: string | null
           client_user_id?: string
-          client_response?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -1602,6 +1587,101 @@ export type Database = {
           },
         ]
       }
+      treasury_studies: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          derived_snapshot: Json
+          id: string
+          name: string
+          operator_tenant_id: string | null
+          params: Json
+          scenarios: Json
+          scope: Json
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          derived_snapshot: Json
+          id?: string
+          name: string
+          operator_tenant_id?: string | null
+          params: Json
+          scenarios: Json
+          scope: Json
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          derived_snapshot?: Json
+          id?: string
+          name?: string
+          operator_tenant_id?: string | null
+          params?: Json
+          scenarios?: Json
+          scope?: Json
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_studies_operator_tenant_id_fkey"
+            columns: ["operator_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_transaction_suggestions: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          rule_id: string
+          suggested_label: string
+          suggestion_explanation: string | null
+          transaction_id: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          rule_id: string
+          suggested_label: string
+          suggestion_explanation?: string | null
+          transaction_id: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          rule_id?: string
+          suggested_label?: string
+          suggestion_explanation?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_transaction_suggestions_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_transaction_suggestions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_transactions: {
         Row: {
           account_id: string
@@ -1612,6 +1692,7 @@ export type Database = {
           description: string | null
           direction: string | null
           external_id: string
+          has_pending_suggestion: boolean
           id: string
           is_removed: boolean
           iso_currency_code: string | null
@@ -1643,6 +1724,7 @@ export type Database = {
           description?: string | null
           direction?: string | null
           external_id: string
+          has_pending_suggestion?: boolean
           id?: string
           is_removed?: boolean
           iso_currency_code?: string | null
@@ -1674,6 +1756,7 @@ export type Database = {
           description?: string | null
           direction?: string | null
           external_id?: string
+          has_pending_suggestion?: boolean
           id?: string
           is_removed?: boolean
           iso_currency_code?: string | null

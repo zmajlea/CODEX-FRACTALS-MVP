@@ -18,9 +18,8 @@ export type RuleQueueCounts = {
 };
 
 /**
- * Spec 36: honest split counts per rule (kills blended matched N).
- * - suggested = suggested_by_rule_id = :id AND suggestion_status = 'suggested'
- * - confirmed = label_source = 'rule_confirmed' AND suggested_by_rule_id = :id
+ * Spec 58: suggested = rows in treasury_transaction_suggestions for this rule
+ * (belt: join txs with label IS null). Confirmed unchanged on tx attribution.
  */
 export async function countRuleQueues(
   admin: AdminClient,
@@ -33,23 +32,38 @@ export async function countRuleQueues(
   }
   if (rules.length === 0) return counts;
 
-  const live = await fetchAllRows((from, to) =>
+  const ruleIdSet = new Set(rules.map((r) => r.id));
+
+  const suggestions = await fetchAllRows((from, to) =>
     admin
-      .from("treasury_transactions")
-      .select("suggested_by_rule_id")
+      .from("treasury_transaction_suggestions")
+      .select("rule_id, transaction_id")
       .eq("client_user_id", clientUserId)
-      .eq("is_removed", false)
-      .eq("suggestion_status", "suggested")
-      .not("suggested_by_rule_id", "is", null)
-      .order("id", { ascending: true })
+      .in("rule_id", [...ruleIdSet])
+      .order("transaction_id", { ascending: true })
       .range(from, to)
   );
 
-  for (const row of live) {
-    const ruleId = row.suggested_by_rule_id;
-    if (!ruleId || !counts.has(ruleId)) continue;
-    const cur = counts.get(ruleId)!;
-    counts.set(ruleId, { ...cur, suggested: cur.suggested + 1 });
+  // Belt: only count suggestions whose tx is still unlabelled
+  const txIds = [...new Set(suggestions.map((s) => s.transaction_id))];
+  const unlabelled = new Set<string>();
+  for (let i = 0; i < txIds.length; i += 200) {
+    const chunk = txIds.slice(i, i + 200);
+    const { data } = await admin
+      .from("treasury_transactions")
+      .select("id")
+      .eq("client_user_id", clientUserId)
+      .eq("is_removed", false)
+      .is("label", null)
+      .in("id", chunk);
+    for (const t of data ?? []) unlabelled.add(t.id);
+  }
+
+  for (const row of suggestions) {
+    if (!unlabelled.has(row.transaction_id)) continue;
+    if (!counts.has(row.rule_id)) continue;
+    const cur = counts.get(row.rule_id)!;
+    counts.set(row.rule_id, { ...cur, suggested: cur.suggested + 1 });
   }
 
   const confirmed = await fetchAllRows((from, to) =>
@@ -65,10 +79,10 @@ export async function countRuleQueues(
   );
 
   for (const tx of confirmed) {
-    const ruleId = tx.suggested_by_rule_id;
-    if (!ruleId || !counts.has(ruleId)) continue;
-    const cur = counts.get(ruleId)!;
-    counts.set(ruleId, { ...cur, confirmed: cur.confirmed + 1 });
+    const rid = tx.suggested_by_rule_id;
+    if (!rid || !counts.has(rid)) continue;
+    const cur = counts.get(rid)!;
+    counts.set(rid, { ...cur, confirmed: cur.confirmed + 1 });
   }
 
   return counts;
@@ -81,11 +95,11 @@ export async function countRuleMatches(
   rules: TreasuryRuleRow[]
 ): Promise<Map<string, number>> {
   const queues = await countRuleQueues(admin, clientUserId, rules);
-  const blended = new Map<string, number>();
+  const out = new Map<string, number>();
   for (const [id, q] of queues) {
-    blended.set(id, q.suggested + q.confirmed);
+    out.set(id, q.suggested + q.confirmed);
   }
-  return blended;
+  return out;
 }
 
 export async function querySummary(

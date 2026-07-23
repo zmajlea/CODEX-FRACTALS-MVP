@@ -62,12 +62,10 @@ async function suggestedForRule(
   ruleId: string
 ): Promise<number> {
   const { count } = await admin
-    .from("treasury_transactions")
-    .select("id", { count: "exact", head: true })
+    .from("treasury_transaction_suggestions")
+    .select("transaction_id", { count: "exact", head: true })
     .eq("client_user_id", clientId)
-    .eq("is_removed", false)
-    .eq("suggestion_status", "suggested")
-    .eq("suggested_by_rule_id", ruleId);
+    .eq("rule_id", ruleId);
   return count ?? 0;
 }
 
@@ -182,14 +180,14 @@ async function main() {
     log(`Twin insert blocked by DB (${twinErr.code ?? twinErr.message}) — A2 index live`);
   } else {
     assert(twin, "twin missing");
-    const stolen = await applyRulesForClient(admin, clientId, twin.id);
+    const both = await applyRulesForClient(admin, clientId, twin.id);
     const twinCount = await suggestedForRule(admin, clientId, twin.id);
     const firstAfter = await suggestedForRule(admin, clientId, rule.id);
     log(
-      `Twin apply: new=${stolen} twinCount=${twinCount} firstStill=${firstAfter}`
+      `Twin apply (Spec 58 multi-suggest): new=${both} twinCount=${twinCount} firstStill=${firstAfter}`
     );
-    assert(stolen === 0, `twin stole ${stolen} rows`);
-    assert(twinCount === 0, `twin owns ${twinCount}`);
+    // Spec 58: twin adds alongside — no steal. Both rules keep full counts.
+    assert(twinCount === count1, `twin should also suggest ${count1}, got ${twinCount}`);
     assert(firstAfter === count1, `first rule count changed to ${firstAfter}`);
     await admin.from("treasury_rules").delete().eq("id", twin.id);
   }

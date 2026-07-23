@@ -13,7 +13,7 @@ const PAGE = 1000;
 async function collectColumn(
   admin: SupabaseClient,
   clientId: string,
-  table: "treasury_transactions" | "treasury_rules",
+  table: "treasury_transactions" | "treasury_rules" | "treasury_transaction_suggestions",
   column: "label" | "suggested_label" | "assign_label"
 ) {
   const out = new Set<string>();
@@ -51,12 +51,13 @@ export async function GET(_request: Request, context: RouteContext) {
   });
 
   try {
+    // Spec 58 — pending labels live on treasury_transaction_suggestions
     const [confirmed, suggested, fromRules] = await Promise.all([
       collectColumn(guard.admin, clientId, "treasury_transactions", "label"),
       collectColumn(
         guard.admin,
         clientId,
-        "treasury_transactions",
+        "treasury_transaction_suggestions",
         "suggested_label"
       ),
       collectColumn(guard.admin, clientId, "treasury_rules", "assign_label"),

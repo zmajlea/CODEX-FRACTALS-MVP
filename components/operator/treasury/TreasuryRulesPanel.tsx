@@ -730,11 +730,17 @@ export function TreasuryRulesPanel({
                               key={tx.id}
                               tx={tx}
                               showSelect={false}
-                              onConfirm={() =>
-                                void patchTx(tx.id, { confirmSuggestion: true })
+                              onConfirmSuggestion={(ruleId) =>
+                                void patchTx(tx.id, {
+                                  confirmSuggestion: true,
+                                  ruleId,
+                                })
                               }
-                              onReject={() =>
-                                void patchTx(tx.id, { rejectSuggestion: true })
+                              onRejectSuggestion={(ruleId) =>
+                                void patchTx(tx.id, {
+                                  rejectSuggestion: true,
+                                  ruleId,
+                                })
                               }
                             />
                           ))}

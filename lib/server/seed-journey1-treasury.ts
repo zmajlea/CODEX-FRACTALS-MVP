@@ -155,6 +155,10 @@ async function resetClientTreasurySeed(admin: AdminClient, clientUserId: string)
   const txIds = (clientTxs ?? []).map((t) => t.id);
   if (txIds.length > 0) {
     await admin.from("treasury_rule_rejections").delete().in("transaction_id", txIds);
+    await admin
+      .from("treasury_transaction_suggestions")
+      .delete()
+      .in("transaction_id", txIds);
   }
 
   await admin
@@ -168,6 +172,7 @@ async function resetClientTreasurySeed(admin: AdminClient, clientUserId: string)
       suggested_by_rule_id: null,
       suggestion_status: null,
       suggestion_explanation: null,
+      has_pending_suggestion: false,
     })
     .eq("client_user_id", clientUserId)
     .eq("is_removed", false);
@@ -220,29 +225,37 @@ async function seedRulesAndLabels(
   let ruleConfirmed = 0;
 
   if (ruleIds.length > 0) {
+    // Spec 58 — confirm from suggestions table (tx suggested_* cleared after migrate)
     const { data: suggested } = await admin
-      .from("treasury_transactions")
-      .select("id, suggested_label")
+      .from("treasury_transaction_suggestions")
+      .select("transaction_id, rule_id, suggested_label")
       .eq("client_user_id", clientUserId)
-      .eq("is_removed", false)
-      .in("suggested_by_rule_id", ruleIds)
-      .not("suggested_label", "is", null);
+      .in("rule_id", ruleIds);
 
-    for (const tx of suggested ?? []) {
+    const seen = new Set<string>();
+    for (const sug of suggested ?? []) {
+      if (seen.has(sug.transaction_id)) continue;
+      seen.add(sug.transaction_id);
       const { error } = await admin
         .from("treasury_transactions")
         .update({
-          label: tx.suggested_label,
+          label: sug.suggested_label,
           label_source: "rule_confirmed",
           labeled_by: operatorUserId,
           labeled_at: now,
           suggested_label: null,
-          suggested_by_rule_id: null,
+          suggested_by_rule_id: sug.rule_id,
           suggestion_status: "confirmed",
           suggestion_explanation: null,
         })
-        .eq("id", tx.id);
-      if (!error) ruleConfirmed += 1;
+        .eq("id", sug.transaction_id);
+      if (!error) {
+        await admin
+          .from("treasury_transaction_suggestions")
+          .delete()
+          .eq("transaction_id", sug.transaction_id);
+        ruleConfirmed += 1;
+      }
     }
   }
 

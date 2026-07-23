@@ -4,6 +4,7 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
+import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import {
   applyTxPredicate,
   withStatus,
@@ -94,15 +95,55 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
-  const base = () =>
-    applyTxPredicate(
+  // Spec 58 — rule-queue suggested/rejected: resolve tx ids from side tables
+  // (paginated IN-list; Spec 31 — never JS-filter the full book).
+  let ruleQueueIds: string[] | null = null;
+  if (filters.ruleId && filters.ruleQueue === "suggested") {
+    const sugs = await fetchAllRows((from, to) =>
+      guard.admin
+        .from("treasury_transaction_suggestions")
+        .select("transaction_id")
+        .eq("client_user_id", clientId)
+        .eq("rule_id", filters.ruleId!)
+        .order("transaction_id", { ascending: true })
+        .range(from, to)
+    );
+    ruleQueueIds = [...new Set(sugs.map((s) => s.transaction_id))];
+  } else if (filters.ruleId && filters.ruleQueue === "rejected") {
+    const rejs = await fetchAllRows((from, to) =>
+      guard.admin
+        .from("treasury_rule_rejections")
+        .select("transaction_id")
+        .eq("rule_id", filters.ruleId!)
+        .order("transaction_id", { ascending: true })
+        .range(from, to)
+    );
+    ruleQueueIds = [...new Set(rejs.map((r) => r.transaction_id))];
+  }
+
+  const listFilters: TxFilterInput =
+    filters.ruleQueue === "suggested" || filters.ruleQueue === "rejected"
+      ? { ...filters, ruleId: null, ruleQueue: null, status: filters.ruleQueue === "suggested" ? "suggested" : "all" }
+      : filters;
+
+  const base = () => {
+    let q = applyTxPredicate(
       guard.admin
         .from("treasury_transactions")
         .select("*")
         .eq("client_user_id", clientId)
         .eq("is_removed", false),
-      filters
+      listFilters
     );
+    if (ruleQueueIds) {
+      if (ruleQueueIds.length === 0) {
+        q = q.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        q = q.in("id", ruleQueueIds);
+      }
+    }
+    return q;
+  };
 
   const offset = page * limit;
   let query = base()
@@ -114,14 +155,7 @@ export async function GET(request: Request, context: RouteContext) {
   if (cursor) {
     const [cursorDate, cursorId] = cursor.split("|");
     if (cursorDate && cursorId) {
-      query = applyTxPredicate(
-        guard.admin
-          .from("treasury_transactions")
-          .select("*")
-          .eq("client_user_id", clientId)
-          .eq("is_removed", false),
-        filters
-      )
+      query = base()
         .order("posted_date", { ascending: false })
         .order("id", { ascending: false })
         .or(
@@ -184,6 +218,43 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
+  // Spec 58 — embed pending suggestions (+ rule name) for the page
+  const pageIds = pageRows.map((t) => t.id);
+  const suggestionsByTx = new Map<
+    string,
+    Array<{
+      rule_id: string;
+      suggested_label: string;
+      suggestion_explanation: string | null;
+      rule_name: string | null;
+      match_merchant: string | null;
+    }>
+  >();
+  if (pageIds.length > 0) {
+    const { data: sugRows } = await guard.admin
+      .from("treasury_transaction_suggestions")
+      .select(
+        "transaction_id, rule_id, suggested_label, suggestion_explanation, treasury_rules(name, match_merchant)"
+      )
+      .in("transaction_id", pageIds);
+    for (const s of sugRows ?? []) {
+      const rule = s.treasury_rules as
+        | { name: string; match_merchant: string }
+        | { name: string; match_merchant: string }[]
+        | null;
+      const ruleObj = Array.isArray(rule) ? rule[0] : rule;
+      const list = suggestionsByTx.get(s.transaction_id) ?? [];
+      list.push({
+        rule_id: s.rule_id,
+        suggested_label: s.suggested_label,
+        suggestion_explanation: s.suggestion_explanation,
+        rule_name: ruleObj?.name ?? null,
+        match_merchant: ruleObj?.match_merchant ?? null,
+      });
+      suggestionsByTx.set(s.transaction_id, list);
+    }
+  }
+
   const transactions = pageRows.map((tx) => ({
     ...tx,
     account: accountMap.get(tx.account_id) ?? {
@@ -191,10 +262,11 @@ export async function GET(request: Request, context: RouteContext) {
       mask: null,
       institution_name: null,
     },
+    suggestions: suggestionsByTx.get(tx.id) ?? [],
   }));
 
-  const countHead = (f: TxFilterInput) =>
-    applyTxPredicate(
+  const countHead = (f: TxFilterInput, idScope?: string[] | null) => {
+    let q = applyTxPredicate(
       guard.admin
         .from("treasury_transactions")
         .select("id", { count: "exact", head: true })
@@ -202,19 +274,25 @@ export async function GET(request: Request, context: RouteContext) {
         .eq("is_removed", false),
       f
     );
-
-  const filtersSansStatus: TxFilterInput = {
-    ...filters,
-    status: "all",
-    labeled: null,
-    ruleId: filters.ruleId,
-    ruleQueue: filters.ruleQueue,
+    if (idScope) {
+      if (idScope.length === 0) {
+        q = q.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        q = q.in("id", idScope);
+      }
+    }
+    return q;
   };
 
-  // Status chips share other filters; when in rule queue mode, skip chip counts.
-  const chipBase: TxFilterInput = filters.ruleId
-    ? filtersSansStatus
-    : { ...filtersSansStatus, ruleId: null, ruleQueue: null };
+  const filtersSansStatus: TxFilterInput = {
+    ...listFilters,
+    status: "all",
+    labeled: null,
+    ruleId: null,
+    ruleQueue: null,
+  };
+
+  const chipBase: TxFilterInput = { ...filtersSansStatus };
 
   const [
     { count: filteredTotal },
@@ -227,7 +305,7 @@ export async function GET(request: Request, context: RouteContext) {
     bookLastRes,
     bookImportRes,
   ] = await Promise.all([
-    countHead(filters),
+    countHead(listFilters, ruleQueueIds),
     filters.ruleId
       ? Promise.resolve({ count: 0 })
       : countHead(withStatus(chipBase, "needs_label")),

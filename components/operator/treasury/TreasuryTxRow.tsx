@@ -4,7 +4,10 @@ import { formatSuMoney, TREASURY_DISPLAY_LOCALE } from "@/lib/treasury/format";
 import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { Pickable } from "@/lib/treasury/pickable";
-import type { TreasuryTransactionRow } from "@/lib/treasury/types";
+import type {
+  TreasuryTransactionRow,
+  TreasuryTxSuggestion,
+} from "@/lib/treasury/types";
 
 export function txSourceDisplay(tx: TreasuryTransactionRow): string {
   const acct = tx.account;
@@ -30,8 +33,19 @@ function formatTxDate(iso: string | null): string {
   }
 }
 
+function pendingSuggestions(tx: TreasuryTransactionRow): TreasuryTxSuggestion[] {
+  if (tx.suggestions && tx.suggestions.length > 0) return tx.suggestions;
+  return [];
+}
+
+function isSuggestedRow(tx: TreasuryTransactionRow): boolean {
+  if (tx.label) return false;
+  if (tx.has_pending_suggestion) return true;
+  return pendingSuggestions(tx).length > 0;
+}
+
 function anaStatusChip(tx: TreasuryTransactionRow) {
-  if (tx.suggestion_status === "suggested") {
+  if (isSuggestedRow(tx)) {
     return <span className="chip suggested">Suggested</span>;
   }
   if (tx.label) {
@@ -52,7 +66,16 @@ type Props = {
   onLabelDraftChange?: (v: string) => void;
   onDescDraftChange?: (v: string) => void;
   onSaveLabel?: () => void;
+  /** Spec 58 — confirm a specific rule's suggestion */
+  onConfirmSuggestion?: (ruleId: string) => void;
+  /** Spec 58 — reject a specific rule's suggestion */
+  onRejectSuggestion?: (ruleId: string) => void;
+  /**
+   * @deprecated Spec 58 — prefer onConfirmSuggestion(ruleId).
+   * Kept for call sites that already know the single rule (queue).
+   */
   onConfirm?: () => void;
+  /** @deprecated Spec 58 — prefer onRejectSuggestion(ruleId). */
   onReject?: () => void;
   onStartEdit?: () => void;
   onMakeRule?: () => void;
@@ -75,7 +98,10 @@ export function TreasuryTxRow({
   onLabelDraftChange,
   onDescDraftChange,
   onSaveLabel,
+  onConfirmSuggestion,
+  onRejectSuggestion,
   onConfirm,
+  onReject,
   onStartEdit,
   onMakeRule,
   onPick,
@@ -89,8 +115,9 @@ export function TreasuryTxRow({
     label: payee,
     sublabel: tx.posted_date ?? undefined,
   };
-  const isUncategorized = !tx.label && tx.suggestion_status !== "suggested";
-  const isSuggested = tx.suggestion_status === "suggested";
+  const suggestions = pendingSuggestions(tx);
+  const isUncategorized = !tx.label && !isSuggestedRow(tx);
+  const isSuggested = isSuggestedRow(tx);
   const isConfirmed = !!tx.label;
 
   return (
@@ -129,6 +156,53 @@ export function TreasuryTxRow({
               Save
             </button>
           </div>
+        ) : isSuggested && suggestions.length > 0 ? (
+          <div className="sug-stack" aria-label="Pending suggestions">
+            {suggestions.map((s) => {
+              const from =
+                s.match_merchant?.trim() ||
+                s.rule_name?.trim() ||
+                "rule";
+              return (
+                <div key={s.rule_id} className="sug-chip">
+                  <span className="chip suggested">
+                    {s.suggested_label}
+                    <span className="sug-from"> · from &ldquo;{from}&rdquo;</span>
+                  </span>
+                  {onConfirmSuggestion || onConfirm ? (
+                    <button
+                      type="button"
+                      className="ra"
+                      title={`Confirm ${s.suggested_label}`}
+                      aria-label={`Confirm ${s.suggested_label}`}
+                      onClick={() =>
+                        onConfirmSuggestion
+                          ? onConfirmSuggestion(s.rule_id)
+                          : onConfirm?.()
+                      }
+                    >
+                      ✓
+                    </button>
+                  ) : null}
+                  {onRejectSuggestion || onReject ? (
+                    <button
+                      type="button"
+                      className="ra"
+                      title={`Reject ${s.suggested_label}`}
+                      aria-label={`Reject ${s.suggested_label}`}
+                      onClick={() =>
+                        onRejectSuggestion
+                          ? onRejectSuggestion(s.rule_id)
+                          : onReject?.()
+                      }
+                    >
+                      ✗
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <span
             className={`cat-field${isUncategorized ? " empty" : ""}`}
@@ -159,8 +233,14 @@ export function TreasuryTxRow({
               Categorize
             </button>
           ) : null}
-          {isSuggested && onConfirm ? (
-            <button type="button" className="ra" onClick={() => onConfirm()}>
+          {isSuggested &&
+          suggestions.length === 0 &&
+          (onConfirmSuggestion || onConfirm) ? (
+            <button
+              type="button"
+              className="ra"
+              onClick={() => onConfirm?.()}
+            >
               Confirm
             </button>
           ) : null}
