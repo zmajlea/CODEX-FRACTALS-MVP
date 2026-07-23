@@ -31,6 +31,26 @@ type PreviewState = {
   samples: TreasuryTransactionRow[];
 } | null;
 
+/** Spec 56 C — Rules panel feedback by kind (Ana callout / warn-banner). */
+type PanelNotice = {
+  text: string;
+  kind: "notice" | "success" | "error";
+} | null;
+
+function NoticeIcon({ kind }: { kind: "notice" | "error" }) {
+  return (
+    <span className="wb-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        {kind === "error" ? (
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z" />
+        ) : (
+          <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+        )}
+      </svg>
+    </span>
+  );
+}
+
 function formatAppliedAt(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
@@ -76,7 +96,7 @@ export function TreasuryRulesPanel({
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [direction, setDirection] = useState<"in" | "out" | "">("");
-  const [msg, setMsg] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PanelNotice>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>(null);
@@ -236,7 +256,7 @@ export function TreasuryRulesPanel({
   async function createRule(fromDraft = false) {
     if (createBusy) return;
     setCreateBusy(true);
-    setMsg(null);
+    setNotice(null);
     try {
       const res = await fetch(
         `/api/operator/treasury/clients/${clientUserId}/rules`,
@@ -263,14 +283,18 @@ export function TreasuryRulesPanel({
         error?: string;
       };
       if (!res.ok) {
-        setMsg(data.error ?? "Failed to create rule");
+        setNotice({
+          kind: "error",
+          text: data.error ?? "Failed to create rule",
+        });
         return;
       }
       const ruleId = data.rule?.id ?? null;
       if (data.existed) {
-        setMsg(
-          `A rule for "${matchMerchant.trim()} → ${assignLabel.trim()}" already exists.`
-        );
+        setNotice({
+          kind: "notice",
+          text: `A rule for "${matchMerchant.trim()} → ${assignLabel.trim()}" already exists.`,
+        });
         if (ruleId) {
           setExpandedId(ruleId);
           setQueueTab("suggested");
@@ -281,7 +305,10 @@ export function TreasuryRulesPanel({
       }
       const count = data.suggested ?? 0;
       if (fromDraft) {
-        setMsg("Rule saved. Review suggestions below.");
+        setNotice({
+          kind: "success",
+          text: "Rule saved. Review suggestions below.",
+        });
         onClearDraft?.();
         onRuleSaved?.(count, ruleId);
         if (ruleId) {
@@ -290,7 +317,10 @@ export function TreasuryRulesPanel({
           setQueuePage(0);
         }
       } else {
-        setMsg(`Rule created. ${count} suggestions applied.`);
+        setNotice({
+          kind: "success",
+          text: `Rule created. ${count} suggestions applied.`,
+        });
         onClearDraft?.();
         if (ruleId) {
           setExpandedId(ruleId);
@@ -330,17 +360,20 @@ export function TreasuryRulesPanel({
     );
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setMsg(data.error ?? "Delete failed");
+      setNotice({ kind: "error", text: data.error ?? "Delete failed" });
       return;
     }
     if (expandedId === rule.id) setExpandedId(null);
-    setMsg(`Deleted rule "${rule.match_merchant} → ${rule.assign_label}".`);
+    setNotice({
+      kind: "success",
+      text: `Deleted rule "${rule.match_merchant} → ${rule.assign_label}".`,
+    });
     void load();
   }
 
   async function reapplyRule(rule: TreasuryRuleRow) {
     setBusyRuleId(rule.id);
-    setMsg(null);
+    setNotice(null);
     const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}`,
       {
@@ -352,10 +385,13 @@ export function TreasuryRulesPanel({
     const data = (await res.json()) as { suggested?: number; error?: string };
     setBusyRuleId(null);
     if (!res.ok) {
-      setMsg(data.error ?? "Re-apply failed");
+      setNotice({ kind: "error", text: data.error ?? "Re-apply failed" });
       return;
     }
-    setMsg(`Applied — ${data.suggested ?? 0} new suggestions.`);
+    setNotice({
+      kind: "success",
+      text: `Applied — ${data.suggested ?? 0} new suggestions.`,
+    });
     setExpandedId(rule.id);
     setQueueTab("suggested");
     setQueuePage(0);
@@ -400,14 +436,18 @@ export function TreasuryRulesPanel({
       );
       const data = (await res.json()) as { updated?: number; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Confirm all failed");
-      setMsg(
-        `${data.updated ?? 0} transactions confirmed as ${rule.assign_label}.`
-      );
+      setNotice({
+        kind: "success",
+        text: `${data.updated ?? 0} transactions confirmed as ${rule.assign_label}.`,
+      });
       setQueueTab("confirmed");
       setQueuePage(0);
       void load();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Confirm all failed");
+      setNotice({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Confirm all failed",
+      });
     } finally {
       setConfirmBusy(false);
     }
@@ -527,7 +567,27 @@ export function TreasuryRulesPanel({
         </div>
       </details>
 
-      {msg ? <p className="text-sm text-codex-muted mb-3">{msg}</p> : null}
+      {notice ? (
+        notice.kind === "success" ? (
+          <div className="callout" role="status" aria-live="polite">
+            <span className="co-dot" aria-hidden="true" />
+            <div className="co-t">
+              <b>{notice.text}</b>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={
+              notice.kind === "error" ? "warn-banner is-error" : "warn-banner"
+            }
+            role={notice.kind === "error" ? "alert" : "status"}
+            aria-live="polite"
+          >
+            <NoticeIcon kind={notice.kind === "error" ? "error" : "notice"} />
+            <span>{notice.text}</span>
+          </div>
+        )
+      ) : null}
 
       <h2 className="rs-h">Your rules</h2>
 
