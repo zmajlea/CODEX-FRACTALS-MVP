@@ -9,8 +9,8 @@
  *   labeled / confirmed:         label IS NOT null
  *
  * Rule-queue "suggested" for a specific rule is NOT expressed here alone — the list
- * route must constrain via treasury_transaction_suggestions.rule_id (!inner / in-ids).
- * Rule-queue "rejected" likewise uses treasury_rule_rejections in the list route.
+ * route joins treasury_transaction_suggestions!inner by rule_id (Spec 60 — never
+ * .in("id", hugeArray)). Rule-queue "rejected" likewise joins treasury_rule_rejections.
  */
 
 export type TxStatusFilter = "all" | "needs_label" | "suggested" | "labeled";
