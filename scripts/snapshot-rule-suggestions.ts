@@ -1,11 +1,13 @@
 /**
  * Dump rule suggestions for snapshot diff (Spec 30).
+ * Spec 58 — reads treasury_transaction_suggestions (+ tx external_id).
  *
  * Usage:
  *   npx tsx scripts/snapshot-rule-suggestions.ts --out snapshots/spec30-a.json
  */
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import ws from "ws";
 import type { Database } from "../lib/database.types";
@@ -13,6 +15,7 @@ import type { Database } from "../lib/database.types";
 type AdminClient = SupabaseClient<Database>;
 
 const BENCH_EMAIL = "bench-import@codexone.test";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
 function loadEnvLocal() {
@@ -56,16 +59,31 @@ export async function fetchSuggestionSnapshot(
 
   while (true) {
     const { data: page, error } = await admin
-      .from("treasury_transactions")
-      .select("id, external_id, suggested_label, suggested_by_rule_id, suggestion_explanation")
+      .from("treasury_transaction_suggestions")
+      .select(
+        "transaction_id, rule_id, suggested_label, suggestion_explanation, treasury_transactions!inner(external_id)"
+      )
       .eq("client_user_id", clientUserId)
-      .not("suggested_by_rule_id", "is", null)
-      .order("id")
+      .order("transaction_id")
+      .order("rule_id")
       .range(offset, offset + PAGE - 1);
 
     if (error) throw error;
     if (!page || page.length === 0) break;
-    rows.push(...(page as SuggestionSnapshotRow[]));
+    for (const s of page) {
+      const tx = s.treasury_transactions as
+        | { external_id: string }
+        | { external_id: string }[]
+        | null;
+      const txObj = Array.isArray(tx) ? tx[0] : tx;
+      rows.push({
+        id: s.transaction_id,
+        external_id: txObj?.external_id ?? "",
+        suggested_label: s.suggested_label,
+        suggested_by_rule_id: s.rule_id,
+        suggestion_explanation: s.suggestion_explanation,
+      });
+    }
     if (page.length < PAGE) break;
     offset += PAGE;
   }
@@ -98,27 +116,24 @@ async function main() {
     realtime: { transport: ws as never },
   });
 
-  const { data: client } = await admin
+  const { data: user } = await admin
     .from("users")
     .select("id")
     .ilike("email", BENCH_EMAIL)
     .maybeSingle();
-
-  if (!client) {
-    console.error("Run npm run test:seed:bench-import");
+  if (!user) {
+    console.error(`Missing ${BENCH_EMAIL}`);
     process.exit(1);
   }
 
-  const snapshot = await fetchSuggestionSnapshot(admin, client.id);
+  const rows = await fetchSuggestionSnapshot(admin, user.id);
   const outPath = join(ROOT, outArg);
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(snapshot, null, 2), "utf8");
-  console.log(`Wrote ${snapshot.length} suggestion rows → ${outArg}`);
+  writeFileSync(outPath, JSON.stringify(rows, null, 2));
+  console.log(`Wrote ${rows.length} rows → ${outArg}`);
 }
 
-if (require.main === module) {
-  main().catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
-}
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

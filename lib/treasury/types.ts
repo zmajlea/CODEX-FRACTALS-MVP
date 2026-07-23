@@ -85,6 +85,15 @@ export type NormalizedTxRow = {
   is_removed?: boolean;
 };
 
+/** Spec 58 — one pending proposal from a rule (embedded on list rows). */
+export type TreasuryTxSuggestion = {
+  rule_id: string;
+  suggested_label: string;
+  suggestion_explanation: string | null;
+  rule_name: string | null;
+  match_merchant: string | null;
+};
+
 export type TreasuryTransactionRow = {
   id: string;
   client_user_id: string;
@@ -109,10 +118,15 @@ export type TreasuryTransactionRow = {
   label_source: "manual" | "rule_confirmed" | null;
   labeled_by: string | null;
   labeled_at: string | null;
+  /** @deprecated Spec 58 — pending lives in `suggestions`; kept for confirmed attribution columns */
   suggested_label: string | null;
   suggested_by_rule_id: string | null;
   suggestion_status: "suggested" | "confirmed" | "rejected" | null;
   suggestion_explanation: string | null;
+  /** Spec 58 — trigger-maintained EXISTS flag (ledger spine). */
+  has_pending_suggestion?: boolean;
+  /** Spec 58 — pending proposals (one per matching rule). */
+  suggestions?: TreasuryTxSuggestion[];
   created_at: string;
   updated_at: string;
   account?: {

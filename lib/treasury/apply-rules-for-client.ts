@@ -12,12 +12,13 @@ import type { Database } from "@/lib/database.types";
 
 type AdminClient = SupabaseClient<Database>;
 
-const UPDATE_ID_CHUNK = 200;
+const UPSERT_CHUNK = 200;
 
-type SuggestionUpdate = {
+type SuggestionInsert = {
+  transaction_id: string;
+  rule_id: string;
+  client_user_id: string;
   suggested_label: string;
-  suggested_by_rule_id: string;
-  suggestion_status: "suggested";
   suggestion_explanation: string;
 };
 
@@ -26,7 +27,7 @@ function formatRuleAmountBound(n: number | null | undefined): string {
   return formatTreasuryMoney(n, "USD");
 }
 
-/** Rule-level "why this matched" — not per-tx. Existing DB rows keep old text until re-suggested. */
+/** Rule-level "why this matched" — not per-tx. */
 function buildRuleSuggestionExplanation(
   rule: TreasuryRuleRow,
   cadenceLabel: string
@@ -75,94 +76,54 @@ async function precomputeCadenceByRule(
   return cadenceByRule;
 }
 
-function updatePayloadKey(update: SuggestionUpdate): string {
-  return [
-    update.suggested_label,
-    update.suggested_by_rule_id,
-    update.suggestion_status,
-    update.suggestion_explanation,
-  ].join("\0");
-}
-
-async function applyPendingUpdates(
+async function upsertSuggestions(
   admin: AdminClient,
-  pending: Array<{ txId: string; update: SuggestionUpdate }>,
-  /** When set, UPDATE allows re-stamp of this rule's own rows; when unset, unowned only. */
-  ruleIdForGuard: string | undefined
+  rows: SuggestionInsert[]
 ): Promise<number> {
-  if (pending.length === 0) return 0;
-
-  const groups = new Map<string, { update: SuggestionUpdate; txIds: string[] }>();
-  for (const { txId, update } of pending) {
-    const key = updatePayloadKey(update);
-    const existing = groups.get(key);
-    if (existing) existing.txIds.push(txId);
-    else groups.set(key, { update, txIds: [txId] });
-  }
-
+  if (rows.length === 0) return 0;
   let applied = 0;
-
-  for (const { update, txIds } of groups.values()) {
-    for (let i = 0; i < txIds.length; i += UPDATE_ID_CHUNK) {
-      const idChunk = txIds.slice(i, i + UPDATE_ID_CHUNK);
-      // Spec 55 B belt: label null + owner guard (branched; never eq.undefined)
-      const base = admin
-        .from("treasury_transactions")
-        .update(update)
-        .in("id", idChunk)
-        .is("label", null);
-      const guarded = ruleIdForGuard
-        ? base.or(
-            `suggested_by_rule_id.is.null,suggested_by_rule_id.eq.${ruleIdForGuard}`
-          )
-        : base.is("suggested_by_rule_id", null);
-      const { data, error } = await guarded.select("id");
-      if (error) throw error;
-      applied += data?.length ?? 0;
-    }
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+    const chunk = rows.slice(i, i + UPSERT_CHUNK);
+    const { data, error } = await admin
+      .from("treasury_transaction_suggestions")
+      .upsert(chunk, {
+        onConflict: "transaction_id,rule_id",
+        ignoreDuplicates: false,
+      })
+      .select("transaction_id");
+    if (error) throw error;
+    applied += data?.length ?? chunk.length;
   }
-
   return applied;
 }
 
 /**
- * Spec 55 B — fetch ownership filter (primary). Branched so multi-rule never
- * builds suggested_by_rule_id.eq.undefined.
- *
- * Single-rule (ruleId set):
- *   .is("label", null)
- *   .or("suggestion_status.is.null,suggested_by_rule_id.eq." + ruleId)
- *
- * Multi-rule (no ruleId):
- *   .is("label", null)
- *   .is("suggestion_status", null)
+ * Spec 58 — fetch uncategorised txs only (label IS null).
+ * Confirmed rows are Phase 2. Pending suggestions coexist in the suggestions table.
  */
 async function fetchUnlabeledForApply(
   admin: AdminClient,
-  clientUserId: string,
-  ruleId: string | undefined
+  clientUserId: string
 ) {
-  return fetchAllRows((from, to) => {
-    let q = admin
+  return fetchAllRows((from, to) =>
+    admin
       .from("treasury_transactions")
       .select("*")
       .eq("client_user_id", clientUserId)
       .eq("is_removed", false)
       .eq("pending", false)
-      .is("label", null);
-
-    if (ruleId) {
-      q = q.or(
-        `suggestion_status.is.null,suggested_by_rule_id.eq.${ruleId}`
-      );
-    } else {
-      q = q.is("suggestion_status", null);
-    }
-
-    return q.order("id", { ascending: true }).range(from, to);
-  });
+      .is("label", null)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 }
 
+/**
+ * Spec 58 Phase 1 — every matching rule proposes into treasury_transaction_suggestions.
+ * No ownership steal; no break after first match. Confirmed (label set) never touched.
+ *
+ * @returns number of suggestion upserts performed
+ */
 export async function applyRulesForClient(
   admin: AdminClient,
   clientUserId: string,
@@ -186,7 +147,7 @@ export async function applyRulesForClient(
   const typedRules = rules as TreasuryRuleRow[];
   const ruleIds = typedRules.map((r) => r.id);
 
-  const txs = await fetchUnlabeledForApply(admin, clientUserId, ruleId);
+  const txs = await fetchUnlabeledForApply(admin, clientUserId);
 
   const { data: rejections } = await admin
     .from("treasury_rule_rejections")
@@ -199,7 +160,7 @@ export async function applyRulesForClient(
 
   const cadenceByRule = await precomputeCadenceByRule(admin, clientUserId, typedRules);
 
-  const pending: Array<{ txId: string; update: SuggestionUpdate }> = [];
+  const pending: SuggestionInsert[] = [];
 
   for (const tx of txs) {
     const absAmount = Math.abs(Number(tx.amount));
@@ -226,24 +187,17 @@ export async function applyRulesForClient(
       const explanation = buildRuleSuggestionExplanation(rule, cadence.label);
 
       pending.push({
-        txId: tx.id,
-        update: {
-          suggested_label: rule.assign_label,
-          suggested_by_rule_id: rule.id,
-          suggestion_status: "suggested",
-          suggestion_explanation: explanation,
-        },
+        transaction_id: tx.id,
+        rule_id: rule.id,
+        client_user_id: clientUserId,
+        suggested_label: rule.assign_label,
+        suggestion_explanation: explanation,
       });
-      break;
+      // Spec 58: no break — every matching rule proposes
     }
   }
 
-  const applied = await applyPendingUpdates(admin, pending, ruleId);
-  if (applied !== pending.length) {
-    console.warn(
-      `[apply-rules] ${pending.length - applied} suggestion(s) skipped (label set or owned concurrently?)`
-    );
-  }
+  const applied = await upsertSuggestions(admin, pending);
 
   const now = new Date().toISOString();
   await admin

@@ -162,7 +162,8 @@ async function main() {
     .select("id", { count: "exact", head: true })
     .eq("client_user_id", clientUserId)
     .eq("is_removed", false)
-    .eq("suggestion_status", "suggested");
+    .is("label", null)
+    .eq("has_pending_suggestion", true);
   const { count: labeled } = await admin
     .from("treasury_transactions")
     .select("id", { count: "exact", head: true })
@@ -174,9 +175,8 @@ async function main() {
     .select("id", { count: "exact", head: true })
     .eq("client_user_id", clientUserId)
     .eq("is_removed", false)
-    .or(
-      "and(label.is.null,suggestion_status.is.null),and(label.is.null,suggestion_status.neq.suggested)"
-    );
+    .is("label", null)
+    .eq("has_pending_suggestion", false);
 
   const { count: acct0617 } = await admin
     .from("treasury_accounts")

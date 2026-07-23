@@ -5,7 +5,6 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { applyRulesForClient } from "@/lib/server/treasury-rules";
 
 type RouteContext = { params: Promise<{ clientId: string; txId: string }> };
 
@@ -14,6 +13,8 @@ type PatchBody = {
   description?: string;
   confirmSuggestion?: boolean;
   rejectSuggestion?: boolean;
+  /** Spec 58 — which rule's suggestion to confirm/reject */
+  ruleId?: string;
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -42,24 +43,50 @@ export async function PATCH(request: Request, context: RouteContext) {
   const now = new Date().toISOString();
   const update: Database["public"]["Tables"]["treasury_transactions"]["Update"] = {};
 
-  if (body.rejectSuggestion && tx.suggested_by_rule_id) {
+  if (body.rejectSuggestion) {
+    if (!body.ruleId) {
+      return NextResponse.json(
+        { error: "ruleId required to reject a suggestion" },
+        { status: 400 }
+      );
+    }
     await guard.admin.from("treasury_rule_rejections").upsert({
       transaction_id: txId,
-      rule_id: tx.suggested_by_rule_id,
+      rule_id: body.ruleId,
       rejected_by: guard.user.id,
     });
-    update.suggested_label = null;
-    update.suggested_by_rule_id = null;
-    update.suggestion_status = "rejected";
-    update.suggestion_explanation = null;
-  } else if (body.confirmSuggestion && tx.suggested_label) {
-    update.label = tx.suggested_label;
+    await guard.admin
+      .from("treasury_transaction_suggestions")
+      .delete()
+      .eq("transaction_id", txId)
+      .eq("rule_id", body.ruleId);
+    // Other suggestions stay; has_pending_suggestion syncs via trigger
+  } else if (body.confirmSuggestion) {
+    if (!body.ruleId) {
+      return NextResponse.json(
+        { error: "ruleId required to confirm a suggestion" },
+        { status: 400 }
+      );
+    }
+    const { data: sug, error: sugErr } = await guard.admin
+      .from("treasury_transaction_suggestions")
+      .select("suggested_label, rule_id")
+      .eq("transaction_id", txId)
+      .eq("rule_id", body.ruleId)
+      .maybeSingle();
+    if (sugErr || !sug) {
+      return NextResponse.json(
+        { error: "Suggestion not found" },
+        { status: 404 }
+      );
+    }
+    update.label = sug.suggested_label;
     update.label_source = "rule_confirmed";
     update.labeled_by = guard.user.id;
     update.labeled_at = now;
-    update.suggested_label = null;
-    // Keep suggested_by_rule_id for matched_count handoff after confirm.
+    update.suggested_by_rule_id = sug.rule_id;
     update.suggestion_status = "confirmed";
+    update.suggested_label = null;
     update.suggestion_explanation = null;
   } else if (body.label !== undefined) {
     update.label = body.label.trim() || null;
@@ -73,31 +100,63 @@ export async function PATCH(request: Request, context: RouteContext) {
     update.suggestion_explanation = null;
   }
 
-  const { data: updated, error } = await guard.admin
-    .from("treasury_transactions")
-    .update(update)
-    .eq("id", txId)
-    .select("*")
-    .single();
+  if (Object.keys(update).length > 0) {
+    const { data: updated, error } = await guard.admin
+      .from("treasury_transactions")
+      .update(update)
+      .eq("id", txId)
+      .select("*")
+      .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (body.confirmSuggestion || body.label !== undefined) {
+      await guard.admin
+        .from("treasury_transaction_suggestions")
+        .delete()
+        .eq("transaction_id", txId);
+    }
+
+    await writeTreasuryAudit(guard.admin, {
+      actorUserId: guard.user.id,
+      eventType: "treasury_tx_labeled",
+      payload: {
+        client_user_id: clientId,
+        transaction_id: txId,
+        label: updated.label,
+        rule_id: body.ruleId ?? null,
+        action: body.confirmSuggestion
+          ? "confirm"
+          : body.rejectSuggestion
+            ? "reject"
+            : "manual",
+      },
+    });
+
+    return NextResponse.json({ transaction: updated });
   }
 
-  await writeTreasuryAudit(guard.admin, {
-    actorUserId: guard.user.id,
-    eventType: "treasury_tx_labeled",
-    payload: {
-      client_user_id: clientId,
-      transaction_id: txId,
-      label: updated.label,
-      action: body.confirmSuggestion
-        ? "confirm"
-        : body.rejectSuggestion
-          ? "reject"
-          : "manual",
-    },
-  });
+  // Reject-only path: no tx column update required
+  if (body.rejectSuggestion) {
+    const { data: refreshed } = await guard.admin
+      .from("treasury_transactions")
+      .select("*")
+      .eq("id", txId)
+      .single();
+    await writeTreasuryAudit(guard.admin, {
+      actorUserId: guard.user.id,
+      eventType: "treasury_tx_labeled",
+      payload: {
+        client_user_id: clientId,
+        transaction_id: txId,
+        rule_id: body.ruleId,
+        action: "reject",
+      },
+    });
+    return NextResponse.json({ transaction: refreshed });
+  }
 
-  return NextResponse.json({ transaction: updated });
+  return NextResponse.json({ error: "No changes" }, { status: 400 });
 }

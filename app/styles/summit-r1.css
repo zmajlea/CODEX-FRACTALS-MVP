@@ -413,6 +413,10 @@
 [data-r1] .dtable .memo{ color:var(--ink); }
 [data-r1] .cat-field{ font:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--ink); min-width:150px; }
 [data-r1] .cat-field.empty{ border-style:dashed; color:var(--mute); }
+/* Spec 58 — multi-suggestion chips in the category cell */
+[data-r1] .sug-stack{ display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+[data-r1] .sug-chip{ display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap; }
+[data-r1] .sug-chip .sug-from{ font-weight:500; letter-spacing:.02em; text-transform:none; opacity:.85; }
 [data-r1] .row-act{ display:inline-flex; gap:8px; }
 [data-r1] .row-act .ra{ font:inherit; font-size:11.5px; font-weight:700; letter-spacing:.02em; text-transform:uppercase;
   color:var(--brand); background:none; border:1px solid color-mix(in srgb,var(--brand) 30%, var(--line));

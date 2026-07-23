@@ -12,9 +12,9 @@ type PatchBody = {
   label?: string;
   description?: string;
   confirmSuggestions?: boolean;
-  /** Confirm every suggested row for this client (paginated). Ignores transactionIds. */
+  /** Confirm every pending suggestion for this rule (paginated). */
   confirmAllSuggested?: boolean;
-  /** When set with confirmAllSuggested, only confirm that rule’s suggestions. */
+  /** Spec 58 — required for confirm-all / confirmSuggestions */
   ruleId?: string;
 };
 
@@ -38,88 +38,107 @@ export async function PATCH(
   const now = new Date().toISOString();
 
   if (body.confirmAllSuggested || body.confirmSuggestions) {
-    let ids = (body.transactionIds ?? []).filter(Boolean);
-
-    if (body.confirmAllSuggested) {
-      const rows = await fetchAllRows((from, to) => {
-        let q = guard.admin
-          .from("treasury_transactions")
-          .select("id, suggested_label, suggestion_status")
-          .eq("client_user_id", clientId)
-          .eq("is_removed", false)
-          .eq("suggestion_status", "suggested")
-          .not("suggested_label", "is", null);
-        if (body.ruleId) {
-          q = q.eq("suggested_by_rule_id", body.ruleId);
-        }
-        return q.order("id", { ascending: true }).range(from, to);
-      });
-      ids = rows.map((r) => r.id);
-    }
-
-    if (ids.length === 0) {
+    if (!body.ruleId) {
       return NextResponse.json(
-        body.confirmAllSuggested
-          ? { updated: 0 }
-          : { error: "transactionIds required" },
-        body.confirmAllSuggested ? { status: 200 } : { status: 400 }
-      );
-    }
-    if (!body.confirmAllSuggested && ids.length > MAX_BULK) {
-      return NextResponse.json(
-        { error: `Maximum ${MAX_BULK} transactions per request` },
+        { error: "ruleId required to confirm suggestions" },
         { status: 400 }
       );
     }
+    const ruleId = body.ruleId;
 
-    // Chunk .in() queries for large confirm-all sets
-    const toConfirm: Array<{ id: string; suggested_label: string | null }> = [];
-    for (let i = 0; i < ids.length; i += MAX_BULK) {
-      const chunk = ids.slice(i, i + MAX_BULK);
-      const { data: txs, error: loadErr } = await guard.admin
-        .from("treasury_transactions")
-        .select("id, suggested_label, suggestion_status")
+    let pairs: Array<{ transaction_id: string; suggested_label: string }> = [];
+
+    if (body.confirmAllSuggested) {
+      const rows = await fetchAllRows((from, to) =>
+        guard.admin
+          .from("treasury_transaction_suggestions")
+          .select("transaction_id, suggested_label")
+          .eq("client_user_id", clientId)
+          .eq("rule_id", ruleId)
+          .order("transaction_id", { ascending: true })
+          .range(from, to)
+      );
+      pairs = rows.map((r) => ({
+        transaction_id: r.transaction_id,
+        suggested_label: r.suggested_label,
+      }));
+    } else {
+      const ids = (body.transactionIds ?? []).filter(Boolean);
+      if (ids.length === 0) {
+        return NextResponse.json(
+          { error: "transactionIds required" },
+          { status: 400 }
+        );
+      }
+      if (ids.length > MAX_BULK) {
+        return NextResponse.json(
+          { error: `Maximum ${MAX_BULK} transactions per request` },
+          { status: 400 }
+        );
+      }
+      const { data: sugs, error: loadErr } = await guard.admin
+        .from("treasury_transaction_suggestions")
+        .select("transaction_id, suggested_label")
         .eq("client_user_id", clientId)
-        .eq("is_removed", false)
-        .in("id", chunk);
-
+        .eq("rule_id", ruleId)
+        .in("transaction_id", ids);
       if (loadErr) {
         return NextResponse.json(
-          { error: "Failed to load transactions" },
+          { error: "Failed to load suggestions" },
           { status: 500 }
         );
       }
-      for (const t of txs ?? []) {
-        if (t.suggestion_status === "suggested" && t.suggested_label) {
-          toConfirm.push(t);
-        }
-      }
+      pairs = (sugs ?? []).map((r) => ({
+        transaction_id: r.transaction_id,
+        suggested_label: r.suggested_label,
+      }));
     }
 
-    if (toConfirm.length === 0) {
+    // Only still-unlabelled txs
+    const txIds = pairs.map((p) => p.transaction_id);
+    const stillOpen = new Set<string>();
+    for (let i = 0; i < txIds.length; i += MAX_BULK) {
+      const chunk = txIds.slice(i, i + MAX_BULK);
+      const { data } = await guard.admin
+        .from("treasury_transactions")
+        .select("id")
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false)
+        .is("label", null)
+        .in("id", chunk);
+      for (const t of data ?? []) stillOpen.add(t.id);
+    }
+    pairs = pairs.filter((p) => stillOpen.has(p.transaction_id));
+
+    if (pairs.length === 0) {
       return NextResponse.json({ updated: 0 });
     }
 
-    const confirmUpdate: Database["public"]["Tables"]["treasury_transactions"]["Update"] = {
-      label_source: "rule_confirmed",
-      labeled_by: guard.user.id,
-      labeled_at: now,
-      suggested_label: null,
-      // Keep suggested_by_rule_id so matched_count handoff holds.
-      suggestion_status: "confirmed",
-      suggestion_explanation: null,
-    };
-
     let updated = 0;
-    for (const tx of toConfirm) {
+    for (const pair of pairs) {
       const { data, error } = await guard.admin
         .from("treasury_transactions")
-        .update({ ...confirmUpdate, label: tx.suggested_label })
-        .eq("id", tx.id)
+        .update({
+          label: pair.suggested_label,
+          label_source: "rule_confirmed",
+          labeled_by: guard.user.id,
+          labeled_at: now,
+          suggested_by_rule_id: ruleId,
+          suggestion_status: "confirmed",
+          suggested_label: null,
+          suggestion_explanation: null,
+        })
+        .eq("id", pair.transaction_id)
         .eq("client_user_id", clientId)
+        .is("label", null)
         .select("id");
-
-      if (!error && data?.length) updated += 1;
+      if (!error && data?.length) {
+        updated += 1;
+        await guard.admin
+          .from("treasury_transaction_suggestions")
+          .delete()
+          .eq("transaction_id", pair.transaction_id);
+      }
     }
 
     await writeTreasuryAudit(guard.admin, {
@@ -128,8 +147,9 @@ export async function PATCH(
       payload: {
         client_user_id: clientId,
         action: "confirm_suggestions",
+        rule_id: ruleId,
         count: updated,
-        transaction_ids: toConfirm.map((t) => t.id),
+        transaction_ids: pairs.map((p) => p.transaction_id),
       },
     });
 
@@ -177,6 +197,15 @@ export async function PATCH(
   }
 
   const updated = updatedRows?.length ?? 0;
+  if (updated > 0) {
+    await guard.admin
+      .from("treasury_transaction_suggestions")
+      .delete()
+      .in(
+        "transaction_id",
+        (updatedRows ?? []).map((r) => r.id)
+      );
+  }
 
   await writeTreasuryAudit(guard.admin, {
     actorUserId: guard.user.id,
