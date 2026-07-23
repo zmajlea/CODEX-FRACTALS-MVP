@@ -8,7 +8,16 @@ import type { Database } from "@/lib/database.types";
 
 type AdminClient = SupabaseClient<Database>;
 
-export { applyRulesForClient } from "@/lib/treasury/apply-rules-for-client";
+export {
+  applyRulesForClient,
+  applyRuleActions,
+  previewRuleApply,
+} from "@/lib/treasury/apply-rules-for-client";
+export type {
+  ApplyRulesOptions,
+  ApplyRulesResult,
+  ApplyBreakdown,
+} from "@/lib/treasury/apply-rules-for-client";
 export { detectCadence, merchantMatches } from "@/lib/treasury/rule-helpers";
 export type { CadenceDetection } from "@/lib/treasury/rule-helpers";
 

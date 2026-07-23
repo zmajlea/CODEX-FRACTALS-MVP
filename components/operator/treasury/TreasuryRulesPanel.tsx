@@ -31,6 +31,28 @@ type PreviewState = {
   samples: TreasuryTransactionRow[];
 } | null;
 
+/** Spec 58 Phase 2 — apply breakdown */
+type ApplyBreakdown = {
+  uncategorised: number;
+  suggestedByOthers: number;
+  alreadyCategorised: number;
+  manualCategorised: number;
+  total: number;
+  from: string | null;
+  to: string | null;
+};
+
+type ApplyPanelState = {
+  ruleId: string;
+  breakdown: ApplyBreakdown | null;
+  loading: boolean;
+  suggestUncategorised: boolean;
+  suggestAlongside: boolean;
+  recategorise: boolean;
+  from: string;
+  to: string;
+};
+
 /** Spec 56 C — Rules panel feedback by kind (Ana callout / warn-banner). */
 type PanelNotice = {
   text: string;
@@ -111,6 +133,7 @@ export function TreasuryRulesPanel({
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [labels, setLabels] = useState<string[]>([]);
+  const [applyPanel, setApplyPanel] = useState<ApplyPanelState | null>(null);
 
   function rulePickable(r: TreasuryRuleRow): Pickable {
     const suggested = r.suggested_count ?? 0;
@@ -371,31 +394,133 @@ export function TreasuryRulesPanel({
     void load();
   }
 
-  async function reapplyRule(rule: TreasuryRuleRow) {
-    setBusyRuleId(rule.id);
-    setNotice(null);
+  async function loadApplyBreakdown(
+    ruleId: string,
+    from: string,
+    to: string
+  ): Promise<ApplyBreakdown | null> {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
     const res = await fetch(
-      `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reapply: true }),
-      }
+      `/api/operator/treasury/clients/${clientUserId}/rules/${ruleId}/apply-preview${qs ? `?${qs}` : ""}`
     );
-    const data = (await res.json()) as { suggested?: number; error?: string };
-    setBusyRuleId(null);
-    if (!res.ok) {
-      setNotice({ kind: "error", text: data.error ?? "Re-apply failed" });
-      return;
-    }
-    setNotice({
-      kind: "success",
-      text: `Applied — ${data.suggested ?? 0} new suggestions.`,
+    if (!res.ok) return null;
+    const data = (await res.json()) as { breakdown: ApplyBreakdown };
+    return data.breakdown;
+  }
+
+  async function openApplyPanel(rule: TreasuryRuleRow) {
+    setApplyPanel({
+      ruleId: rule.id,
+      breakdown: null,
+      loading: true,
+      suggestUncategorised: true,
+      suggestAlongside: true,
+      recategorise: false,
+      from: "",
+      to: "",
     });
     setExpandedId(rule.id);
-    setQueueTab("suggested");
-    setQueuePage(0);
-    void load();
+    const breakdown = await loadApplyBreakdown(rule.id, "", "");
+    setApplyPanel((prev) =>
+      prev && prev.ruleId === rule.id
+        ? { ...prev, breakdown, loading: false }
+        : prev
+    );
+  }
+
+  async function refreshApplyScope(from: string, to: string) {
+    if (!applyPanel) return;
+    const ruleId = applyPanel.ruleId;
+    setApplyPanel((prev) =>
+      prev ? { ...prev, from, to, loading: true } : prev
+    );
+    const breakdown = await loadApplyBreakdown(ruleId, from, to);
+    setApplyPanel((prev) =>
+      prev && prev.ruleId === ruleId
+        ? { ...prev, breakdown, loading: false, from, to }
+        : prev
+    );
+  }
+
+  async function confirmApply(rule: TreasuryRuleRow) {
+    if (!applyPanel || applyPanel.ruleId !== rule.id) return;
+    if (
+      !applyPanel.suggestUncategorised &&
+      !applyPanel.suggestAlongside &&
+      !applyPanel.recategorise
+    ) {
+      setNotice({ kind: "notice", text: "Select at least one group to apply." });
+      return;
+    }
+    if (applyPanel.recategorise && (applyPanel.breakdown?.alreadyCategorised ?? 0) > 0) {
+      const n = applyPanel.breakdown!.alreadyCategorised;
+      const scope =
+        applyPanel.from || applyPanel.to
+          ? ` (${applyPanel.from || "…"} → ${applyPanel.to || "…"})`
+          : " (all dates)";
+      if (
+        !confirm(
+          `Recategorise ${n} already-categorised transaction(s)${scope} to "${rule.assign_label}"? Manual categories are never changed.`
+        )
+      ) {
+        return;
+      }
+    }
+    setBusyRuleId(rule.id);
+    setNotice(null);
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}/apply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            suggestUncategorised: applyPanel.suggestUncategorised,
+            suggestAlongside: applyPanel.suggestAlongside,
+            recategorise: applyPanel.recategorise,
+            from: applyPanel.recategorise ? applyPanel.from || null : null,
+            to: applyPanel.recategorise ? applyPanel.to || null : null,
+          }),
+        }
+      );
+      const data = (await res.json()) as {
+        suggested?: number;
+        recategorised?: number;
+        skippedManual?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        setNotice({ kind: "error", text: data.error ?? "Apply failed" });
+        return;
+      }
+      const parts: string[] = [];
+      if ((data.suggested ?? 0) > 0 || applyPanel.suggestUncategorised || applyPanel.suggestAlongside) {
+        parts.push(`${data.suggested ?? 0} suggestions`);
+      }
+      if (applyPanel.recategorise) {
+        parts.push(`${data.recategorised ?? 0} recategorised`);
+        if ((data.skippedManual ?? 0) > 0) {
+          parts.push(`${data.skippedManual} manual left untouched`);
+        }
+      }
+      setNotice({
+        kind: "success",
+        text: `Applied — ${parts.join(", ") || "nothing changed"}.`,
+      });
+      setApplyPanel(null);
+      setQueueTab(
+        applyPanel.recategorise && (data.recategorised ?? 0) > 0
+          ? "confirmed"
+          : "suggested"
+      );
+      setQueuePage(0);
+      void load();
+    } finally {
+      setBusyRuleId(null);
+    }
   }
 
   async function patchTx(txId: string, body: Record<string, unknown>) {
@@ -640,10 +765,10 @@ export function TreasuryRulesPanel({
                       disabled={busyRuleId === r.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        void reapplyRule(r);
+                        void openApplyPanel(r);
                       }}
                     >
-                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                      {busyRuleId === r.id ? "Applying…" : "Apply…"}
                     </button>
                   ) : null}
                   <button
@@ -665,6 +790,164 @@ export function TreasuryRulesPanel({
                     />
                   ) : null}
                 </div>
+
+                {open && applyPanel?.ruleId === r.id ? (
+                  <div className="mt-3 border-t border-sealed-bone/60 pt-3 apply-breakdown">
+                    <p className="text-sm mb-2">
+                      Rule &ldquo;{r.match_merchant} → {r.assign_label}&rdquo;
+                      {applyPanel.loading
+                        ? " — counting matches…"
+                        : applyPanel.breakdown
+                          ? ` matches ${applyPanel.breakdown.total.toLocaleString()} transactions:`
+                          : " — could not load breakdown."}
+                    </p>
+                    {applyPanel.breakdown ? (
+                      <ul className="text-sm space-y-2 mb-3">
+                        <li className="flex flex-wrap items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={applyPanel.suggestUncategorised}
+                              onChange={(e) =>
+                                setApplyPanel((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        suggestUncategorised: e.target.checked,
+                                      }
+                                    : prev
+                                )
+                              }
+                            />
+                            <span>
+                              {applyPanel.breakdown.uncategorised.toLocaleString()}{" "}
+                              uncategorised → suggest
+                            </span>
+                          </label>
+                        </li>
+                        <li className="flex flex-wrap items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={applyPanel.suggestAlongside}
+                              onChange={(e) =>
+                                setApplyPanel((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        suggestAlongside: e.target.checked,
+                                      }
+                                    : prev
+                                )
+                              }
+                            />
+                            <span>
+                              {applyPanel.breakdown.suggestedByOthers.toLocaleString()}{" "}
+                              suggested by other rules → also suggest
+                            </span>
+                          </label>
+                        </li>
+                        <li className="flex flex-wrap items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={applyPanel.recategorise}
+                              onChange={(e) =>
+                                setApplyPanel((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        recategorise: e.target.checked,
+                                      }
+                                    : prev
+                                )
+                              }
+                            />
+                            <span>
+                              {applyPanel.breakdown.alreadyCategorised.toLocaleString()}{" "}
+                              already categorised → recategorise
+                            </span>
+                          </label>
+                          <span className="text-codex-muted text-xs">
+                            (default off)
+                          </span>
+                        </li>
+                        {applyPanel.breakdown.manualCategorised > 0 ? (
+                          <li className="text-codex-muted text-xs pl-6">
+                            {applyPanel.breakdown.manualCategorised.toLocaleString()}{" "}
+                            you categorised by hand — never overwritten
+                          </li>
+                        ) : null}
+                      </ul>
+                    ) : null}
+                    {applyPanel.recategorise ? (
+                      <div className="flex flex-wrap items-end gap-2 mb-3 text-sm">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-codex-muted">
+                            Recategorise from
+                          </span>
+                          <input
+                            type="date"
+                            className="border rounded px-2 py-1 text-sm"
+                            value={applyPanel.from}
+                            onChange={(e) =>
+                              void refreshApplyScope(
+                                e.target.value,
+                                applyPanel.to
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-codex-muted">to</span>
+                          <input
+                            type="date"
+                            className="border rounded px-2 py-1 text-sm"
+                            value={applyPanel.to}
+                            onChange={(e) =>
+                              void refreshApplyScope(
+                                applyPanel.from,
+                                e.target.value
+                              )
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-secondary text-xs"
+                          onClick={() => void refreshApplyScope("", "")}
+                        >
+                          All dates
+                        </button>
+                        <span className="text-xs text-codex-muted">
+                          Scope applies to recategorise only. Default: all.
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn text-xs"
+                        disabled={
+                          busyRuleId === r.id ||
+                          applyPanel.loading ||
+                          !applyPanel.breakdown
+                        }
+                        onClick={() => void confirmApply(r)}
+                      >
+                        {busyRuleId === r.id ? "Applying…" : "Confirm apply"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary text-xs"
+                        disabled={busyRuleId === r.id}
+                        onClick={() => setApplyPanel(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {open ? (
                   <div className="mt-3 border-t border-sealed-bone/60 pt-3">
