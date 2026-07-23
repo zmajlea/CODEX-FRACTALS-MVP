@@ -31,6 +31,7 @@ type RuleQueueFacets = {
 };
 
 type FacetSelection =
+  | { kind: "all_suggested" }
   | { kind: "combo"; labels: string[] }
   | { kind: "confirmed" }
   | { kind: "rejected" };
@@ -263,15 +264,8 @@ export function TreasuryRulesPanel({
       return;
     }
     void (async () => {
-      const f = await loadFacets(expandedId);
-      setFacetSel((prev) => {
-        if (prev) return prev;
-        if (f && f.combos.length > 0) {
-          return { kind: "combo", labels: f.combos[0]!.labels };
-        }
-        if (f && f.confirmed > 0) return { kind: "confirmed" };
-        return { kind: "confirmed" };
-      });
+      await loadFacets(expandedId);
+      setFacetSel((prev) => prev ?? { kind: "all_suggested" });
     })();
   }, [expandedId, loadFacets]);
 
@@ -475,17 +469,15 @@ export function TreasuryRulesPanel({
     const f = await loadFacets(ruleId);
     void load();
     setFacetSel((prev) => {
-      if (!prev) {
-        if (f && f.combos[0]) return { kind: "combo", labels: f.combos[0].labels };
-        return { kind: "confirmed" };
+      if (!prev || prev.kind === "all_suggested") {
+        return { kind: "all_suggested" };
       }
       if (prev.kind === "combo" && f) {
         const still = f.combos.find(
           (c) => comboKey(c.labels) === comboKey(prev.labels)
         );
-        if (still) return { ...prev }; // force effect even if same
-        if (f.combos[0]) return { kind: "combo", labels: f.combos[0].labels };
-        return { kind: "confirmed" };
+        if (still) return { ...prev };
+        return { kind: "all_suggested" };
       }
       return { ...prev };
     });
@@ -781,71 +773,145 @@ export function TreasuryRulesPanel({
 
                 {open ? (
                   <div className="mt-3 border-t border-sealed-bone/60 pt-3">
-                    <div className="mb-3 space-y-2">
-                      <p className="text-xs text-codex-muted uppercase tracking-wide">
+                    <div className="mb-3">
+                      <p className="text-xs text-codex-muted uppercase tracking-wide mb-2">
                         Triage
                         {facetsMs != null ? ` · ${facetsMs}ms` : ""}
                       </p>
-                      <ul className="space-y-1 text-sm">
-                        {(facets?.combos ?? []).map((c) => {
-                          const active =
-                            facetSel?.kind === "combo" &&
-                            comboKey(facetSel.labels) === comboKey(c.labels);
-                          return (
-                            <li
-                              key={comboKey(c.labels)}
-                              className="flex flex-wrap items-center gap-2"
-                            >
+                      {/* Ana copy: "All suggested", "Confirm all" — flag for Ana */}
+                      <table className="dtable triage-table">
+                        <thead>
+                          <tr>
+                            <th>Bucket</th>
+                            <th style={{ textAlign: "right", width: "1%" }}>
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            className={
+                              facetSel?.kind === "all_suggested"
+                                ? "triage-row on"
+                                : "triage-row"
+                            }
+                          >
+                            <td>
                               <button
                                 type="button"
-                                className={`btn btn-secondary text-xs ${active ? "on" : ""}`}
+                                className="triage-filter"
+                                aria-pressed={facetSel?.kind === "all_suggested"}
                                 onClick={() => {
-                                  setFacetSel({
-                                    kind: "combo",
-                                    labels: c.labels,
-                                  });
+                                  setFacetSel({ kind: "all_suggested" });
                                   setQueuePage(0);
                                 }}
                               >
-                                {formatComboBucketLabel(c.labels)} · {c.count}
+                                All suggested
+                                <span className="cnt">
+                                  {(facets?.combos ?? []).reduce(
+                                    (a, c) => a + c.count,
+                                    0
+                                  ) || (r.suggested_count ?? 0)}
+                                </span>
                               </button>
+                            </td>
+                            <td className="triage-act" />
+                          </tr>
+                          {(facets?.combos ?? []).map((c) => {
+                            const active =
+                              facetSel?.kind === "combo" &&
+                              comboKey(facetSel.labels) === comboKey(c.labels);
+                            return (
+                              <tr
+                                key={comboKey(c.labels)}
+                                className={
+                                  active ? "triage-row on" : "triage-row"
+                                }
+                              >
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="triage-filter"
+                                    aria-pressed={active}
+                                    onClick={() => {
+                                      setFacetSel({
+                                        kind: "combo",
+                                        labels: c.labels,
+                                      });
+                                      setQueuePage(0);
+                                    }}
+                                  >
+                                    {formatComboBucketLabel(c.labels)}
+                                    <span className="cnt">{c.count}</span>
+                                  </button>
+                                </td>
+                                <td className="triage-act">
+                                  <button
+                                    type="button"
+                                    className="ra"
+                                    disabled={confirmBusy || c.count === 0}
+                                    onClick={() =>
+                                      void confirmBucket(r, c.labels)
+                                    }
+                                  >
+                                    Confirm all
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          <tr
+                            className={
+                              facetSel?.kind === "confirmed"
+                                ? "triage-row on"
+                                : "triage-row"
+                            }
+                          >
+                            <td>
                               <button
                                 type="button"
-                                className="btn text-xs"
-                                disabled={confirmBusy || c.count === 0}
-                                onClick={() => void confirmBucket(r, c.labels)}
+                                className="triage-filter"
+                                aria-pressed={facetSel?.kind === "confirmed"}
+                                onClick={() => {
+                                  setFacetSel({ kind: "confirmed" });
+                                  setQueuePage(0);
+                                }}
                               >
-                                Confirm all in bucket
+                                Already in this category
+                                <span className="cnt">
+                                  {facets?.confirmed ?? r.confirmed_count ?? 0}
+                                </span>
                               </button>
-                            </li>
-                          );
-                        })}
-                        <li className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className={`btn btn-secondary text-xs ${facetSel?.kind === "confirmed" ? "on" : ""}`}
-                            onClick={() => {
-                              setFacetSel({ kind: "confirmed" });
-                              setQueuePage(0);
-                            }}
+                            </td>
+                            <td className="triage-act" />
+                          </tr>
+                          <tr
+                            className={
+                              facetSel?.kind === "rejected"
+                                ? "triage-row on"
+                                : "triage-row"
+                            }
                           >
-                            Already in this category ·{" "}
-                            {facets?.confirmed ?? r.confirmed_count ?? 0}
-                          </button>
-                        </li>
-                        <li className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className={`btn btn-secondary text-xs ${facetSel?.kind === "rejected" ? "on" : ""}`}
-                            onClick={() => {
-                              setFacetSel({ kind: "rejected" });
-                              setQueuePage(0);
-                            }}
-                          >
-                            Rejected · {facets?.rejected ?? 0}
-                          </button>
-                        </li>
-                      </ul>
+                            <td>
+                              <button
+                                type="button"
+                                className="triage-filter"
+                                aria-pressed={facetSel?.kind === "rejected"}
+                                onClick={() => {
+                                  setFacetSel({ kind: "rejected" });
+                                  setQueuePage(0);
+                                }}
+                              >
+                                Rejected
+                                <span className="cnt">
+                                  {facets?.rejected ?? 0}
+                                </span>
+                              </button>
+                            </td>
+                            <td className="triage-act" />
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
 
                     {queueLoading ? (
