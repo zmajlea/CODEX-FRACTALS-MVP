@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import type { Database } from "@/lib/database.types";
 import { writeOperatorTreasuryReadAudit } from "@/lib/server/operator-treasury-audit";
 import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import {
   applyTxPredicate,
   withStatus,
@@ -52,6 +52,43 @@ function parseFilters(url: URL): TxFilterInput {
   };
 }
 
+/**
+ * Spec 60 — rule-queue suggested/rejected via PostgREST !inner join.
+ * Never .in("id", hugeIdArray) — that blows the URL limit on large rules (~546).
+ */
+function ruleQueueSelect(filters: TxFilterInput): string {
+  if (filters.ruleId && filters.ruleQueue === "suggested") {
+    return "*, treasury_transaction_suggestions!inner(rule_id)";
+  }
+  if (filters.ruleId && filters.ruleQueue === "rejected") {
+    return "*, treasury_rule_rejections!inner(rule_id)";
+  }
+  return "*";
+}
+
+function ruleQueueCountSelect(filters: TxFilterInput): string {
+  if (filters.ruleId && filters.ruleQueue === "suggested") {
+    return "id, treasury_transaction_suggestions!inner(rule_id)";
+  }
+  if (filters.ruleId && filters.ruleQueue === "rejected") {
+    return "id, treasury_rule_rejections!inner(rule_id)";
+  }
+  return "id";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyRuleQueueJoin(q: any, filters: TxFilterInput) {
+  if (filters.ruleId && filters.ruleQueue === "suggested") {
+    return q
+      .eq("treasury_transaction_suggestions.rule_id", filters.ruleId)
+      .is("label", null);
+  }
+  if (filters.ruleId && filters.ruleQueue === "rejected") {
+    return q.eq("treasury_rule_rejections.rule_id", filters.ruleId);
+  }
+  return q;
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -95,53 +132,37 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
-  // Spec 58 — rule-queue suggested/rejected: resolve tx ids from side tables
-  // (paginated IN-list; Spec 31 — never JS-filter the full book).
-  let ruleQueueIds: string[] | null = null;
-  if (filters.ruleId && filters.ruleQueue === "suggested") {
-    const sugs = await fetchAllRows((from, to) =>
-      guard.admin
-        .from("treasury_transaction_suggestions")
-        .select("transaction_id")
-        .eq("client_user_id", clientId)
-        .eq("rule_id", filters.ruleId!)
-        .order("transaction_id", { ascending: true })
-        .range(from, to)
-    );
-    ruleQueueIds = [...new Set(sugs.map((s) => s.transaction_id))];
-  } else if (filters.ruleId && filters.ruleQueue === "rejected") {
-    const rejs = await fetchAllRows((from, to) =>
-      guard.admin
-        .from("treasury_rule_rejections")
-        .select("transaction_id")
-        .eq("rule_id", filters.ruleId!)
-        .order("transaction_id", { ascending: true })
-        .range(from, to)
-    );
-    ruleQueueIds = [...new Set(rejs.map((r) => r.transaction_id))];
-  }
-
+  // Predicate filters without the rule-queue join (join applied separately).
+  // Confirmed queue still uses suggested_by_rule_id on the tx row.
   const listFilters: TxFilterInput =
-    filters.ruleQueue === "suggested" || filters.ruleQueue === "rejected"
-      ? { ...filters, ruleId: null, ruleQueue: null, status: filters.ruleQueue === "suggested" ? "suggested" : "all" }
-      : filters;
+    filters.ruleId && filters.ruleQueue === "suggested"
+      ? {
+          ...filters,
+          ruleId: null,
+          ruleQueue: null,
+          status: "all",
+          labeled: null,
+        }
+      : filters.ruleId && filters.ruleQueue === "rejected"
+        ? {
+            ...filters,
+            ruleId: null,
+            ruleQueue: null,
+            status: "all",
+            labeled: null,
+          }
+        : filters;
 
   const base = () => {
     let q = applyTxPredicate(
       guard.admin
         .from("treasury_transactions")
-        .select("*")
+        .select(ruleQueueSelect(filters))
         .eq("client_user_id", clientId)
         .eq("is_removed", false),
       listFilters
     );
-    if (ruleQueueIds) {
-      if (ruleQueueIds.length === 0) {
-        q = q.eq("id", "00000000-0000-0000-0000-000000000000");
-      } else {
-        q = q.in("id", ruleQueueIds);
-      }
-    }
+    q = applyRuleQueueJoin(q, filters);
     return q;
   };
 
@@ -171,7 +192,12 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Failed to load transactions" }, { status: 500 });
   }
 
-  const rows = data ?? [];
+  type TxListRow = Database["public"]["Tables"]["treasury_transactions"]["Row"] & {
+    treasury_transaction_suggestions?: unknown;
+    treasury_rule_rejections?: unknown;
+  };
+
+  const rows = (data ?? []) as unknown as TxListRow[];
   const hasMore = cursor ? rows.length > limit : false;
   const pageRows = cursor && hasMore ? rows.slice(0, limit) : rows;
   const last = pageRows[pageRows.length - 1];
@@ -255,32 +281,34 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
-  const transactions = pageRows.map((tx) => ({
-    ...tx,
-    account: accountMap.get(tx.account_id) ?? {
-      name: null,
-      mask: null,
-      institution_name: null,
-    },
-    suggestions: suggestionsByTx.get(tx.id) ?? [],
-  }));
+  const transactions = pageRows.map((tx) => {
+    const {
+      treasury_transaction_suggestions: _sugJoin,
+      treasury_rule_rejections: _rejJoin,
+      ...rest
+    } = tx;
+    return {
+      ...rest,
+      account: accountMap.get(tx.account_id) ?? {
+        name: null,
+        mask: null,
+        institution_name: null,
+      },
+      suggestions: suggestionsByTx.get(tx.id) ?? [],
+    };
+  });
 
-  const countHead = (f: TxFilterInput, idScope?: string[] | null) => {
+  const countHead = (f: TxFilterInput, queueFilters?: TxFilterInput) => {
+    const qf = queueFilters ?? f;
     let q = applyTxPredicate(
       guard.admin
         .from("treasury_transactions")
-        .select("id", { count: "exact", head: true })
+        .select(ruleQueueCountSelect(qf), { count: "exact", head: true })
         .eq("client_user_id", clientId)
         .eq("is_removed", false),
       f
     );
-    if (idScope) {
-      if (idScope.length === 0) {
-        q = q.eq("id", "00000000-0000-0000-0000-000000000000");
-      } else {
-        q = q.in("id", idScope);
-      }
-    }
+    q = applyRuleQueueJoin(q, qf);
     return q;
   };
 
@@ -305,7 +333,7 @@ export async function GET(request: Request, context: RouteContext) {
     bookLastRes,
     bookImportRes,
   ] = await Promise.all([
-    countHead(listFilters, ruleQueueIds),
+    countHead(listFilters, filters),
     filters.ruleId
       ? Promise.resolve({ count: 0 })
       : countHead(withStatus(chipBase, "needs_label")),
