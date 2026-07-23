@@ -20,6 +20,8 @@
     "test:seed:ffm-demo": "node scripts/seed-ffm-demo-client.mjs",
     "test:seed:r1-gate": "node scripts/seed-r1-gate.mjs",
     "test:seed:r1-gate:book": "npx tsx scripts/seed-r1-gate-book.ts",
+    "test:seed:ana-gate": "node scripts/seed-ana-gate.mjs",
+    "test:seed:ana-gate:book": "npx tsx scripts/seed-ana-gate-book.ts",
     "test:wipe:bench-import": "node scripts/wipe-bench-import.mjs",
     "treasury:bench-import": "npx tsx scripts/bench-import.ts",
     "treasury:bench-pagination": "npx tsx scripts/bench-pagination.ts",
