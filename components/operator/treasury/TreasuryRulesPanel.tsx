@@ -22,7 +22,27 @@ type Props = {
   onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
-type QueueTab = "suggested" | "confirmed";
+type QueueTab = "suggested" | "confirmed" | "rejected";
+
+type RuleQueueFacets = {
+  combos: Array<{ labels: string[]; count: number }>;
+  confirmed: number;
+  rejected: number;
+};
+
+type FacetSelection =
+  | { kind: "combo"; labels: string[] }
+  | { kind: "confirmed" }
+  | { kind: "rejected" };
+
+function formatComboBucketLabel(labels: string[]): string {
+  if (labels.length === 1) return `${labels[0]} only`;
+  return labels.join(" + ");
+}
+
+function comboKey(labels: string[]): string {
+  return [...labels].sort((a, b) => a.localeCompare(b)).join("\0");
+}
 
 type PreviewState = {
   total: number;
@@ -104,7 +124,9 @@ export function TreasuryRulesPanel({
   const [createBusy, setCreateBusy] = useState(false);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [queueTab, setQueueTab] = useState<QueueTab>("suggested");
+  const [facetSel, setFacetSel] = useState<FacetSelection | null>(null);
+  const [facets, setFacets] = useState<RuleQueueFacets | null>(null);
+  const [facetsMs, setFacetsMs] = useState<number | null>(null);
   const [queueRows, setQueueRows] = useState<TreasuryTransactionRow[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
   const [queuePage, setQueuePage] = useState(0);
@@ -165,20 +187,54 @@ export function TreasuryRulesPanel({
   useEffect(() => {
     if (!openRuleQueueId) return;
     setExpandedId(openRuleQueueId);
-    setQueueTab("suggested");
+    setFacetSel(null);
     setQueuePage(0);
     onOpenRuleQueueConsumed?.();
   }, [openRuleQueueId, onOpenRuleQueueConsumed]);
 
+  const loadFacets = useCallback(
+    async (ruleId: string): Promise<RuleQueueFacets | null> => {
+      const t0 = performance.now();
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/rules/${ruleId}/facets`
+      );
+      const ms = Math.round(performance.now() - t0);
+      setFacetsMs(ms);
+      if (!res.ok) {
+        setFacets(null);
+        return null;
+      }
+      const data = (await res.json()) as { facets: RuleQueueFacets };
+      setFacets(data.facets);
+      return data.facets;
+    },
+    [clientUserId]
+  );
+
   const loadQueue = useCallback(
-    async (ruleId: string, tab: QueueTab, page: number) => {
+    async (
+      ruleId: string,
+      sel: FacetSelection | null,
+      page: number
+    ) => {
       setQueueLoading(true);
+      const tab: QueueTab =
+        sel?.kind === "confirmed"
+          ? "confirmed"
+          : sel?.kind === "rejected"
+            ? "rejected"
+            : "suggested";
       const params = new URLSearchParams({
         rule_id: ruleId,
         rule_queue: tab,
         limit: "50",
         page: String(page),
       });
+      if (sel?.kind === "combo") {
+        for (const label of sel.labels) {
+          params.append("combo", label);
+        }
+      }
       const res = await fetch(
         `/api/operator/treasury/clients/${clientUserId}/transactions?${params}`
       );
@@ -202,10 +258,27 @@ export function TreasuryRulesPanel({
     if (!expandedId) {
       setQueueRows([]);
       setQueueTotal(0);
+      setFacets(null);
+      setFacetSel(null);
       return;
     }
-    void loadQueue(expandedId, queueTab, queuePage);
-  }, [expandedId, queueTab, queuePage, loadQueue]);
+    void (async () => {
+      const f = await loadFacets(expandedId);
+      setFacetSel((prev) => {
+        if (prev) return prev;
+        if (f && f.combos.length > 0) {
+          return { kind: "combo", labels: f.combos[0]!.labels };
+        }
+        if (f && f.confirmed > 0) return { kind: "confirmed" };
+        return { kind: "confirmed" };
+      });
+    })();
+  }, [expandedId, loadFacets]);
+
+  useEffect(() => {
+    if (!expandedId || !facetSel) return;
+    void loadQueue(expandedId, facetSel, queuePage);
+  }, [expandedId, facetSel, queuePage, loadQueue]);
 
   async function runPreview() {
     const q = matchMerchant.trim();
@@ -297,7 +370,7 @@ export function TreasuryRulesPanel({
         });
         if (ruleId) {
           setExpandedId(ruleId);
-          setQueueTab("suggested");
+          setFacetSel(null);
           setQueuePage(0);
         }
         void load();
@@ -313,7 +386,7 @@ export function TreasuryRulesPanel({
         onRuleSaved?.(count, ruleId);
         if (ruleId) {
           setExpandedId(ruleId);
-          setQueueTab("suggested");
+          setFacetSel(null);
           setQueuePage(0);
         }
       } else {
@@ -324,7 +397,7 @@ export function TreasuryRulesPanel({
         onClearDraft?.();
         if (ruleId) {
           setExpandedId(ruleId);
-          setQueueTab("suggested");
+          setFacetSel(null);
           setQueuePage(0);
         }
       }
@@ -393,9 +466,30 @@ export function TreasuryRulesPanel({
       text: `Applied — ${data.suggested ?? 0} new suggestions.`,
     });
     setExpandedId(rule.id);
-    setQueueTab("suggested");
+    setFacetSel(null);
     setQueuePage(0);
     void load();
+  }
+
+  async function refreshFacetsAndQueue(ruleId: string) {
+    const f = await loadFacets(ruleId);
+    void load();
+    setFacetSel((prev) => {
+      if (!prev) {
+        if (f && f.combos[0]) return { kind: "combo", labels: f.combos[0].labels };
+        return { kind: "confirmed" };
+      }
+      if (prev.kind === "combo" && f) {
+        const still = f.combos.find(
+          (c) => comboKey(c.labels) === comboKey(prev.labels)
+        );
+        if (still) return { ...prev }; // force effect even if same
+        if (f.combos[0]) return { kind: "combo", labels: f.combos[0].labels };
+        return { kind: "confirmed" };
+      }
+      return { ...prev };
+    });
+    setQueuePage(0);
   }
 
   async function patchTx(txId: string, body: Record<string, unknown>) {
@@ -407,47 +501,66 @@ export function TreasuryRulesPanel({
         body: JSON.stringify(body),
       }
     );
-    if (expandedId) void loadQueue(expandedId, queueTab, queuePage);
-    void load();
+    if (expandedId) void refreshFacetsAndQueue(expandedId);
   }
 
-  async function confirmAllForRule(rule: TreasuryRuleRow) {
-    const n = rule.suggested_count ?? queueTotal;
+  async function confirmBucket(rule: TreasuryRuleRow, labels: string[]) {
+    const n =
+      facets?.combos.find((c) => comboKey(c.labels) === comboKey(labels))
+        ?.count ?? 0;
     if (n <= 0) return;
     if (
       !confirm(
-        `Apply the category "${rule.assign_label}" to all ${n} suggested transaction(s)?`
+        `Confirm ${n} transaction(s) in "${formatComboBucketLabel(labels)}" as ${rule.assign_label}?`
       )
     ) {
       return;
     }
     setConfirmBusy(true);
     try {
+      // Optimistic decrement
+      setFacets((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          combos: prev.combos
+            .map((c) =>
+              comboKey(c.labels) === comboKey(labels)
+                ? { ...c, count: 0 }
+                : c
+            )
+            .filter((c) => c.count > 0),
+          confirmed: prev.confirmed + n,
+        };
+      });
       const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/transactions/bulk-label`,
+        `/api/operator/treasury/clients/${clientUserId}/rules/${rule.id}/confirm-bucket`,
         {
-          method: "PATCH",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            confirmAllSuggested: true,
-            ruleId: rule.id,
-          }),
+          body: JSON.stringify({ combo: labels }),
         }
       );
-      const data = (await res.json()) as { updated?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Confirm all failed");
+      const data = (await res.json()) as {
+        confirmed?: number;
+        facets?: RuleQueueFacets;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Confirm bucket failed");
+      if (data.facets) setFacets(data.facets);
       setNotice({
         kind: "success",
-        text: `${data.updated ?? 0} transactions confirmed as ${rule.assign_label}.`,
+        text: `${data.confirmed ?? 0} confirmed as ${rule.assign_label}.`,
       });
-      setQueueTab("confirmed");
+      setFacetSel({ kind: "confirmed" });
       setQueuePage(0);
       void load();
     } catch (e) {
       setNotice({
         kind: "error",
-        text: e instanceof Error ? e.message : "Confirm all failed",
+        text: e instanceof Error ? e.message : "Confirm bucket failed",
       });
+      if (expandedId) void loadFacets(expandedId);
     } finally {
       setConfirmBusy(false);
     }
@@ -610,7 +723,7 @@ export function TreasuryRulesPanel({
                     if (open) setExpandedId(null);
                     else {
                       setExpandedId(r.id);
-                      setQueueTab("suggested");
+                      setFacetSel(null);
                       setQueuePage(0);
                     }
                   }}
@@ -668,48 +781,78 @@ export function TreasuryRulesPanel({
 
                 {open ? (
                   <div className="mt-3 border-t border-sealed-bone/60 pt-3">
-                    <div className="flex flex-wrap gap-3 mb-3 text-sm">
-                      {(
-                        [
-                          {
-                            id: "suggested" as const,
-                            label: `Suggested (${r.suggested_count ?? 0})`,
-                          },
-                          {
-                            id: "confirmed" as const,
-                            label: `Confirmed (${r.confirmed_count ?? 0})`,
-                          },
-                        ] as const
-                      ).map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className={`btn btn-secondary text-xs ${queueTab === t.id ? "on" : ""}`}
-                          onClick={() => {
-                            setQueueTab(t.id);
-                            setQueuePage(0);
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                      {queueTab === "suggested" && (r.suggested_count ?? 0) > 0 ? (
-                        <button
-                          type="button"
-                          className="btn text-xs"
-                          disabled={confirmBusy}
-                          onClick={() => void confirmAllForRule(r)}
-                        >
-                          Confirm all {r.suggested_count}
-                        </button>
-                      ) : null}
+                    <div className="mb-3 space-y-2">
+                      <p className="text-xs text-codex-muted uppercase tracking-wide">
+                        Triage
+                        {facetsMs != null ? ` · ${facetsMs}ms` : ""}
+                      </p>
+                      <ul className="space-y-1 text-sm">
+                        {(facets?.combos ?? []).map((c) => {
+                          const active =
+                            facetSel?.kind === "combo" &&
+                            comboKey(facetSel.labels) === comboKey(c.labels);
+                          return (
+                            <li
+                              key={comboKey(c.labels)}
+                              className="flex flex-wrap items-center gap-2"
+                            >
+                              <button
+                                type="button"
+                                className={`btn btn-secondary text-xs ${active ? "on" : ""}`}
+                                onClick={() => {
+                                  setFacetSel({
+                                    kind: "combo",
+                                    labels: c.labels,
+                                  });
+                                  setQueuePage(0);
+                                }}
+                              >
+                                {formatComboBucketLabel(c.labels)} · {c.count}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn text-xs"
+                                disabled={confirmBusy || c.count === 0}
+                                onClick={() => void confirmBucket(r, c.labels)}
+                              >
+                                Confirm all in bucket
+                              </button>
+                            </li>
+                          );
+                        })}
+                        <li className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className={`btn btn-secondary text-xs ${facetSel?.kind === "confirmed" ? "on" : ""}`}
+                            onClick={() => {
+                              setFacetSel({ kind: "confirmed" });
+                              setQueuePage(0);
+                            }}
+                          >
+                            Already in this category ·{" "}
+                            {facets?.confirmed ?? r.confirmed_count ?? 0}
+                          </button>
+                        </li>
+                        <li className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className={`btn btn-secondary text-xs ${facetSel?.kind === "rejected" ? "on" : ""}`}
+                            onClick={() => {
+                              setFacetSel({ kind: "rejected" });
+                              setQueuePage(0);
+                            }}
+                          >
+                            Rejected · {facets?.rejected ?? 0}
+                          </button>
+                        </li>
+                      </ul>
                     </div>
 
                     {queueLoading ? (
                       <p className="text-sm text-codex-muted">Loading queue…</p>
                     ) : queueRows.length === 0 ? (
                       <p className="text-sm text-codex-muted">
-                        No {queueTab} transactions for this rule.
+                        No transactions in this bucket.
                       </p>
                     ) : (
                       <table className="dtable">

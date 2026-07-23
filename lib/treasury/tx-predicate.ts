@@ -32,6 +32,8 @@ export type TxFilterInput = {
   ruleId?: string | null;
   /** When ruleId set: suggested | confirmed | rejected */
   ruleQueue?: "suggested" | "confirmed" | "rejected" | null;
+  /** Spec 61 — suggestion-label combo filter (sorted set equality) */
+  combo?: string[] | null;
 };
 
 export function escapeIlike(q: string): string {

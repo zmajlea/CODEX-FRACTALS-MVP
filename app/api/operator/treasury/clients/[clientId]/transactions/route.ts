@@ -27,6 +27,15 @@ function parseFilters(url: URL): TxFilterInput {
   const amountMaxRaw = url.searchParams.get("amount_max");
   const amountExactRaw = url.searchParams.get("amount_exact");
   const ruleQueue = url.searchParams.get("rule_queue");
+  const comboParts = url.searchParams
+    .getAll("combo")
+    .flatMap((v) => v.split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const combo =
+    comboParts.length > 0
+      ? [...new Set(comboParts)].sort((a, b) => a.localeCompare(b))
+      : null;
   return {
     from: url.searchParams.get("from") || undefined,
     to: url.searchParams.get("to") || undefined,
@@ -49,6 +58,7 @@ function parseFilters(url: URL): TxFilterInput {
       ruleQueue === "rejected"
         ? ruleQueue
         : undefined,
+    combo,
   };
 }
 
@@ -142,6 +152,7 @@ export async function GET(request: Request, context: RouteContext) {
           ruleQueue: null,
           status: "all",
           labeled: null,
+          combo: null,
         }
       : filters.ruleId && filters.ruleQueue === "rejected"
         ? {
@@ -150,19 +161,60 @@ export async function GET(request: Request, context: RouteContext) {
             ruleQueue: null,
             status: "all",
             labeled: null,
+            combo: null,
           }
         : filters;
+
+  // Spec 61 — combo filter: page-sized ids from SQL (never full-bucket .in)
+  let comboPageIds: string[] | null = null;
+  let comboTotal: number | null = null;
+  if (
+    filters.ruleId &&
+    filters.ruleQueue === "suggested" &&
+    filters.combo &&
+    filters.combo.length > 0
+  ) {
+    const { data: pageJson, error: comboErr } = await guard.admin.rpc(
+      "treasury_rule_queue_combo_page",
+      {
+        p_client: clientId,
+        p_rule: filters.ruleId,
+        p_combo: filters.combo,
+        p_offset: page * limit,
+        p_limit: limit,
+      }
+    );
+    if (comboErr) {
+      console.error("[operator/treasury/transactions] combo_page", comboErr);
+      return NextResponse.json({ error: "Failed to filter combo" }, { status: 500 });
+    }
+    const parsed = pageJson as { total?: number; ids?: string[] } | null;
+    comboTotal = parsed?.total ?? 0;
+    comboPageIds = parsed?.ids ?? [];
+  }
 
   const base = () => {
     let q = applyTxPredicate(
       guard.admin
         .from("treasury_transactions")
-        .select(ruleQueueSelect(filters))
+        .select(
+          comboPageIds
+            ? "*"
+            : ruleQueueSelect(filters)
+        )
         .eq("client_user_id", clientId)
         .eq("is_removed", false),
       listFilters
     );
-    q = applyRuleQueueJoin(q, filters);
+    if (comboPageIds) {
+      if (comboPageIds.length === 0) {
+        q = q.eq("id", "00000000-0000-0000-0000-000000000000");
+      } else {
+        q = q.in("id", comboPageIds);
+      }
+    } else {
+      q = applyRuleQueueJoin(q, filters);
+    }
     return q;
   };
 
@@ -197,7 +249,14 @@ export async function GET(request: Request, context: RouteContext) {
     treasury_rule_rejections?: unknown;
   };
 
-  const rows = (data ?? []) as unknown as TxListRow[];
+  let rows = (data ?? []) as unknown as TxListRow[];
+  // Preserve combo-page SQL order (PostgREST .in does not)
+  if (comboPageIds && comboPageIds.length > 0) {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    rows = comboPageIds
+      .map((id) => byId.get(id))
+      .filter((r): r is TxListRow => Boolean(r));
+  }
   const hasMore = cursor ? rows.length > limit : false;
   const pageRows = cursor && hasMore ? rows.slice(0, limit) : rows;
   const last = pageRows[pageRows.length - 1];
@@ -323,7 +382,7 @@ export async function GET(request: Request, context: RouteContext) {
   const chipBase: TxFilterInput = { ...filtersSansStatus };
 
   const [
-    { count: filteredTotal },
+    filteredTotalRes,
     { count: needsLabel },
     { count: suggestedTotal },
     { count: labeledTotal },
@@ -333,7 +392,9 @@ export async function GET(request: Request, context: RouteContext) {
     bookLastRes,
     bookImportRes,
   ] = await Promise.all([
-    countHead(listFilters, filters),
+    comboTotal != null
+      ? Promise.resolve({ count: comboTotal })
+      : countHead(listFilters, filters),
     filters.ruleId
       ? Promise.resolve({ count: 0 })
       : countHead(withStatus(chipBase, "needs_label")),
@@ -381,6 +442,8 @@ export async function GET(request: Request, context: RouteContext) {
       .limit(1)
       .maybeSingle(),
   ]);
+
+  const filteredTotal = filteredTotalRes.count;
 
   return NextResponse.json({
     transactions,
