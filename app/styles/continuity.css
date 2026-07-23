@@ -15,6 +15,11 @@
   --radius:8px;
 }
 
+/* Spec 56 A — window is the scroller; contain horizontal overscroll so trackpad
+   two-finger swipe does not fire browser back/forward. Does not block intentional
+   overflow-x on child surfaces (month-strip, tables, charts). */
+html, body{ overscroll-behavior-x: contain; }
+
 /* ===== FF1 — Fiduciary Ledger (light cool stone · oxblood · parchment · restrained) ===== */
 [data-brand="bcn1"]{
   --canvas:#D7D9DD; --canvas-2:#CCCFD4; --rail:#EAE8E2; --rail-ink:#565A61;
