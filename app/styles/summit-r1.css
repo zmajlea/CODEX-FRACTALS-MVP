@@ -1063,6 +1063,21 @@
   border-radius:var(--radius); background:var(--paper-2); }
 [data-r1] .preview-count{ font-size:var(--t-body); font-weight:600; color:var(--ink); }
 [data-r1] .preview-count.zero{ font-weight:500; color:var(--mute); }
+
+/* Spec 63 — amount analyze popup */
+[data-r1] .rule-analyze-backdrop{
+  position:fixed; inset:0; background:rgba(26,26,27,.35); z-index:80;
+  display:flex; align-items:center; justify-content:center; padding:16px;
+}
+[data-r1] .rule-analyze-panel{
+  background:var(--paper); border:1px solid var(--paper-edge); border-radius:var(--radius);
+  max-width:520px; width:100%; max-height:90vh; overflow:auto; padding:16px 18px;
+}
+[data-r1] .rule-analyze-bars{ list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+[data-r1] .rule-analyze-bars li{ display:grid; grid-template-columns:72px 1fr auto; gap:8px; align-items:center; font-size:11px; }
+[data-r1] .rule-analyze-bars .period{ color:var(--mute); font-variant-numeric:tabular-nums; }
+[data-r1] .rule-analyze-bars .bar{ height:8px; background:var(--brand); opacity:.55; border-radius:2px; min-width:2px; }
+[data-r1] .rule-analyze-bars .meta{ color:var(--mute); font-variant-numeric:tabular-nums; white-space:nowrap; }
 [data-r1] .preview-basis{ font-size:var(--t-meta); color:var(--mute); }
 [data-r1] .preview-list{ list-style:none; margin:2px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
 [data-r1] .preview-list li{ display:flex; gap:12px; font-size:var(--t-meta); color:var(--slate); }

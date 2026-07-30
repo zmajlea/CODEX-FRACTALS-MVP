@@ -36,6 +36,7 @@ function parseFilters(url: URL): TxFilterInput {
     comboParts.length > 0
       ? [...new Set(comboParts)].sort((a, b) => a.localeCompare(b))
       : null;
+  const directionRaw = url.searchParams.get("direction");
   return {
     from: url.searchParams.get("from") || undefined,
     to: url.searchParams.get("to") || undefined,
@@ -51,6 +52,8 @@ function parseFilters(url: URL): TxFilterInput {
       amountMinRaw != null && amountMinRaw !== "" ? Number(amountMinRaw) : null,
     amountMax:
       amountMaxRaw != null && amountMaxRaw !== "" ? Number(amountMaxRaw) : null,
+    direction:
+      directionRaw === "in" || directionRaw === "out" ? directionRaw : null,
     ruleId: url.searchParams.get("rule_id") || undefined,
     ruleQueue:
       ruleQueue === "suggested" ||

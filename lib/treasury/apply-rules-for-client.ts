@@ -1,12 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
   detectCadence,
-  merchantMatches,
   type CadenceDetection,
 } from "@/lib/treasury/rule-helpers";
-import { escapeIlike } from "@/lib/treasury/tx-predicate";
+import {
+  fetchAllRuleMatches,
+  fetchRuleMatchPage,
+  type RuleMatch,
+} from "@/lib/treasury/rule-predicate";
 import type { TreasuryRuleRow } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
 
@@ -46,6 +48,19 @@ function buildRuleSuggestionExplanation(
   return parts.join(", ");
 }
 
+function ruleToMatch(rule: TreasuryRuleRow): RuleMatch {
+  return {
+    payeeQuery: rule.match_merchant,
+    matchType: rule.match_type,
+    direction: (rule.direction as "in" | "out" | null) ?? null,
+    amount_min: rule.amount_min != null ? Number(rule.amount_min) : null,
+    amount_max: rule.amount_max != null ? Number(rule.amount_max) : null,
+    date_from: rule.date_from ?? null,
+    date_to: rule.date_to ?? null,
+    ruleId: rule.id,
+  };
+}
+
 async function precomputeCadenceByRule(
   admin: AdminClient,
   clientUserId: string,
@@ -54,23 +69,28 @@ async function precomputeCadenceByRule(
   const cadenceByRule = new Map<string, CadenceDetection>();
 
   for (const rule of rules) {
-    const safe = escapeIlike(rule.match_merchant);
-    const { data: matchedDates } = await admin
-      .from("treasury_transactions")
-      .select("posted_date")
-      .eq("client_user_id", clientUserId)
-      .or(
-        `normalized_merchant.ilike.%${safe}%,raw_name.ilike.%${safe}%,merchant_name.ilike.%${safe}%,description.ilike.%${safe}%`
-      )
-      .eq("is_removed", false)
-      .not("posted_date", "is", null)
-      .order("posted_date", { ascending: false })
-      .limit(24);
-
-    cadenceByRule.set(
-      rule.id,
-      detectCadence((matchedDates ?? []).map((d) => d.posted_date as string))
+    const page = await fetchRuleMatchPage(
+      admin,
+      clientUserId,
+      {
+        payeeQuery: rule.match_merchant,
+        matchType: rule.match_type,
+        direction: (rule.direction as "in" | "out" | null) ?? null,
+        amount_min: null,
+        amount_max: null,
+        ruleId: null,
+      },
+      { labelNullOnly: false, offset: 0, limit: 200 }
     );
+
+    const dates = page
+      .map((t) => t.posted_date)
+      .filter((d): d is string => Boolean(d))
+      .sort()
+      .reverse()
+      .slice(0, 24);
+
+    cadenceByRule.set(rule.id, detectCadence(dates));
   }
 
   return cadenceByRule;
@@ -98,29 +118,50 @@ async function upsertSuggestions(
 }
 
 /**
- * Spec 58 — fetch uncategorised txs only (label IS null).
- * Confirmed rows are Phase 2. Pending suggestions coexist in the suggestions table.
+ * Spec 63 — delete pending suggestions for this rule that no longer match,
+ * then upsert current matches. Confirmed (labelled) rows are never touched.
  */
-async function fetchUnlabeledForApply(
+export async function reconcileRuleSuggestions(
   admin: AdminClient,
-  clientUserId: string
-) {
-  return fetchAllRows((from, to) =>
-    admin
-      .from("treasury_transactions")
-      .select("*")
-      .eq("client_user_id", clientUserId)
-      .eq("is_removed", false)
-      .eq("pending", false)
-      .is("label", null)
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
+  clientUserId: string,
+  rule: TreasuryRuleRow
+): Promise<number> {
+  const match = ruleToMatch(rule);
+  const matching = await fetchAllRuleMatches(admin, clientUserId, match, {
+    labelNullOnly: true,
+  });
+  const matchIds = new Set(matching.map((t) => t.id));
+
+  const { data: existing } = await admin
+    .from("treasury_transaction_suggestions")
+    .select("transaction_id")
+    .eq("rule_id", rule.id)
+    .eq("client_user_id", clientUserId);
+
+  const orphanIds = (existing ?? [])
+    .map((r) => r.transaction_id)
+    .filter((id) => !matchIds.has(id));
+
+  // Delete orphans in chunks (never huge single .in if enormous — but orphans
+  // are bounded by prior queue size; chunk for safety).
+  const DEL = 200;
+  for (let i = 0; i < orphanIds.length; i += DEL) {
+    const chunk = orphanIds.slice(i, i + DEL);
+    if (chunk.length === 0) continue;
+    const { error } = await admin
+      .from("treasury_transaction_suggestions")
+      .delete()
+      .eq("rule_id", rule.id)
+      .in("transaction_id", chunk);
+    if (error) throw error;
+  }
+
+  return applyRulesForClient(admin, clientUserId, rule.id);
 }
 
 /**
- * Spec 58 Phase 1 — every matching rule proposes into treasury_transaction_suggestions.
- * No ownership steal; no break after first match. Confirmed (label set) never touched.
+ * Spec 58/63 — suggest via shared SQL predicate (no JS merchantMatches).
+ * Confirmed (label set) never touched.
  *
  * @returns number of suggestion upserts performed
  */
@@ -145,47 +186,25 @@ export async function applyRulesForClient(
   if (!rules?.length) return 0;
 
   const typedRules = rules as TreasuryRuleRow[];
-  const ruleIds = typedRules.map((r) => r.id);
-
-  const txs = await fetchUnlabeledForApply(admin, clientUserId);
-
-  const { data: rejections } = await admin
-    .from("treasury_rule_rejections")
-    .select("transaction_id, rule_id")
-    .in("rule_id", ruleIds);
-
-  const rejectionSet = new Set(
-    (rejections ?? []).map((r) => `${r.transaction_id}:${r.rule_id}`)
+  const cadenceByRule = await precomputeCadenceByRule(
+    admin,
+    clientUserId,
+    typedRules
   );
-
-  const cadenceByRule = await precomputeCadenceByRule(admin, clientUserId, typedRules);
 
   const pending: SuggestionInsert[] = [];
 
-  for (const tx of txs) {
-    const absAmount = Math.abs(Number(tx.amount));
+  for (const rule of typedRules) {
+    const txs = await fetchAllRuleMatches(
+      admin,
+      clientUserId,
+      ruleToMatch(rule),
+      { labelNullOnly: true }
+    );
+    const cadence = cadenceByRule.get(rule.id)!;
+    const explanation = buildRuleSuggestionExplanation(rule, cadence.label);
 
-    for (const rule of typedRules) {
-      if (rejectionSet.has(`${tx.id}:${rule.id}`)) continue;
-      if (
-        !merchantMatches(
-          {
-            normalized_merchant: tx.normalized_merchant,
-            raw_name: tx.raw_name,
-            merchant_name: tx.merchant_name,
-            description: tx.description,
-          },
-          rule
-        )
-      )
-        continue;
-      if (rule.direction && tx.direction !== rule.direction) continue;
-      if (rule.amount_min != null && absAmount < Number(rule.amount_min)) continue;
-      if (rule.amount_max != null && absAmount > Number(rule.amount_max)) continue;
-
-      const cadence = cadenceByRule.get(rule.id)!;
-      const explanation = buildRuleSuggestionExplanation(rule, cadence.label);
-
+    for (const tx of txs) {
       pending.push({
         transaction_id: tx.id,
         rule_id: rule.id,
@@ -193,7 +212,6 @@ export async function applyRulesForClient(
         suggested_label: rule.assign_label,
         suggestion_explanation: explanation,
       });
-      // Spec 58: no break — every matching rule proposes
     }
   }
 

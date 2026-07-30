@@ -50,6 +50,8 @@ type PostBody = {
   amount_min?: number | null;
   amount_max?: number | null;
   direction?: "in" | "out" | null;
+  date_from?: string | null;
+  date_to?: string | null;
   assign_label?: string;
   source_transaction_id?: string | null;
 };
@@ -131,6 +133,8 @@ export async function POST(request: Request, context: RouteContext) {
       amount_min: body.amount_min ?? null,
       amount_max: body.amount_max ?? null,
       direction: body.direction ?? null,
+      date_from: body.date_from?.trim() || null,
+      date_to: body.date_to?.trim() || null,
       assign_label: assignLabel,
       source_transaction_id: body.source_transaction_id ?? null,
       active: true,

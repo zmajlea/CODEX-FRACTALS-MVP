@@ -4,7 +4,11 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { applyRulesForClient } from "@/lib/server/treasury-rules";
+import {
+  applyRulesForClient,
+  reconcileRuleSuggestions,
+} from "@/lib/server/treasury-rules";
+import type { TreasuryRuleRow } from "@/lib/treasury/types";
 
 type RouteContext = { params: Promise<{ clientId: string; ruleId: string }> };
 
@@ -16,11 +20,23 @@ type PatchBody = {
   amount_min?: number | null;
   amount_max?: number | null;
   direction?: "in" | "out" | null;
+  date_from?: string | null;
+  date_to?: string | null;
   assign_label?: string;
   cadence?: string | null;
   /** When true, re-run apply for this rule without other field changes. */
   reapply?: boolean;
 };
+
+const MATCH_CONDITION_KEYS = [
+  "match_merchant",
+  "match_type",
+  "amount_min",
+  "amount_max",
+  "direction",
+  "date_from",
+  "date_to",
+] as const;
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { clientId, ruleId } = await context.params;
@@ -40,6 +56,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ rule, suggested });
   }
 
+  const { data: before } = await guard.admin
+    .from("treasury_rules")
+    .select("*")
+    .eq("id", ruleId)
+    .eq("client_user_id", clientId)
+    .maybeSingle();
+
   const update: Database["public"]["Tables"]["treasury_rules"]["Update"] = {};
   if (body.active !== undefined) update.active = body.active;
   if (body.name !== undefined) update.name = body.name;
@@ -48,8 +71,21 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.amount_min !== undefined) update.amount_min = body.amount_min;
   if (body.amount_max !== undefined) update.amount_max = body.amount_max;
   if (body.direction !== undefined) update.direction = body.direction;
+  if (body.date_from !== undefined) {
+    update.date_from = body.date_from?.trim() || null;
+  }
+  if (body.date_to !== undefined) {
+    update.date_to = body.date_to?.trim() || null;
+  }
   if (body.assign_label !== undefined) update.assign_label = body.assign_label;
   if (body.cadence !== undefined) update.cadence = body.cadence;
+
+  const conditionsChanged = MATCH_CONDITION_KEYS.some((k) => {
+    if (body[k] === undefined || !before) return false;
+    const prev = before[k];
+    const next = body[k];
+    return String(prev ?? "") !== String(next ?? "");
+  });
 
   const { data: rule, error } = await guard.admin
     .from("treasury_rules")
@@ -63,7 +99,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const suggested = await applyRulesForClient(guard.admin, clientId, ruleId);
+  // Spec 63 Part E — narrowing must prune orphan suggestions (apply only upserts).
+  const suggested = conditionsChanged
+    ? await reconcileRuleSuggestions(
+        guard.admin,
+        clientId,
+        rule as TreasuryRuleRow
+      )
+    : await applyRulesForClient(guard.admin, clientId, ruleId);
+
   return NextResponse.json({ rule, suggested });
 }
 
@@ -72,8 +116,6 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
-  // Spec 58: suggestions cascade on rule delete; keep legacy clear of pending
-  // columns (harmless after migration) and delete suggestion rows explicitly.
   await guard.admin
     .from("treasury_transaction_suggestions")
     .delete()
