@@ -13,7 +13,6 @@ type RouteContext = { params: Promise<{ clientId: string }> };
 
 /**
  * Spec 63 — rule preview counts/samples via shared predicate (not ledger q).
- * GET ?q=&match_type=&direction=&amount_min=&amount_max=&labeled=false&limit=
  */
 export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
@@ -33,6 +32,8 @@ export async function GET(request: Request, context: RouteContext) {
   const matchType = (url.searchParams.get("match_type") ??
     "contains") as RuleMatchType;
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 3), 50);
+  const dateFrom = url.searchParams.get("date_from");
+  const dateTo = url.searchParams.get("date_to");
 
   const direction: "in" | "out" | null =
     directionRaw === "in" || directionRaw === "out" ? directionRaw : null;
@@ -49,6 +50,8 @@ export async function GET(request: Request, context: RouteContext) {
       amountMaxRaw != null && amountMaxRaw !== ""
         ? Number(amountMaxRaw)
         : null,
+    date_from: dateFrom,
+    date_to: dateTo,
   };
 
   try {

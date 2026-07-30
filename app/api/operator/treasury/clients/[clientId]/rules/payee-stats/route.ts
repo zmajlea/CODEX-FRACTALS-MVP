@@ -21,11 +21,25 @@ export async function GET(request: Request, context: RouteContext) {
   const direction =
     directionRaw === "in" || directionRaw === "out" ? directionRaw : null;
   const matchType = url.searchParams.get("match_type") ?? "contains";
+  const amountMinRaw = url.searchParams.get("amount_min");
+  const amountMaxRaw = url.searchParams.get("amount_max");
+  const dateFrom = url.searchParams.get("date_from");
+  const dateTo = url.searchParams.get("date_to");
 
   try {
     const stats = await fetchRulePayeeStats(guard.admin, clientId, q, {
       direction,
       matchType,
+      amount_min:
+        amountMinRaw != null && amountMinRaw !== ""
+          ? Number(amountMinRaw)
+          : null,
+      amount_max:
+        amountMaxRaw != null && amountMaxRaw !== ""
+          ? Number(amountMaxRaw)
+          : null,
+      date_from: dateFrom,
+      date_to: dateTo,
     });
     return NextResponse.json(stats);
   } catch (e) {

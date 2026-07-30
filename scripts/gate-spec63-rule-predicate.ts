@@ -16,6 +16,7 @@ import {
 import {
   countRuleMatches,
   fetchRulePayeeStats,
+  formatRuleConstraintSummary,
 } from "../lib/treasury/rule-predicate";
 import type { Database } from "../lib/database.types";
 import type { TreasuryRuleRow } from "../lib/treasury/types";
@@ -60,9 +61,33 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 async function wipe(admin: AdminClient, clientId: string) {
-  await admin.from("treasury_transactions").delete().eq("client_user_id", clientId);
-  await admin.from("treasury_rules").delete().eq("client_user_id", clientId);
-  await admin.from("treasury_accounts").delete().eq("client_user_id", clientId);
+  const { data: rules } = await admin
+    .from("treasury_rules")
+    .select("id")
+    .eq("client_user_id", clientId);
+  const ruleIds = (rules ?? []).map((r) => r.id);
+  if (ruleIds.length > 0) {
+    const { error: sugErr } = await admin
+      .from("treasury_transaction_suggestions")
+      .delete()
+      .in("rule_id", ruleIds);
+    if (sugErr) throw new Error(`wipe suggestions: ${sugErr.message}`);
+  }
+  const { error: txErr } = await admin
+    .from("treasury_transactions")
+    .delete()
+    .eq("client_user_id", clientId);
+  if (txErr) throw new Error(`wipe txs: ${txErr.message}`);
+  const { error: ruleErr } = await admin
+    .from("treasury_rules")
+    .delete()
+    .eq("client_user_id", clientId);
+  if (ruleErr) throw new Error(`wipe rules: ${ruleErr.message}`);
+  const { error: acctErr } = await admin
+    .from("treasury_accounts")
+    .delete()
+    .eq("client_user_id", clientId);
+  if (acctErr) throw new Error(`wipe accounts: ${acctErr.message}`);
 }
 
 async function createRule(
@@ -85,6 +110,8 @@ async function createRule(
       amount_min: extra?.amount_min ?? null,
       amount_max: extra?.amount_max ?? null,
       direction: extra?.direction ?? null,
+      date_from: extra?.date_from ?? null,
+      date_to: extra?.date_to ?? null,
       source_transaction_id: extra?.source_transaction_id ?? null,
       active: true,
     })
@@ -378,9 +405,159 @@ async function main() {
   log(`14 trigger-drift on 50 sample = ${drift}`);
   assert(drift === 0, "trigger drift");
 
+  // ——— Spec 63 Part F ———
+  // F6 date-scoped parity (COMCAST)
+  const { data: comcastDates } = await admin
+    .from("treasury_transactions")
+    .select("posted_date")
+    .eq("client_user_id", clientId)
+    .eq("is_removed", false)
+    .or(
+      "normalized_merchant.ilike.%COMCAST%,merchant_name.ilike.%COMCAST%,raw_name.ilike.%COMCAST%,description.ilike.%COMCAST%"
+    )
+    .not("posted_date", "is", null)
+    .order("posted_date", { ascending: true });
+  const uniqueDates = [
+    ...new Set(
+      (comcastDates ?? []).map((r) => String(r.posted_date).slice(0, 10))
+    ),
+  ].sort();
+  assert(uniqueDates.length >= 4, "need COMCAST history for date window");
+  const mid = Math.floor(uniqueDates.length / 2);
+  const dateFrom = uniqueDates[Math.max(0, mid - 1)]!;
+  const dateTo = uniqueDates[Math.min(uniqueDates.length - 1, mid + 1)]!;
+  assert(dateFrom <= dateTo, "window order");
+
+  const comcastFull = await countRuleMatches(
+    admin,
+    clientId,
+    { payeeQuery: "COMCAST", matchType: "contains" },
+    { labelNullOnly: true }
+  );
+  const comcastWin = await countRuleMatches(
+    admin,
+    clientId,
+    {
+      payeeQuery: "COMCAST",
+      matchType: "contains",
+      date_from: dateFrom,
+      date_to: dateTo,
+    },
+    { labelNullOnly: true }
+  );
+  const ruleCx = await createRule(
+    admin,
+    clientId,
+    operatorId,
+    "COMCAST",
+    "Utilities",
+    { date_from: dateFrom, date_to: dateTo }
+  );
+  const appliedCx = await applyRulesForClient(admin, clientId, ruleCx.id);
+  log(
+    `F6 date window ${dateFrom}→${dateTo} full=${comcastFull} win=${comcastWin} apply=${appliedCx}`
+  );
+  assert(comcastWin < comcastFull, "date window not narrower than full");
+  assert(comcastWin === appliedCx, "date-scoped preview!==apply");
+  assert(comcastWin > 0, "date window empty");
+
+  // Review recompute: band + window → stats month/week sums === scoped total
+  const reviewStats = await fetchRulePayeeStats(admin, clientId, "COMCAST", {
+    matchType: "contains",
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  const revMonth = (reviewStats.by_month ?? []).reduce((a, p) => a + p.count, 0);
+  const revWeek = (reviewStats.by_week ?? []).reduce((a, p) => a + p.count, 0);
+  log(
+    `F6 review total=${reviewStats.total} will=${reviewStats.will_suggest} month=${revMonth} week=${revWeek}`
+  );
+  assert(reviewStats.total === revMonth, "review by_month !== total");
+  assert(reviewStats.total === revWeek, "review by_week !== total");
+  assert(
+    reviewStats.will_suggest === comcastWin,
+    "review will_suggest !== window will"
+  );
+
+  // Date reconcile: widen then narrow
+  await admin
+    .from("treasury_rules")
+    .update({ date_from: null, date_to: null })
+    .eq("id", ruleCx.id);
+  const { data: ruleCxWide } = await admin
+    .from("treasury_rules")
+    .select("*")
+    .eq("id", ruleCx.id)
+    .single();
+  await reconcileRuleSuggestions(
+    admin,
+    clientId,
+    ruleCxWide as TreasuryRuleRow
+  );
+  const { count: sugCxWide } = await admin
+    .from("treasury_transaction_suggestions")
+    .select("transaction_id", { count: "exact", head: true })
+    .eq("rule_id", ruleCx.id);
+  log(`F6 widen sug=${sugCxWide} expect=${comcastFull}`);
+  assert(sugCxWide === comcastFull, "date widen restore");
+
+  await admin
+    .from("treasury_rules")
+    .update({ date_from: dateFrom, date_to: dateTo })
+    .eq("id", ruleCx.id);
+  const { data: ruleCxNarrow } = await admin
+    .from("treasury_rules")
+    .select("*")
+    .eq("id", ruleCx.id)
+    .single();
+  await reconcileRuleSuggestions(
+    admin,
+    clientId,
+    ruleCxNarrow as TreasuryRuleRow
+  );
+  const { count: sugCxNarrow } = await admin
+    .from("treasury_transaction_suggestions")
+    .select("transaction_id", { count: "exact", head: true })
+    .eq("rule_id", ruleCx.id);
+  log(`F6 narrow sug=${sugCxNarrow} expect=${comcastWin}`);
+  assert(sugCxNarrow === comcastWin, "date narrow orphan prune");
+
+  // Card + clear
+  const cardWith = formatRuleConstraintSummary({
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  assert(
+    cardWith != null &&
+      cardWith.includes(dateFrom) &&
+      cardWith.includes(dateTo),
+    "card missing date window"
+  );
+  const cardCleared = formatRuleConstraintSummary({
+    date_from: null,
+    date_to: null,
+  });
+  assert(cardCleared == null, "card clear should hide window");
+  log(`F6 card="${cardWith}" cleared=${cardCleared == null}`);
+
+  // Inverted range → empty, not error
+  const inverted = await countRuleMatches(
+    admin,
+    clientId,
+    {
+      payeeQuery: "COMCAST",
+      matchType: "contains",
+      date_from: dateTo,
+      date_to: dateFrom,
+    },
+    { labelNullOnly: false }
+  );
+  assert(dateFrom !== dateTo ? inverted === 0 : true, "inverted range empty");
+  log(`F6 inverted count=${inverted}`);
+
   log("reset client 4");
   await wipe(admin, clientId);
-  log("PASS Spec 63");
+  log("PASS Spec 63 (+ Part F)");
 }
 
 main().catch((e) => {

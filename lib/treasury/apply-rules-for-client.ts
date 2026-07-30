@@ -55,6 +55,8 @@ function ruleToMatch(rule: TreasuryRuleRow): RuleMatch {
     direction: (rule.direction as "in" | "out" | null) ?? null,
     amount_min: rule.amount_min != null ? Number(rule.amount_min) : null,
     amount_max: rule.amount_max != null ? Number(rule.amount_max) : null,
+    date_from: rule.date_from ?? null,
+    date_to: rule.date_to ?? null,
     ruleId: rule.id,
   };
 }

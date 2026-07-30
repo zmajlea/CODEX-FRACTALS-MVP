@@ -17,6 +17,9 @@ export type RuleMatch = {
   direction?: "in" | "out" | null;
   amount_min?: number | null;
   amount_max?: number | null;
+  /** Spec 63F — permanent posted_date window (inclusive) */
+  date_from?: string | null;
+  date_to?: string | null;
   /** When set, exclude txs rejected for this rule */
   ruleId?: string | null;
 };
@@ -55,13 +58,18 @@ function normalizeMatchType(t: string | null | undefined): string {
   return "contains";
 }
 
+function emptyToNull(s: string | null | undefined): string | null {
+  const t = (s ?? "").trim();
+  return t ? t : null;
+}
+
 function rpcArgs(match: RuleMatch, labelNullOnly: boolean) {
   const dir =
     match.direction === "in" || match.direction === "out"
       ? match.direction
       : null;
   return {
-    p_client: "" as string, // filled by caller
+    p_client: "" as string,
     p_payee_query: match.payeeQuery.trim(),
     p_match_type: normalizeMatchType(match.matchType),
     p_direction: dir,
@@ -75,6 +83,8 @@ function rpcArgs(match: RuleMatch, labelNullOnly: boolean) {
         : null,
     p_label_null_only: labelNullOnly,
     p_exclude_rejected_for_rule: match.ruleId ?? null,
+    p_date_from: emptyToNull(match.date_from),
+    p_date_to: emptyToNull(match.date_to),
   };
 }
 
@@ -137,7 +147,14 @@ export async function fetchRulePayeeStats(
   admin: AdminClient,
   clientUserId: string,
   payeeQuery: string,
-  opts?: { direction?: "in" | "out" | null; matchType?: string | null }
+  opts?: {
+    direction?: "in" | "out" | null;
+    matchType?: string | null;
+    amount_min?: number | null;
+    amount_max?: number | null;
+    date_from?: string | null;
+    date_to?: string | null;
+  }
 ): Promise<RulePayeeStats> {
   const dir =
     opts?.direction === "in" || opts?.direction === "out"
@@ -148,6 +165,16 @@ export async function fetchRulePayeeStats(
     p_payee_query: payeeQuery.trim(),
     p_direction: dir,
     p_match_type: normalizeMatchType(opts?.matchType),
+    p_amount_min:
+      opts?.amount_min != null && Number.isFinite(Number(opts.amount_min))
+        ? Number(opts.amount_min)
+        : null,
+    p_amount_max:
+      opts?.amount_max != null && Number.isFinite(Number(opts.amount_max))
+        ? Number(opts.amount_max)
+        : null,
+    p_date_from: emptyToNull(opts?.date_from),
+    p_date_to: emptyToNull(opts?.date_to),
   });
   if (error) throw error;
   return data as RulePayeeStats;
@@ -157,6 +184,8 @@ export function formatRuleConstraintSummary(opts: {
   direction?: "in" | "out" | null;
   amount_min?: number | null;
   amount_max?: number | null;
+  date_from?: string | null;
+  date_to?: string | null;
 }): string | null {
   const parts: string[] = [];
   if (opts.direction === "in") parts.push("money in");
@@ -167,6 +196,11 @@ export function formatRuleConstraintSummary(opts: {
     const hi =
       opts.amount_max != null ? Number(opts.amount_max).toFixed(2) : "…";
     parts.push(`amount ${lo}–${hi}`);
+  }
+  const df = emptyToNull(opts.date_from);
+  const dt = emptyToNull(opts.date_to);
+  if (df || dt) {
+    parts.push(`${df ?? "…"} → ${dt ?? "…"}`);
   }
   if (parts.length === 0) return null;
   return `Also limited to: ${parts.join(" · ")}`;

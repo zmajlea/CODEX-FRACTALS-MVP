@@ -212,6 +212,9 @@ export type TreasuryRuleRow = {
   amount_min: number | null;
   amount_max: number | null;
   direction: "in" | "out" | null;
+  /** Spec 63F — inclusive posted_date window */
+  date_from?: string | null;
+  date_to?: string | null;
   cadence: string | null;
   assign_label: string;
   active: boolean;

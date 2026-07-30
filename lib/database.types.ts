@@ -1557,6 +1557,8 @@ export type Database = {
           client_user_id: string
           created_at: string
           created_by: string | null
+          date_from: string | null
+          date_to: string | null
           direction: string | null
           id: string
           last_applied_at: string | null
@@ -1575,6 +1577,8 @@ export type Database = {
           client_user_id: string
           created_at?: string
           created_by?: string | null
+          date_from?: string | null
+          date_to?: string | null
           direction?: string | null
           id?: string
           last_applied_at?: string | null
@@ -1593,6 +1597,8 @@ export type Database = {
           client_user_id?: string
           created_at?: string
           created_by?: string | null
+          date_from?: string | null
+          date_to?: string | null
           direction?: string | null
           id?: string
           last_applied_at?: string | null
@@ -2305,6 +2311,8 @@ export type Database = {
           p_amount_max?: number | null
           p_amount_min?: number | null
           p_client: string
+          p_date_from?: string | null
+          p_date_to?: string | null
           p_direction?: string | null
           p_exclude_rejected_for_rule?: string | null
           p_label_null_only?: boolean
@@ -2318,6 +2326,8 @@ export type Database = {
           p_amount_max?: number | null
           p_amount_min?: number | null
           p_client: string
+          p_date_from?: string | null
+          p_date_to?: string | null
           p_direction?: string | null
           p_exclude_rejected_for_rule?: string | null
           p_label_null_only?: boolean
@@ -2330,7 +2340,11 @@ export type Database = {
       }
       treasury_rule_payee_stats: {
         Args: {
+          p_amount_max?: number | null
+          p_amount_min?: number | null
           p_client: string
+          p_date_from?: string | null
+          p_date_to?: string | null
           p_direction?: string | null
           p_match_type?: string
           p_payee_query: string

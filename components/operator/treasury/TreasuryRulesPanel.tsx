@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { RuleAmountAnalyzePopup } from "@/components/operator/treasury/RuleAmountAnalyzePopup";
@@ -46,14 +46,6 @@ function formatComboBucketLabel(labels: string[]): string {
 function comboKey(labels: string[]): string {
   return [...labels].sort((a, b) => a.localeCompare(b)).join("\0");
 }
-
-type PreviewState = {
-  total: number;
-  /** Uncategorized (label IS null) matches — what apply will suggest for a new rule. */
-  willSuggest: number;
-  payeeMatch: number;
-  samples: TreasuryTransactionRow[];
-} | null;
 
 /** Spec 56 C — Rules panel feedback by kind (Ana callout / warn-banner). */
 type PanelNotice = {
@@ -120,6 +112,8 @@ export function TreasuryRulesPanel({
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [direction, setDirection] = useState<"in" | "out" | "">("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [sourceTransactionId, setSourceTransactionId] = useState<string | null>(
     null
   );
@@ -128,9 +122,6 @@ export function TreasuryRulesPanel({
   const [notice, setNotice] = useState<PanelNotice>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PreviewState>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
-  const [createBusy, setCreateBusy] = useState(false);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [facetSel, setFacetSel] = useState<FacetSelection | null>(null);
@@ -187,22 +178,28 @@ export function TreasuryRulesPanel({
     setName(draftRule.name ?? `Rule: ${draftRule.assign_label ?? "transaction"}`);
     setMatchMerchant(draftRule.match_merchant ?? "");
     setAssignLabel(draftRule.assign_label ?? "");
-    setAmountMin(
-      draftRule.amount_min != null ? String(draftRule.amount_min) : ""
-    );
-    setAmountMax(
-      draftRule.amount_max != null ? String(draftRule.amount_max) : ""
-    );
+    setAmountMin("");
+    setAmountMax("");
     setDirection((draftRule.direction as "in" | "out") ?? "");
+    setDateFrom(draftRule.date_from ?? "");
+    setDateTo(draftRule.date_to ?? "");
     setSourceTransactionId(draftRule.source_transaction_id ?? null);
     setEditingRuleId(null);
     setAdvancedOpen(true);
+    setAnalyzeOpen(true);
   }, [draftRule]);
 
-  function clearConstraints() {
+  function clearForm() {
+    setMatchMerchant("");
+    setAssignLabel("");
+    setName("");
     setAmountMin("");
     setAmountMax("");
     setDirection("");
+    setDateFrom("");
+    setDateTo("");
+    setSourceTransactionId(null);
+    setEditingRuleId(null);
   }
 
   useEffect(() => {
@@ -294,77 +291,16 @@ export function TreasuryRulesPanel({
     void loadQueue(expandedId, facetSel, queuePage);
   }, [expandedId, facetSel, queuePage, loadQueue]);
 
-  async function runPreviewFor(
-    qIn: string,
-    minIn: string,
-    maxIn: string,
-    dirIn: "in" | "out" | ""
-  ) {
-    const q = qIn.trim();
-    if (!q) {
-      setPreview(null);
-      return;
-    }
-    setPreviewBusy(true);
-    try {
-      const payeeParams = new URLSearchParams({
-        q,
-        match_type: "contains",
-        limit: "3",
-      });
-      const condParams = new URLSearchParams({
-        q,
-        match_type: "contains",
-        labeled: "false",
-        limit: "3",
-      });
-      if (dirIn) condParams.set("direction", dirIn);
-      if (minIn) condParams.set("amount_min", minIn);
-      if (maxIn) condParams.set("amount_max", maxIn);
-
-      const [payeeRes, condRes] = await Promise.all([
-        fetch(
-          `/api/operator/treasury/clients/${clientUserId}/rules/preview?${payeeParams}`
-        ),
-        fetch(
-          `/api/operator/treasury/clients/${clientUserId}/rules/preview?${condParams}`
-        ),
-      ]);
-      if (!payeeRes.ok) {
-        setPreview(null);
-        return;
-      }
-      const payeeData = (await payeeRes.json()) as {
-        total: number;
-        will_suggest?: number;
-        transactions: TreasuryTransactionRow[];
-      };
-      let willSuggest = payeeData.will_suggest ?? payeeData.total;
-      let conditioned = payeeData.total;
-      if (condRes.ok) {
-        const condData = (await condRes.json()) as {
-          total: number;
-          will_suggest?: number;
-          willSuggest?: number;
-        };
-        conditioned = condData.total;
-        willSuggest =
-          condData.will_suggest ?? condData.willSuggest ?? willSuggest;
-      }
-      setPreview({
-        total: conditioned,
-        payeeMatch: payeeData.total,
-        willSuggest,
-        samples: payeeData.transactions ?? [],
-      });
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
-
-  async function runPreview() {
-    await runPreviewFor(matchMerchant, amountMin, amountMax, direction);
-  }
+  const analyzeInitial = useMemo(
+    () => ({
+      amountMin,
+      amountMax,
+      direction,
+      dateFrom,
+      dateTo,
+    }),
+    [amountMin, amountMax, direction, dateFrom, dateTo]
+  );
 
   function beginEditRule(r: TreasuryRuleRow) {
     setEditingRuleId(r.id);
@@ -374,141 +310,45 @@ export function TreasuryRulesPanel({
     setAmountMin(r.amount_min != null ? String(r.amount_min) : "");
     setAmountMax(r.amount_max != null ? String(r.amount_max) : "");
     setDirection((r.direction as "in" | "out") ?? "");
+    setDateFrom(r.date_from ?? "");
+    setDateTo(r.date_to ?? "");
     setSourceTransactionId(null);
     setAdvancedOpen(true);
-    void runPreviewFor(
-      r.match_merchant,
-      r.amount_min != null ? String(r.amount_min) : "",
-      r.amount_max != null ? String(r.amount_max) : "",
-      (r.direction as "in" | "out") ?? ""
-    );
+    setAnalyzeOpen(true);
   }
 
-  async function createRule(fromDraft = false) {
-    if (createBusy) return;
-    if (!matchMerchant.trim() || !assignLabel.trim()) return;
-    setCreateBusy(true);
-    setNotice(null);
-    try {
-      if (editingRuleId) {
-        const res = await fetch(
-          `/api/operator/treasury/clients/${clientUserId}/rules/${editingRuleId}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              match_merchant: matchMerchant.trim(),
-              assign_label: assignLabel.trim(),
-              amount_min: amountMin ? Number(amountMin) : null,
-              amount_max: amountMax ? Number(amountMax) : null,
-              direction: direction || null,
-            }),
-          }
-        );
-        const data = (await res.json()) as {
-          suggested?: number;
-          error?: string;
-        };
-        if (!res.ok) {
-          setNotice({
-            kind: "error",
-            text: data.error ?? "Failed to update rule",
-          });
-          return;
-        }
-        setNotice({
-          kind: "success",
-          text: `Rule updated. ${data.suggested ?? 0} suggestions.`,
-        });
-        setEditingRuleId(null);
-        setMatchMerchant("");
-        setAssignLabel("");
-        setName("");
-        clearConstraints();
-        setPreview(null);
-        void load();
-        return;
-      }
-
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/rules`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim() || `Rule: ${assignLabel.trim()}`,
-            match_merchant: matchMerchant,
-            assign_label: assignLabel,
-            amount_min: amountMin ? Number(amountMin) : null,
-            amount_max: amountMax ? Number(amountMax) : null,
-            direction: direction || null,
-            match_type: "contains",
-            source_transaction_id: sourceTransactionId,
-          }),
-        }
-      );
-      const data = (await res.json()) as {
-        suggested?: number;
-        rule?: TreasuryRuleRow;
-        existed?: boolean;
-        error?: string;
-      };
-      if (!res.ok) {
-        setNotice({
-          kind: "error",
-          text: data.error ?? "Failed to create rule",
-        });
-        return;
-      }
-      const ruleId = data.rule?.id ?? null;
-      if (data.existed) {
-        setNotice({
-          kind: "notice",
-          text: `A rule for "${matchMerchant.trim()} → ${assignLabel.trim()}" already exists.`,
-        });
-        if (ruleId) {
-          setExpandedId(ruleId);
-          setFacetSel(null);
-          setQueuePage(0);
-        }
-        void load();
-        return;
-      }
-      const count = data.suggested ?? 0;
-      setSourceTransactionId(null);
-      if (fromDraft) {
-        setNotice({
-          kind: "success",
-          text: "Rule saved. Review suggestions below.",
-        });
-        onClearDraft?.();
-        onRuleSaved?.(count, ruleId);
-        if (ruleId) {
-          setExpandedId(ruleId);
-          setFacetSel(null);
-          setQueuePage(0);
-        }
-      } else {
-        setNotice({
-          kind: "success",
-          text: `Rule created. ${count} suggestions applied.`,
-        });
-        onClearDraft?.();
-        if (ruleId) {
-          setExpandedId(ruleId);
-          setFacetSel(null);
-          setQueuePage(0);
-        }
-      }
-      setMatchMerchant("");
-      setAssignLabel("");
-      setName("");
-      clearConstraints();
-      setPreview(null);
-      void load();
-    } finally {
-      setCreateBusy(false);
+  function handlePopupSaved(opts: {
+    suggested: number;
+    ruleId: string | null;
+    editing: boolean;
+  }) {
+    const fromDraft = Boolean(draftRule) && !opts.editing;
+    if (opts.editing) {
+      setNotice({
+        kind: "success",
+        text: `Rule updated. ${opts.suggested} suggestions.`,
+      });
+    } else if (fromDraft) {
+      setNotice({
+        kind: "success",
+        text: "Rule saved. Review suggestions below.",
+      });
+      onClearDraft?.();
+      onRuleSaved?.(opts.suggested, opts.ruleId);
+    } else {
+      setNotice({
+        kind: "success",
+        text: `Rule created. ${opts.suggested} suggestions applied.`,
+      });
+      onClearDraft?.();
     }
+    if (opts.ruleId) {
+      setExpandedId(opts.ruleId);
+      setFacetSel(null);
+      setQueuePage(0);
+    }
+    clearForm();
+    void load();
   }
 
   async function toggleRule(rule: TreasuryRuleRow) {
@@ -769,28 +609,7 @@ export function TreasuryRulesPanel({
             : "Create a rule manually (advanced)"}
         </summary>
         <div className="grid gap-2 max-w-lg mt-2">
-          {/* Ana copy: step labels, constraint summary, Analyze amounts */}
-          {(amountMin || amountMax || direction) && (
-            <p className="text-xs text-codex-muted flex flex-wrap items-center gap-2">
-              <span>
-                {formatRuleConstraintSummary({
-                  direction: direction || null,
-                  amount_min: amountMin ? Number(amountMin) : null,
-                  amount_max: amountMax ? Number(amountMax) : null,
-                })}
-              </span>
-              <button
-                type="button"
-                className="ra"
-                onClick={() => {
-                  clearConstraints();
-                  void runPreviewFor(matchMerchant, "", "", "");
-                }}
-              >
-                Clear
-              </button>
-            </p>
-          )}
+          {/* Ana copy: Step 1 only — create/edit lives in Analyze popup (Spec 63F) */}
           <p className="text-xs uppercase tracking-wide text-codex-muted">
             Step 1 · Payee
           </p>
@@ -809,135 +628,18 @@ export function TreasuryRulesPanel({
           />
           <button
             type="button"
-            className="btn btn-secondary text-sm w-fit"
-            disabled={previewBusy || !matchMerchant.trim()}
-            onClick={() => void runPreview()}
-          >
-            {previewBusy ? "Previewing…" : "Preview matches"}
-          </button>
-          {preview ? (
-            <div className="preview" aria-live="polite">
-              <div
-                className={
-                  preview.payeeMatch > 0
-                    ? "preview-count"
-                    : "preview-count zero"
-                }
-              >
-                {preview.payeeMatch > 0
-                  ? `${preview.payeeMatch.toLocaleString()} match this payee · ${preview.willSuggest.toLocaleString()} will be suggested`
-                  : "No transactions match this payee yet."}
-              </div>
-              {amountMin || amountMax || direction ? (
-                <div className="preview-basis">
-                  {preview.payeeMatch.toLocaleString()} match the payee ·{" "}
-                  {preview.total.toLocaleString()} match all conditions
-                  {formatRuleConstraintSummary({
-                    direction: direction || null,
-                    amount_min: amountMin ? Number(amountMin) : null,
-                    amount_max: amountMax ? Number(amountMax) : null,
-                  })
-                    ? ` (${formatRuleConstraintSummary({
-                        direction: direction || null,
-                        amount_min: amountMin ? Number(amountMin) : null,
-                        amount_max: amountMax ? Number(amountMax) : null,
-                      })?.replace(/^Also limited to:\s*/, "")})`
-                    : ""}{" "}
-                  · {preview.willSuggest.toLocaleString()} will be suggested
-                </div>
-              ) : (
-                <div className="preview-basis">
-                  Uncategorized rows will be suggested.
-                </div>
-              )}
-              {preview.samples.length > 0 ? (
-                <ul className="preview-list">
-                  {preview.samples.map((tx) => (
-                    <li key={tx.id}>
-                      <span className="pl-d">{tx.posted_date ?? "—"}</span>
-                      <span className="pl-p">
-                        {tx.merchant_name ?? tx.normalized_merchant ?? "—"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-
-          <p className="text-xs uppercase tracking-wide text-codex-muted mt-2">
-            Step 2 · Amount band
-          </p>
-          <div className="flex flex-wrap gap-2 items-end">
-            <label className="text-xs">
-              Min
-              <input
-                className="border rounded px-2 py-1 text-sm w-24 block"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
-                inputMode="decimal"
-              />
-            </label>
-            <label className="text-xs">
-              Max
-              <input
-                className="border rounded px-2 py-1 text-sm w-24 block"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
-                inputMode="decimal"
-              />
-            </label>
-            <label className="text-xs">
-              Direction
-              <select
-                className="border rounded px-2 py-1 text-sm block"
-                value={direction}
-                onChange={(e) =>
-                  setDirection(e.target.value as "in" | "out" | "")
-                }
-              >
-                <option value="">Any</option>
-                <option value="in">Money in</option>
-                <option value="out">Money out</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              className="btn btn-secondary text-sm"
-              disabled={!matchMerchant.trim()}
-              onClick={() => setAnalyzeOpen(true)}
-            >
-              Analyze amounts
-            </button>
-          </div>
-
-          <button
-            type="button"
             className="btn text-sm w-fit"
-            disabled={
-              createBusy || !matchMerchant.trim() || !assignLabel.trim()
-            }
-            onClick={() => void createRule(Boolean(draftRule) || Boolean(editingRuleId))}
+            disabled={!matchMerchant.trim() || !assignLabel.trim()}
+            onClick={() => setAnalyzeOpen(true)}
           >
-            {createBusy
-              ? "Saving…"
-              : editingRuleId
-                ? "Save conditions"
-                : draftRule
-                  ? "Save rule & find matches"
-                  : "Save rule"}
+            Analyze amounts
           </button>
           {editingRuleId ? (
             <button
               type="button"
               className="ra text-sm w-fit"
               onClick={() => {
-                setEditingRuleId(null);
-                setMatchMerchant("");
-                setAssignLabel("");
-                setName("");
-                clearConstraints();
-                setPreview(null);
+                clearForm();
               }}
             >
               Cancel edit
@@ -951,22 +653,13 @@ export function TreasuryRulesPanel({
         onClose={() => setAnalyzeOpen(false)}
         clientUserId={clientUserId}
         payeeQuery={matchMerchant}
+        assignLabel={assignLabel}
+        ruleName={name}
         matchType="contains"
-        direction={direction}
-        amountMin={amountMin}
-        amountMax={amountMax}
-        onSuggestAll={() => {
-          clearConstraints();
-          setAnalyzeOpen(false);
-          void runPreviewFor(matchMerchant, "", "", "");
-        }}
-        onApplyBand={({ amountMin: mn, amountMax: mx, direction: dir }) => {
-          setAmountMin(mn);
-          setAmountMax(mx);
-          setDirection(dir);
-          setAnalyzeOpen(false);
-          void runPreviewFor(matchMerchant, mn, mx, dir);
-        }}
+        sourceTransactionId={sourceTransactionId}
+        editingRuleId={editingRuleId}
+        initial={analyzeInitial}
+        onSaved={handlePopupSaved}
       />
 
       {notice ? (
@@ -1028,6 +721,8 @@ export function TreasuryRulesPanel({
                       r.amount_min != null ? Number(r.amount_min) : null,
                     amount_max:
                       r.amount_max != null ? Number(r.amount_max) : null,
+                    date_from: r.date_from ?? null,
+                    date_to: r.date_to ?? null,
                   }) ? (
                     <div className="rc-counts text-codex-muted">
                       {formatRuleConstraintSummary({
@@ -1036,6 +731,8 @@ export function TreasuryRulesPanel({
                           r.amount_min != null ? Number(r.amount_min) : null,
                         amount_max:
                           r.amount_max != null ? Number(r.amount_max) : null,
+                        date_from: r.date_from ?? null,
+                        date_to: r.date_to ?? null,
                       })}
                     </div>
                   ) : null}

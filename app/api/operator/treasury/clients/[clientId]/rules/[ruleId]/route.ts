@@ -20,6 +20,8 @@ type PatchBody = {
   amount_min?: number | null;
   amount_max?: number | null;
   direction?: "in" | "out" | null;
+  date_from?: string | null;
+  date_to?: string | null;
   assign_label?: string;
   cadence?: string | null;
   /** When true, re-run apply for this rule without other field changes. */
@@ -32,6 +34,8 @@ const MATCH_CONDITION_KEYS = [
   "amount_min",
   "amount_max",
   "direction",
+  "date_from",
+  "date_to",
 ] as const;
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -67,6 +71,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.amount_min !== undefined) update.amount_min = body.amount_min;
   if (body.amount_max !== undefined) update.amount_max = body.amount_max;
   if (body.direction !== undefined) update.direction = body.direction;
+  if (body.date_from !== undefined) {
+    update.date_from = body.date_from?.trim() || null;
+  }
+  if (body.date_to !== undefined) {
+    update.date_to = body.date_to?.trim() || null;
+  }
   if (body.assign_label !== undefined) update.assign_label = body.assign_label;
   if (body.cadence !== undefined) update.cadence = body.cadence;
 
