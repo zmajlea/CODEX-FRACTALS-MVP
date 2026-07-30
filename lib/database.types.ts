@@ -2300,6 +2300,43 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: undefined
       }
+      treasury_rule_match_count: {
+        Args: {
+          p_amount_max?: number | null
+          p_amount_min?: number | null
+          p_client: string
+          p_direction?: string | null
+          p_exclude_rejected_for_rule?: string | null
+          p_label_null_only?: boolean
+          p_match_type?: string
+          p_payee_query: string
+        }
+        Returns: number
+      }
+      treasury_rule_match_page: {
+        Args: {
+          p_amount_max?: number | null
+          p_amount_min?: number | null
+          p_client: string
+          p_direction?: string | null
+          p_exclude_rejected_for_rule?: string | null
+          p_label_null_only?: boolean
+          p_limit?: number
+          p_match_type?: string
+          p_offset?: number
+          p_payee_query: string
+        }
+        Returns: Database["public"]["Tables"]["treasury_transactions"]["Row"][]
+      }
+      treasury_rule_payee_stats: {
+        Args: {
+          p_client: string
+          p_direction?: string | null
+          p_match_type?: string
+          p_payee_query: string
+        }
+        Returns: Json
+      }
       treasury_rule_queue_combo_confirm: {
         Args: {
           p_actor: string
