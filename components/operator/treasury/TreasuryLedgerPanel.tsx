@@ -138,6 +138,10 @@ export function TreasuryLedgerPanel({
   const [bulkLabel, setBulkLabel] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [draftSourceId, setDraftSourceId] = useState("");
+  /** Spec 64 E — display-only pin; never counted in status totals. */
+  const [pinnedRows, setPinnedRows] = useState<
+    Map<string, TreasuryTransactionRow>
+  >(() => new Map());
 
   // Draft (composer) vs applied (query)
   const [draftAccounts, setDraftAccounts] = useState<Set<string>>(new Set());
@@ -342,6 +346,7 @@ export function TreasuryLedgerPanel({
     setDraftAccounts(new Set(accountIds));
     setPage(0);
     setSelected(new Set());
+    clearPins();
     setApplied({
       ...composeAppliedFromDraft(),
       accountIds,
@@ -362,6 +367,7 @@ export function TreasuryLedgerPanel({
     setDraftAccounts(new Set(accountIds));
     setPage(0);
     setSelected(new Set());
+    clearPins();
     setApplied((prev) => ({ ...prev, accountIds }));
   }
 
@@ -378,6 +384,7 @@ export function TreasuryLedgerPanel({
     setDraftSourceId("");
     setPage(0);
     setSelected(new Set());
+    clearPins();
     setApplied({
       from: undefined,
       to: undefined,
@@ -393,14 +400,20 @@ export function TreasuryLedgerPanel({
     onClearDrill?.();
   }
 
+  function clearPins() {
+    setPinnedRows(new Map());
+  }
+
   function setStatusFilter(status: StatusFilter) {
     setPage(0);
     setSelected(new Set());
+    clearPins();
     setApplied((prev) => ({ ...prev, status }));
   }
 
   async function patchTx(txId: string, body: Record<string, unknown>) {
-    await fetch(
+    const before = transactions.find((t) => t.id === txId);
+    const res = await fetch(
       `/api/operator/treasury/clients/${clientUserId}/transactions/${txId}`,
       {
         method: "PATCH",
@@ -408,7 +421,36 @@ export function TreasuryLedgerPanel({
         body: JSON.stringify(body),
       }
     );
+    if (!res.ok) {
+      void load(applied, page, pageSize);
+      return;
+    }
     if (typeof body.label === "string") rememberLabel(body.label);
+    // Spec 64 E — pin just-categorized for display only (needs_label / suggested views).
+    if (
+      before &&
+      (typeof body.label === "string" || body.confirmSuggestion === true) &&
+      (applied.status === "needs_label" || applied.status === "suggested")
+    ) {
+      const label =
+        typeof body.label === "string"
+          ? body.label
+          : before.suggestions?.[0]?.suggested_label ??
+            before.suggested_label ??
+            before.label;
+      const pinned: TreasuryTransactionRow = {
+        ...before,
+        label: label || before.label,
+        suggestion_status: "confirmed",
+        has_pending_suggestion: false,
+        suggestions: [],
+      };
+      setPinnedRows((prev) => {
+        const next = new Map(prev);
+        next.set(txId, pinned);
+        return next;
+      });
+    }
     setEditingId(null);
     void load(applied, page, pageSize);
   }
@@ -525,6 +567,18 @@ export function TreasuryLedgerPanel({
   const showingFrom = total === 0 ? 0 : page * pageSize + 1;
   const showingTo = Math.min((page + 1) * pageSize, total);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  // Spec 64 E — display-only merge: pins stay on screen; totals stay from API (unchanged).
+  const displayRows = useMemo(() => {
+    if (pinnedRows.size === 0) return transactions;
+    const seen = new Set(transactions.map((t) => t.id));
+    const extras: TreasuryTransactionRow[] = [];
+    for (const [id, row] of pinnedRows) {
+      if (!seen.has(id)) extras.push(row);
+    }
+    if (extras.length === 0) return transactions;
+    return [...extras, ...transactions];
+  }, [transactions, pinnedRows]);
 
   const allStatusCount =
     needsLabelCount + suggestedTotalCount + labeledCount;
@@ -981,11 +1035,12 @@ export function TreasuryLedgerPanel({
             </tr>
           </thead>
           <tbody>
-            {transactions.map((tx) => (
+            {displayRows.map((tx) => (
               <TreasuryTxRow
                 key={tx.id}
                 tx={tx}
                 highlighted={focusTxId === tx.id}
+                justCategorized={pinnedRows.has(tx.id)}
                 selected={selected.has(tx.id)}
                 onToggleSelect={(checked) => {
                   setSelected((prev) => {
@@ -1051,7 +1106,10 @@ export function TreasuryLedgerPanel({
             type="button"
             className="btn ghost text-xs"
             disabled={loading || page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            onClick={() => {
+              clearPins();
+              setPage((p) => Math.max(0, p - 1));
+            }}
           >
             Previous
           </button>
@@ -1064,6 +1122,7 @@ export function TreasuryLedgerPanel({
                 className="border rounded px-1 py-0.5"
                 value={pageSize}
                 onChange={(e) => {
+                  clearPins();
                   setPageSize(Number(e.target.value));
                   setPage(0);
                 }}
@@ -1078,7 +1137,10 @@ export function TreasuryLedgerPanel({
             type="button"
             className="btn ghost text-xs"
             disabled={loading || page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => {
+              clearPins();
+              setPage((p) => p + 1);
+            }}
           >
             Next
           </button>

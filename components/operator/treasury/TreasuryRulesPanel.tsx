@@ -769,7 +769,19 @@ export function TreasuryRulesPanel({
                         void reapplyRule(r);
                       }}
                     >
-                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                      {busyRuleId === r.id ? (
+                        <>
+                          <span
+                            className="busy-indeterminate busy-indeterminate--inline"
+                            role="progressbar"
+                            aria-busy="true"
+                            aria-label="Applying rule"
+                          />
+                          Applying…
+                        </>
+                      ) : (
+                        "Re-apply"
+                      )}
                     </button>
                   ) : null}
                   <button
@@ -850,7 +862,19 @@ export function TreasuryRulesPanel({
                                 }
                                 onClick={() => void confirmAllSuggested(r)}
                               >
-                                Confirm all
+                                {confirmBusy ? (
+                                  <>
+                                    <span
+                                      className="busy-indeterminate busy-indeterminate--inline"
+                                      role="progressbar"
+                                      aria-busy="true"
+                                      aria-label="Confirming"
+                                    />
+                                    Confirming…
+                                  </>
+                                ) : (
+                                  "Confirm all"
+                                )}
                               </button>
                             </td>
                           </tr>

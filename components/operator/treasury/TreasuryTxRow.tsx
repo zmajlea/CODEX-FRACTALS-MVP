@@ -84,6 +84,8 @@ type Props = {
     pickable: Pickable
   ) => void;
   highlighted?: boolean;
+  /** Spec 64 E — display-only pin cue; Ana copy. */
+  justCategorized?: boolean;
 };
 
 export function TreasuryTxRow({
@@ -106,6 +108,7 @@ export function TreasuryTxRow({
   onMakeRule,
   onPick,
   highlighted = false,
+  justCategorized = false,
 }: Props) {
   const memo = tx.raw_name ?? tx.description ?? tx.merchant_name ?? tx.normalized_merchant ?? "—";
   const payee = tx.merchant_name ?? tx.normalized_merchant ?? memo;
@@ -121,7 +124,12 @@ export function TreasuryTxRow({
   const isConfirmed = !!tx.label;
 
   return (
-    <tr className={highlighted ? "focus-hit" : undefined} data-tx-id={tx.id}>
+    <tr
+      className={[highlighted ? "focus-hit" : "", justCategorized ? "just-categorized" : ""]
+        .filter(Boolean)
+        .join(" ") || undefined}
+      data-tx-id={tx.id}
+    >
       {showSelect ? (
         <td>
           <input
@@ -244,7 +252,7 @@ export function TreasuryTxRow({
               Confirm
             </button>
           ) : null}
-          {isConfirmed && onMakeRule ? (
+          {onMakeRule ? (
             <button type="button" className="ra" onClick={() => onMakeRule()}>
               + rule
             </button>

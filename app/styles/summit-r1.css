@@ -1073,6 +1073,26 @@
   background:var(--paper); border:1px solid var(--paper-edge); border-radius:var(--radius);
   max-width:520px; width:100%; max-height:90vh; overflow:auto; padding:16px 18px;
 }
+[data-r1] .rule-analyze-panel--wide{ max-width:640px; }
+[data-r1] .rule-analyze-live{
+  border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-2);
+  padding:10px 12px; max-height:220px; overflow:auto;
+}
+/* Spec 64 C — indeterminate busy bar */
+[data-r1] .busy-indeterminate{
+  height:3px; width:100%; margin:0 0 10px; border-radius:2px; overflow:hidden;
+  background:color-mix(in srgb, var(--brand) 12%, var(--paper-2));
+}
+[data-r1] .busy-indeterminate::after{
+  content:""; display:block; height:100%; width:40%;
+  background:var(--brand); opacity:.7;
+  animation:busy-indeterminate-slide 1.1s ease-in-out infinite;
+}
+[data-r1] .busy-indeterminate--inline{
+  display:inline-block; width:48px; height:3px; margin:0 6px 0 0; vertical-align:middle;
+}
+/* Spec 64 E — just-categorized pin cue (Ana) */
+[data-r1] tr.just-categorized td{ background:color-mix(in srgb, var(--brand) 6%, var(--paper)); }
 [data-r1] .rule-analyze-bars{ list-style:none; margin:0; padding:0; display:grid; gap:6px; }
 [data-r1] .rule-analyze-bars li{ display:grid; grid-template-columns:72px 1fr auto; gap:8px; align-items:center; font-size:11px; }
 [data-r1] .rule-analyze-bars .period{ color:var(--mute); font-variant-numeric:tabular-nums; }

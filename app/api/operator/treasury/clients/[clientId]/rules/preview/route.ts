@@ -55,6 +55,8 @@ export async function GET(request: Request, context: RouteContext) {
   };
 
   try {
+    // Spec 64 — live list and will_suggest share one predicate path (labelNullOnly).
+    // When labeled=false, page rows are the will_suggest set so "N of M" cannot drift.
     const labelNullOnly = labeled === "false";
     const [total, willSuggest, samples] = await Promise.all([
       countRuleMatches(guard.admin, clientId, match, {
@@ -64,7 +66,7 @@ export async function GET(request: Request, context: RouteContext) {
         labelNullOnly: true,
       }),
       fetchRuleMatchPage(guard.admin, clientId, match, {
-        labelNullOnly: false,
+        labelNullOnly,
         offset: 0,
         limit,
       }),
