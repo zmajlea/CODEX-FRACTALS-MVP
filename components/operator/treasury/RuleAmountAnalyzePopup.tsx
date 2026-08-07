@@ -239,6 +239,14 @@ export function RuleAmountAnalyzePopup({
     setDateFrom(initial.dateFrom);
     setDateTo(initial.dateTo);
     setSelectedPeriod(null);
+    setError(null);
+    if (!payeeQueryProp.trim()) {
+      setStats(null);
+      setSamples([]);
+      setWillSuggest(null);
+      setPeriodWillSuggest(null);
+      return;
+    }
     const scope: AnalyzeBandState = {
       amountMin: initial.amountMin,
       amountMax: initial.amountMax,
@@ -371,11 +379,149 @@ export function RuleAmountAnalyzePopup({
 
   if (!open || !mounted) return null;
 
+  const filterCol = (
+    <div className="rule-analyze-col rule-analyze-col--filters">
+      <section className="rule-analyze-group">
+        <h4 className="rule-analyze-group-title">Identity</h4>
+        <label className="text-xs">
+          Rule name
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <label className="text-xs">
+          Payee contains
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={localPayee}
+            onChange={(e) => setLocalPayee(e.target.value)}
+            placeholder="When payee contains"
+            autoFocus
+          />
+        </label>
+        <div className="text-xs">
+          Category to assign
+          <CategoryPicker
+            value={localLabel}
+            categories={labels}
+            onChange={setLocalLabel}
+            placeholder="Category to assign"
+            aria-label="Category to assign"
+          />
+        </div>
+      </section>
+
+      <section className="rule-analyze-group">
+        <h4 className="rule-analyze-group-title">Amount</h4>
+        <label className="text-xs">
+          Min
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={localMin}
+            onChange={(e) => setLocalMin(e.target.value)}
+            inputMode="decimal"
+            placeholder="Any"
+          />
+        </label>
+        <label className="text-xs">
+          Max
+          <input
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={localMax}
+            onChange={(e) => setLocalMax(e.target.value)}
+            inputMode="decimal"
+            placeholder="Any"
+          />
+        </label>
+        <label className="text-xs">
+          Direction
+          <select
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={localDir}
+            onChange={(e) =>
+              setLocalDir(e.target.value as "in" | "out" | "")
+            }
+          >
+            <option value="">Any</option>
+            <option value="in">Money in</option>
+            <option value="out">Money out</option>
+          </select>
+        </label>
+      </section>
+
+      <section className="rule-analyze-group">
+        <h4 className="rule-analyze-group-title">Time</h4>
+        <label className="text-xs">
+          From
+          <input
+            type="date"
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
+        </label>
+        <label className="text-xs">
+          To
+          <input
+            type="date"
+            className="border rounded px-2 py-1 text-sm w-full"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
+        </label>
+      </section>
+
+      <div className="rule-analyze-actions">
+        <button
+          type="button"
+          className="btn text-sm"
+          disabled={
+            saveBusy ||
+            !localPayee.trim() ||
+            !localLabel.trim() ||
+            degenerate
+          }
+          onClick={() => void createOrSave()}
+        >
+          {saveBusy
+            ? "Saving…"
+            : editingRuleId
+              ? "Save conditions"
+              : "Create rule"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary text-sm"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary text-sm"
+          disabled={busy || !localPayee.trim()}
+          onClick={runReview}
+        >
+          Review
+        </button>
+      </div>
+    </div>
+  );
+
   return createPortal(
-    <div className="rule-analyze-backdrop" role="dialog" aria-modal="true">
+    <div data-r1="" data-brand="summit">
+      <div
+        className="rule-analyze-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rule-analyze-title"
+      >
       <div className="rule-analyze-panel rule-analyze-panel--3col">
         <div className="rule-analyze-head">
-          <h3 className="text-sm font-medium">
+          <h3 id="rule-analyze-title" className="text-sm font-medium">
             {editingRuleId ? "Edit conditions" : "Create rule"}
           </h3>
           <button type="button" className="ra" onClick={onClose}>
@@ -394,268 +540,139 @@ export function RuleAmountAnalyzePopup({
         {error ? <p className="text-sm text-cinnabar">{error}</p> : null}
 
         {stats ? (
-          <>
-            <div className="rule-analyze-summary">
-              <p className="text-sm">
-                {stats.total.toLocaleString()} match ·{" "}
-                {suggestN.toLocaleString()} will be suggested
-              </p>
-              <p className="text-xs text-codex-muted">
-                Active-period averages · month{" "}
-                {stats.points_per_period.avg_per_active_month != null
-                  ? Number(stats.points_per_period.avg_per_active_month).toFixed(1)
-                  : "—"}{" "}
-                · week{" "}
-                {stats.points_per_period.avg_per_active_week != null
-                  ? Number(stats.points_per_period.avg_per_active_week).toFixed(1)
-                  : "—"}
-              </p>
-            </div>
-
-            <div className="rule-analyze-cols">
-              {/* Col 1 — filters */}
-              <div className="rule-analyze-col rule-analyze-col--filters">
-                <section className="rule-analyze-group">
-                  <h4 className="rule-analyze-group-title">Identity</h4>
-                  <label className="text-xs">
-                    Rule name
-                    <input
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={localName}
-                      onChange={(e) => setLocalName(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Payee contains
-                    <input
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={localPayee}
-                      onChange={(e) => setLocalPayee(e.target.value)}
-                      placeholder="When payee contains"
-                    />
-                  </label>
-                  <div className="text-xs">
-                    Category to assign
-                    <CategoryPicker
-                      value={localLabel}
-                      categories={labels}
-                      onChange={setLocalLabel}
-                      placeholder="Category to assign"
-                      aria-label="Category to assign"
-                    />
-                  </div>
-                </section>
-
-                <section className="rule-analyze-group">
-                  <h4 className="rule-analyze-group-title">Amount</h4>
-                  <label className="text-xs">
-                    Min
-                    <input
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={localMin}
-                      onChange={(e) => setLocalMin(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Any"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Max
-                    <input
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={localMax}
-                      onChange={(e) => setLocalMax(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Any"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Direction
-                    <select
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={localDir}
-                      onChange={(e) =>
-                        setLocalDir(e.target.value as "in" | "out" | "")
-                      }
-                    >
-                      <option value="">Any</option>
-                      <option value="in">Money in</option>
-                      <option value="out">Money out</option>
-                    </select>
-                  </label>
-                </section>
-
-                <section className="rule-analyze-group">
-                  <h4 className="rule-analyze-group-title">Time</h4>
-                  <label className="text-xs">
-                    From
-                    <input
-                      type="date"
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                    />
-                  </label>
-                  <label className="text-xs">
-                    To
-                    <input
-                      type="date"
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                    />
-                  </label>
-                </section>
-
-                <div className="rule-analyze-actions">
-                  <button
-                    type="button"
-                    className="btn text-sm"
-                    disabled={
-                      saveBusy ||
-                      !localPayee.trim() ||
-                      !localLabel.trim() ||
-                      degenerate
-                    }
-                    onClick={() => void createOrSave()}
-                  >
-                    {saveBusy
-                      ? "Saving…"
-                      : editingRuleId
-                        ? "Save conditions"
-                        : "Create rule"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-sm"
-                    onClick={onClose}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-sm"
-                    disabled={busy || !localPayee.trim()}
-                    onClick={runReview}
-                  >
-                    Review
-                  </button>
-                </div>
-              </div>
-
-              {/* Col 2 — distribution */}
-              <div className="rule-analyze-col rule-analyze-col--dist">
-                <div className="flex gap-2 mb-2">
-                  <button
-                    type="button"
-                    className={
-                      view === "month" ? "btn text-xs" : "btn btn-secondary text-xs"
-                    }
-                    onClick={() => {
-                      setView("month");
-                      setSelectedPeriod(null);
-                      void loadPreview(currentScope(), localPayee, null);
-                    }}
-                  >
-                    By month
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      view === "week" ? "btn text-xs" : "btn btn-secondary text-xs"
-                    }
-                    onClick={() => {
-                      setView("week");
-                      setSelectedPeriod(null);
-                      void loadPreview(currentScope(), localPayee, null);
-                    }}
-                  >
-                    By week
-                  </button>
-                </div>
-                <ul className="rule-analyze-bars">
-                  {periods.map((p) => (
-                    <li
-                      key={p.period}
-                      className={
-                        selectedPeriod?.period === p.period ? "is-selected" : ""
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="rule-analyze-bar-btn"
-                        onClick={() => selectPeriod(p)}
-                      >
-                        <span className="period">{p.period}</span>
-                        <span
-                          className="bar"
-                          style={{ width: `${(p.count / maxCount) * 100}%` }}
-                        />
-                        <span className="meta">
-                          {p.count} · {Number(p.min).toFixed(0)}–
-                          {Number(p.max).toFixed(0)} · Δ{" "}
-                          {Number(p.stddev).toFixed(0)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {periods.length === 0 ? (
-                    <li className="text-xs text-codex-muted">No dated periods</li>
-                  ) : null}
-                </ul>
-              </div>
-
-              {/* Col 3 — transactions */}
-              <div className="rule-analyze-col rule-analyze-col--txs">
-                <div className="rule-analyze-live">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-xs text-codex-muted">
-                      {samples.length.toLocaleString()} of{" "}
-                      {listSuggestN.toLocaleString()} will be suggested
-                      {selectedPeriod ? ` · ${selectedPeriod.period}` : ""}
-                    </p>
-                    {selectedPeriod ? (
-                      <button
-                        type="button"
-                        className="ra text-xs"
-                        onClick={clearPeriod}
-                      >
-                        Show all
-                      </button>
-                    ) : null}
-                  </div>
-                  {samples.length > 0 ? (
-                    <ul className="preview-list">
-                      {samples.map((tx) => (
-                        <li key={tx.id}>
-                          <span className="pl-d">{tx.posted_date ?? "—"}</span>
-                          <span className="pl-p">
-                            {tx.merchant_name ?? tx.normalized_merchant ?? "—"}
-                          </span>
-                          <span className="pl-a">
-                            {formatTreasuryMoney(Number(tx.amount), "USD")}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-codex-muted">
-                      No uncategorized matches for these conditions.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        ) : !busy ? (
-          <div className="rule-analyze-cols">
-            <div className="rule-analyze-col rule-analyze-col--filters">
-              <p className="text-sm text-codex-muted">
-                Enter a payee and Review to see matches.
-              </p>
-            </div>
+          <div className="rule-analyze-summary">
+            <p className="text-sm">
+              {stats.total.toLocaleString()} match ·{" "}
+              {suggestN.toLocaleString()} will be suggested
+            </p>
+            <p className="text-xs text-codex-muted">
+              Active-period averages · month{" "}
+              {stats.points_per_period.avg_per_active_month != null
+                ? Number(stats.points_per_period.avg_per_active_month).toFixed(1)
+                : "—"}{" "}
+              · week{" "}
+              {stats.points_per_period.avg_per_active_week != null
+                ? Number(stats.points_per_period.avg_per_active_week).toFixed(1)
+                : "—"}
+            </p>
           </div>
         ) : null}
+
+        <div className="rule-analyze-cols">
+          {filterCol}
+
+          <div className="rule-analyze-col rule-analyze-col--dist">
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                className={
+                  view === "month" ? "btn text-xs" : "btn btn-secondary text-xs"
+                }
+                disabled={!stats}
+                onClick={() => {
+                  setView("month");
+                  setSelectedPeriod(null);
+                  void loadPreview(currentScope(), localPayee, null);
+                }}
+              >
+                By month
+              </button>
+              <button
+                type="button"
+                className={
+                  view === "week" ? "btn text-xs" : "btn btn-secondary text-xs"
+                }
+                disabled={!stats}
+                onClick={() => {
+                  setView("week");
+                  setSelectedPeriod(null);
+                  void loadPreview(currentScope(), localPayee, null);
+                }}
+              >
+                By week
+              </button>
+            </div>
+            {stats ? (
+              <ul className="rule-analyze-bars">
+                {periods.map((p) => (
+                  <li
+                    key={p.period}
+                    className={
+                      selectedPeriod?.period === p.period ? "is-selected" : ""
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="rule-analyze-bar-btn"
+                      onClick={() => selectPeriod(p)}
+                    >
+                      <span className="period">{p.period}</span>
+                      <span
+                        className="bar"
+                        style={{ width: `${(p.count / maxCount) * 100}%` }}
+                      />
+                      <span className="meta">
+                        {p.count} · {Number(p.min).toFixed(0)}–
+                        {Number(p.max).toFixed(0)} · Δ{" "}
+                        {Number(p.stddev).toFixed(0)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {periods.length === 0 ? (
+                  <li className="text-xs text-codex-muted">No dated periods</li>
+                ) : null}
+              </ul>
+            ) : (
+              <p className="text-xs text-codex-muted">
+                Enter a payee to see amount distribution by period.
+              </p>
+            )}
+          </div>
+
+          <div className="rule-analyze-col rule-analyze-col--txs">
+            <div className="rule-analyze-live">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-xs text-codex-muted">
+                  {stats
+                    ? `${samples.length.toLocaleString()} of ${listSuggestN.toLocaleString()} will be suggested${
+                        selectedPeriod ? ` · ${selectedPeriod.period}` : ""
+                      }`
+                    : "Matching transactions appear here after Review."}
+                </p>
+                {selectedPeriod ? (
+                  <button
+                    type="button"
+                    className="ra text-xs"
+                    onClick={clearPeriod}
+                  >
+                    Show all
+                  </button>
+                ) : null}
+              </div>
+              {samples.length > 0 ? (
+                <ul className="preview-list">
+                  {samples.map((tx) => (
+                    <li key={tx.id}>
+                      <span className="pl-d">{tx.posted_date ?? "—"}</span>
+                      <span className="pl-p">
+                        {tx.merchant_name ?? tx.normalized_merchant ?? "—"}
+                      </span>
+                      <span className="pl-a">
+                        {formatTreasuryMoney(Number(tx.amount), "USD")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : stats ? (
+                <p className="text-xs text-codex-muted">
+                  No uncategorized matches for these conditions.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>,
     document.body
