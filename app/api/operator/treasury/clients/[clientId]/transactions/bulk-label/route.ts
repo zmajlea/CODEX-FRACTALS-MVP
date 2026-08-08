@@ -5,7 +5,6 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 
 type PatchBody = {
   transactionIds?: string[];
@@ -46,23 +45,8 @@ export async function PATCH(
     }
     const ruleId = body.ruleId;
 
-    let pairs: Array<{ transaction_id: string; suggested_label: string }> = [];
-
-    if (body.confirmAllSuggested) {
-      const rows = await fetchAllRows((from, to) =>
-        guard.admin
-          .from("treasury_transaction_suggestions")
-          .select("transaction_id, suggested_label")
-          .eq("client_user_id", clientId)
-          .eq("rule_id", ruleId)
-          .order("transaction_id", { ascending: true })
-          .range(from, to)
-      );
-      pairs = rows.map((r) => ({
-        transaction_id: r.transaction_id,
-        suggested_label: r.suggested_label,
-      }));
-    } else {
+    let txIdsFilter: string[] | null = null;
+    if (!body.confirmAllSuggested) {
       const ids = (body.transactionIds ?? []).filter(Boolean);
       if (ids.length === 0) {
         return NextResponse.json(
@@ -76,70 +60,29 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      const { data: sugs, error: loadErr } = await guard.admin
-        .from("treasury_transaction_suggestions")
-        .select("transaction_id, suggested_label")
-        .eq("client_user_id", clientId)
-        .eq("rule_id", ruleId)
-        .in("transaction_id", ids);
-      if (loadErr) {
-        return NextResponse.json(
-          { error: "Failed to load suggestions" },
-          { status: 500 }
-        );
+      txIdsFilter = ids;
+    }
+
+    const { data, error } = await guard.admin.rpc(
+      "treasury_confirm_rule_suggestions",
+      {
+        p_client: clientId,
+        p_rule: ruleId,
+        p_actor: guard.user.id,
+        p_transaction_ids: txIdsFilter,
       }
-      pairs = (sugs ?? []).map((r) => ({
-        transaction_id: r.transaction_id,
-        suggested_label: r.suggested_label,
-      }));
+    );
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Only still-unlabelled txs
-    const txIds = pairs.map((p) => p.transaction_id);
-    const stillOpen = new Set<string>();
-    for (let i = 0; i < txIds.length; i += MAX_BULK) {
-      const chunk = txIds.slice(i, i + MAX_BULK);
-      const { data } = await guard.admin
-        .from("treasury_transactions")
-        .select("id")
-        .eq("client_user_id", clientId)
-        .eq("is_removed", false)
-        .is("label", null)
-        .in("id", chunk);
-      for (const t of data ?? []) stillOpen.add(t.id);
-    }
-    pairs = pairs.filter((p) => stillOpen.has(p.transaction_id));
-
-    if (pairs.length === 0) {
-      return NextResponse.json({ updated: 0 });
-    }
-
-    let updated = 0;
-    for (const pair of pairs) {
-      const { data, error } = await guard.admin
-        .from("treasury_transactions")
-        .update({
-          label: pair.suggested_label,
-          label_source: "rule_confirmed",
-          labeled_by: guard.user.id,
-          labeled_at: now,
-          suggested_by_rule_id: ruleId,
-          suggestion_status: "confirmed",
-          suggested_label: null,
-          suggestion_explanation: null,
-        })
-        .eq("id", pair.transaction_id)
-        .eq("client_user_id", clientId)
-        .is("label", null)
-        .select("id");
-      if (!error && data?.length) {
-        updated += 1;
-        await guard.admin
-          .from("treasury_transaction_suggestions")
-          .delete()
-          .eq("transaction_id", pair.transaction_id);
-      }
-    }
+    const result = (data ?? {}) as {
+      confirmed?: number;
+      transaction_ids?: string[];
+    };
+    const updated = result.confirmed ?? 0;
+    const confirmedIds = result.transaction_ids ?? [];
 
     await writeTreasuryAudit(guard.admin, {
       actorUserId: guard.user.id,
@@ -149,7 +92,7 @@ export async function PATCH(
         action: "confirm_suggestions",
         rule_id: ruleId,
         count: updated,
-        transaction_ids: pairs.map((p) => p.transaction_id),
+        transaction_ids: confirmedIds,
       },
     });
 

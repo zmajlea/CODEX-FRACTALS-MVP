@@ -2351,6 +2351,15 @@ export type Database = {
         }
         Returns: Json
       }
+      treasury_confirm_rule_suggestions: {
+        Args: {
+          p_actor: string
+          p_client: string
+          p_rule: string
+          p_transaction_ids?: string[] | null
+        }
+        Returns: Json
+      }
       treasury_rule_queue_combo_confirm: {
         Args: {
           p_actor: string
