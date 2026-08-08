@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { RuleAmountAnalyzePopup } from "@/components/operator/treasury/RuleAmountAnalyzePopup";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
@@ -120,7 +119,6 @@ export function TreasuryRulesPanel({
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [notice, setNotice] = useState<PanelNotice>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -185,7 +183,6 @@ export function TreasuryRulesPanel({
     setDateTo(draftRule.date_to ?? "");
     setSourceTransactionId(draftRule.source_transaction_id ?? null);
     setEditingRuleId(null);
-    setAdvancedOpen(true);
     setAnalyzeOpen(true);
   }, [draftRule]);
 
@@ -313,7 +310,6 @@ export function TreasuryRulesPanel({
     setDateFrom(r.date_from ?? "");
     setDateTo(r.date_to ?? "");
     setSourceTransactionId(null);
-    setAdvancedOpen(true);
     setAnalyzeOpen(true);
   }
 
@@ -591,67 +587,30 @@ export function TreasuryRulesPanel({
         <p className="promise">
           Rules propose categories; nothing is applied until you confirm.
         </p>
-        {onGoToTransactions ? (
-          <button type="button" className="btn" onClick={onGoToTransactions}>
-            Go categorize a transaction
-          </button>
-        ) : null}
-      </div>
-
-      <details
-        className="adv-filter"
-        open={advancedOpen}
-        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
-      >
-        <summary>
-          {editingRuleId
-            ? "Edit rule conditions"
-            : "Create a rule manually (advanced)"}
-        </summary>
-        <div className="grid gap-2 max-w-lg mt-2">
-          {/* Ana copy: Step 1 only — create/edit lives in Analyze popup (Spec 63F) */}
-          <p className="text-xs uppercase tracking-wide text-codex-muted">
-            Step 1 · Payee
-          </p>
-          <input
-            className="border rounded px-2 py-1 text-sm w-full"
-            placeholder="When payee contains"
-            value={matchMerchant}
-            onChange={(e) => setMatchMerchant(e.target.value)}
-          />
-          <CategoryPicker
-            value={assignLabel}
-            categories={labels}
-            onChange={setAssignLabel}
-            placeholder="Category to assign"
-            aria-label="Category to assign"
-          />
-          <button
-            type="button"
-            className="btn text-sm w-fit"
-            disabled={!matchMerchant.trim() || !assignLabel.trim()}
-            onClick={() => setAnalyzeOpen(true)}
-          >
-            Analyze amounts
-          </button>
-          {editingRuleId ? (
-            <button
-              type="button"
-              className="ra text-sm w-fit"
-              onClick={() => {
-                clearForm();
-              }}
-            >
-              Cancel edit
+        <div className="explainer-actions">
+          {onGoToTransactions ? (
+            <button type="button" className="btn" onClick={onGoToTransactions}>
+              Go categorize a transaction
             </button>
           ) : null}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              clearForm();
+              setAnalyzeOpen(true);
+            }}
+          >
+            Create a rule manually
+          </button>
         </div>
-      </details>
+      </div>
 
       <RuleAmountAnalyzePopup
         open={analyzeOpen}
         onClose={() => setAnalyzeOpen(false)}
         clientUserId={clientUserId}
+        labels={labels}
         payeeQuery={matchMerchant}
         assignLabel={assignLabel}
         ruleName={name}
@@ -769,7 +728,19 @@ export function TreasuryRulesPanel({
                         void reapplyRule(r);
                       }}
                     >
-                      {busyRuleId === r.id ? "Applying…" : "Re-apply"}
+                      {busyRuleId === r.id ? (
+                        <>
+                          <span
+                            className="busy-indeterminate busy-indeterminate--inline"
+                            role="progressbar"
+                            aria-busy="true"
+                            aria-label="Applying rule"
+                          />
+                          Applying…
+                        </>
+                      ) : (
+                        "Re-apply"
+                      )}
                     </button>
                   ) : null}
                   <button
@@ -850,7 +821,19 @@ export function TreasuryRulesPanel({
                                 }
                                 onClick={() => void confirmAllSuggested(r)}
                               >
-                                Confirm all
+                                {confirmBusy ? (
+                                  <>
+                                    <span
+                                      className="busy-indeterminate busy-indeterminate--inline"
+                                      role="progressbar"
+                                      aria-busy="true"
+                                      aria-label="Confirming"
+                                    />
+                                    Confirming…
+                                  </>
+                                ) : (
+                                  "Confirm all"
+                                )}
                               </button>
                             </td>
                           </tr>

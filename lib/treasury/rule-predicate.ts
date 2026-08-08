@@ -26,6 +26,9 @@ export type RuleMatch = {
 
 export type RulePayeePeriodStat = {
   period: string;
+  /** Spec 66 — Postgres date_trunc bucket bounds (inclusive). */
+  from?: string;
+  to?: string;
   count: number;
   min: number;
   max: number;

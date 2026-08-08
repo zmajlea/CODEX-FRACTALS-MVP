@@ -381,10 +381,15 @@ export function OperatorTreasuryClientRecord({
   }
 
   function handleMakeRule(tx: TreasuryTransactionRow) {
+    const suggested =
+      tx.suggestions?.[0]?.suggested_label ??
+      tx.suggested_label ??
+      "";
+    const assign = (tx.label ?? suggested).trim();
     setRuleDraft({
-      name: `Rule: ${tx.label}`,
+      name: assign ? `Rule: ${assign}` : "Rule: transaction",
       match_merchant: tx.normalized_merchant ?? tx.merchant_name ?? "",
-      assign_label: tx.label ?? "",
+      assign_label: assign,
       // Spec 63 — no silent ±20% amount band; band is chosen in Step 2.
       amount_min: null,
       amount_max: null,

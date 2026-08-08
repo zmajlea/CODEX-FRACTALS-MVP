@@ -227,3 +227,17 @@ export function lastNPeriodStarts(
   }
   return { from, to, starts };
 }
+
+/** Spec 66 — intersect optional scope dates with a period's from/to (inclusive). */
+export function intersectDateRanges(
+  scopeFrom: string | null | undefined,
+  scopeTo: string | null | undefined,
+  periodFrom: string,
+  periodTo: string
+): { from: string; to: string } {
+  const from = scopeFrom?.trim()
+    ? maxIso(scopeFrom.trim(), periodFrom)
+    : periodFrom;
+  const to = scopeTo?.trim() ? minIso(scopeTo.trim(), periodTo) : periodTo;
+  return { from, to };
+}
