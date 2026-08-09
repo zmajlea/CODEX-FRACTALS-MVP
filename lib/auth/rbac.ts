@@ -135,20 +135,19 @@ export async function operatorHasClientGrant(
   moduleSlug: string,
   opts?: { allowGlobalAdmin?: boolean }
 ): Promise<OperatorClientGrant | null> {
-  const { data: mod } = await admin
-    .from("modules")
-    .select("id")
-    .eq("slug", moduleSlug)
-    .maybeSingle();
+  // Spec 67 C — modules + roles in parallel (was 3 sequential round-trips)
+  const [modRes, rolesRes] = await Promise.all([
+    admin.from("modules").select("id").eq("slug", moduleSlug).maybeSingle(),
+    admin
+      .from("user_roles")
+      .select("role, tenant_id")
+      .eq("user_id", operatorUserId),
+  ]);
 
+  const mod = modRes.data;
   if (!mod) return null;
 
-  const { data: roles } = await admin
-    .from("user_roles")
-    .select("role, tenant_id")
-    .eq("user_id", operatorUserId);
-
-  const roleRows = roles ?? [];
+  const roleRows = rolesRes.data ?? [];
   const isGlobalAdmin = roleRows.some((r) => r.role === "global_admin");
 
   if (opts?.allowGlobalAdmin && isGlobalAdmin) {
