@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchAllRows } from "@/lib/treasury/fetch-all-rows";
 import { querySummary as querySummaryCore } from "@/lib/treasury/query-summary";
 import type { SummaryBucket, TreasuryRuleRow } from "@/lib/treasury/types";
 import type { Database } from "@/lib/database.types";
@@ -21,8 +20,9 @@ export type RuleQueueCounts = {
 };
 
 /**
- * Spec 58: suggested = rows in treasury_transaction_suggestions for this rule
- * (belt: join txs with label IS null). Confirmed unchanged on tx attribution.
+ * Spec 58 / 67 B1: suggested = suggestions joined to still-unlabelled txs;
+ * confirmed = label_source=rule_confirmed by suggested_by_rule_id.
+ * One RPC — no fetch-all.
  */
 export async function countRuleQueues(
   admin: AdminClient,
@@ -35,59 +35,26 @@ export async function countRuleQueues(
   }
   if (rules.length === 0) return counts;
 
-  const ruleIdSet = new Set(rules.map((r) => r.id));
-
-  const suggestions = await fetchAllRows((from, to) =>
-    admin
-      .from("treasury_transaction_suggestions")
-      .select("rule_id, transaction_id")
-      .eq("client_user_id", clientUserId)
-      .in("rule_id", [...ruleIdSet])
-      .order("transaction_id", { ascending: true })
-      .range(from, to)
-  );
-
-  // Belt: only count suggestions whose tx is still unlabelled
-  const txIds = [...new Set(suggestions.map((s) => s.transaction_id))];
-  const unlabelled = new Set<string>();
-  for (let i = 0; i < txIds.length; i += 200) {
-    const chunk = txIds.slice(i, i + 200);
-    const { data } = await admin
-      .from("treasury_transactions")
-      .select("id")
-      .eq("client_user_id", clientUserId)
-      .eq("is_removed", false)
-      .is("label", null)
-      .in("id", chunk);
-    for (const t of data ?? []) unlabelled.add(t.id);
+  const { data, error } = await admin.rpc("treasury_rule_queue_counts", {
+    p_client: clientUserId,
+  });
+  if (error) {
+    console.error("[countRuleQueues]", error);
+    return counts;
   }
 
-  for (const row of suggestions) {
-    if (!unlabelled.has(row.transaction_id)) continue;
+  const rows = (data ?? []) as Array<{
+    rule_id: string;
+    suggested: number;
+    confirmed: number;
+  }>;
+  for (const row of rows) {
     if (!counts.has(row.rule_id)) continue;
-    const cur = counts.get(row.rule_id)!;
-    counts.set(row.rule_id, { ...cur, suggested: cur.suggested + 1 });
+    counts.set(row.rule_id, {
+      suggested: row.suggested ?? 0,
+      confirmed: row.confirmed ?? 0,
+    });
   }
-
-  const confirmed = await fetchAllRows((from, to) =>
-    admin
-      .from("treasury_transactions")
-      .select("suggested_by_rule_id")
-      .eq("client_user_id", clientUserId)
-      .eq("is_removed", false)
-      .eq("label_source", "rule_confirmed")
-      .not("suggested_by_rule_id", "is", null)
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
-
-  for (const tx of confirmed) {
-    const rid = tx.suggested_by_rule_id;
-    if (!rid || !counts.has(rid)) continue;
-    const cur = counts.get(rid)!;
-    counts.set(rid, { ...cur, confirmed: cur.confirmed + 1 });
-  }
-
   return counts;
 }
 

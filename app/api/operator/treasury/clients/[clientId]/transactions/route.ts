@@ -7,7 +7,6 @@ import {
 } from "@/lib/server/operator-treasury-route";
 import {
   applyTxPredicate,
-  withStatus,
   type TxFilterInput,
   type TxStatusFilter,
 } from "@/lib/treasury/tx-predicate";
@@ -113,7 +112,8 @@ export async function GET(request: Request, context: RouteContext) {
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
 
   if (!cursor && page === 0) {
-    await writeOperatorTreasuryReadAudit(guard.admin, {
+    // Spec 67 C — non-blocking audit (don't hold the response)
+    void writeOperatorTreasuryReadAudit(guard.admin, {
       actorUserId: guard.user.id,
       clientUserId: clientId,
       tenantId: guard.grant.tenantId,
@@ -221,8 +221,22 @@ export async function GET(request: Request, context: RouteContext) {
     return q;
   };
 
+  const countHead = (f: TxFilterInput, queueFilters?: TxFilterInput) => {
+    const qf = queueFilters ?? f;
+    let q = applyTxPredicate(
+      guard.admin
+        .from("treasury_transactions")
+        .select(ruleQueueCountSelect(qf), { count: "exact", head: true })
+        .eq("client_user_id", clientId)
+        .eq("is_removed", false),
+      f
+    );
+    q = applyRuleQueueJoin(q, qf);
+    return q;
+  };
+
   const offset = page * limit;
-  let query = base()
+  let pageQuery = base()
     .order("posted_date", { ascending: false })
     .order("id", { ascending: false })
     .range(offset, offset + limit - 1);
@@ -231,7 +245,7 @@ export async function GET(request: Request, context: RouteContext) {
   if (cursor) {
     const [cursorDate, cursorId] = cursor.split("|");
     if (cursorDate && cursorId) {
-      query = base()
+      pageQuery = base()
         .order("posted_date", { ascending: false })
         .order("id", { ascending: false })
         .or(
@@ -241,7 +255,54 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
-  const { data, error } = await query;
+  const filtersSansStatus: TxFilterInput = {
+    ...listFilters,
+    status: "all",
+    labeled: null,
+    ruleId: null,
+    ruleQueue: null,
+  };
+  const chipBase: TxFilterInput = { ...filtersSansStatus };
+
+  const amountMin =
+    chipBase.amountExact == null &&
+    (chipBase.amountMin != null || chipBase.amountMax != null)
+      ? Math.abs(Number(chipBase.amountMin ?? chipBase.amountMax))
+      : null;
+  const amountMax =
+    chipBase.amountExact == null &&
+    (chipBase.amountMin != null || chipBase.amountMax != null)
+      ? Math.abs(Number(chipBase.amountMax ?? chipBase.amountMin))
+      : null;
+
+  // Spec 67 B2/C — page + accounts + chip/book meta in parallel
+  const [pageRes, accountsRes, filteredTotalRes, chipRes] = await Promise.all([
+    pageQuery,
+    guard.admin
+      .from("treasury_accounts")
+      .select("account_id, name, mask, plaid_item_id, source")
+      .eq("client_user_id", clientId),
+    comboTotal != null
+      ? Promise.resolve({ count: comboTotal, error: null })
+      : countHead(listFilters, filters),
+    guard.admin.rpc("treasury_tx_chip_counts", {
+      p_client: clientId,
+      p_from: chipBase.from ?? null,
+      p_to: chipBase.to ?? null,
+      p_account_ids:
+        chipBase.accountIds && chipBase.accountIds.length > 0
+          ? chipBase.accountIds
+          : null,
+      p_q: chipBase.q ?? null,
+      p_direction: chipBase.direction ?? null,
+      p_amount_min: amountMin,
+      p_amount_max: amountMax,
+      p_amount_exact:
+        chipBase.amountExact != null ? Math.abs(chipBase.amountExact) : null,
+    }),
+  ]);
+
+  const { data, error } = pageRes;
   if (error) {
     console.error("[operator/treasury/transactions]", error);
     return NextResponse.json({ error: "Failed to load transactions" }, { status: 500 });
@@ -266,35 +327,44 @@ export async function GET(request: Request, context: RouteContext) {
   const nextCursor =
     cursor && hasMore && last ? `${last.posted_date}|${last.id}` : null;
 
-  const { data: accountRows } = await guard.admin
-    .from("treasury_accounts")
-    .select("account_id, name, mask, plaid_item_id, source")
-    .eq("client_user_id", clientId);
-
+  const accountRows = accountsRes.data ?? [];
   const itemIds = [
     ...new Set(
-      (accountRows ?? [])
+      accountRows
         .map((a) => a.plaid_item_id)
         .filter((id): id is string => Boolean(id))
     ),
   ];
 
+  const pageIds = pageRows.map((t) => t.id);
+
+  const [itemsRes, sugRes] = await Promise.all([
+    itemIds.length
+      ? guard.admin
+          .from("plaid_items")
+          .select("id, institution_name")
+          .in("id", itemIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; institution_name: string | null }> }),
+    pageIds.length > 0
+      ? guard.admin
+          .from("treasury_transaction_suggestions")
+          .select(
+            "transaction_id, rule_id, suggested_label, suggestion_explanation, treasury_rules(name, match_merchant)"
+          )
+          .in("transaction_id", pageIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ]);
+
   const institutionByItem = new Map<string, string | null>();
-  if (itemIds.length) {
-    const { data: items } = await guard.admin
-      .from("plaid_items")
-      .select("id, institution_name")
-      .in("id", itemIds);
-    for (const item of items ?? []) {
-      institutionByItem.set(item.id, item.institution_name);
-    }
+  for (const item of itemsRes.data ?? []) {
+    institutionByItem.set(item.id, item.institution_name);
   }
 
   const accountMap = new Map<
     string,
     { name: string | null; mask: string | null; institution_name: string | null }
   >();
-  for (const acct of accountRows ?? []) {
+  for (const acct of accountRows) {
     const institutionName =
       acct.source === "csv" || !acct.plaid_item_id
         ? "CSV import"
@@ -307,7 +377,6 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   // Spec 58 — embed pending suggestions (+ rule name) for the page
-  const pageIds = pageRows.map((t) => t.id);
   const suggestionsByTx = new Map<
     string,
     Array<{
@@ -318,29 +387,27 @@ export async function GET(request: Request, context: RouteContext) {
       match_merchant: string | null;
     }>
   >();
-  if (pageIds.length > 0) {
-    const { data: sugRows } = await guard.admin
-      .from("treasury_transaction_suggestions")
-      .select(
-        "transaction_id, rule_id, suggested_label, suggestion_explanation, treasury_rules(name, match_merchant)"
-      )
-      .in("transaction_id", pageIds);
-    for (const s of sugRows ?? []) {
-      const rule = s.treasury_rules as
-        | { name: string; match_merchant: string }
-        | { name: string; match_merchant: string }[]
-        | null;
-      const ruleObj = Array.isArray(rule) ? rule[0] : rule;
-      const list = suggestionsByTx.get(s.transaction_id) ?? [];
-      list.push({
-        rule_id: s.rule_id,
-        suggested_label: s.suggested_label,
-        suggestion_explanation: s.suggestion_explanation,
-        rule_name: ruleObj?.name ?? null,
-        match_merchant: ruleObj?.match_merchant ?? null,
-      });
-      suggestionsByTx.set(s.transaction_id, list);
-    }
+  for (const s of (sugRes.data ?? []) as Array<{
+    transaction_id: string;
+    rule_id: string;
+    suggested_label: string;
+    suggestion_explanation: string | null;
+    treasury_rules:
+      | { name: string; match_merchant: string }
+      | { name: string; match_merchant: string }[]
+      | null;
+  }>) {
+    const rule = s.treasury_rules;
+    const ruleObj = Array.isArray(rule) ? rule[0] : rule;
+    const list = suggestionsByTx.get(s.transaction_id) ?? [];
+    list.push({
+      rule_id: s.rule_id,
+      suggested_label: s.suggested_label,
+      suggestion_explanation: s.suggestion_explanation,
+      rule_name: ruleObj?.name ?? null,
+      match_merchant: ruleObj?.match_merchant ?? null,
+    });
+    suggestionsByTx.set(s.transaction_id, list);
   }
 
   const transactions = pageRows.map((tx) => {
@@ -360,93 +427,23 @@ export async function GET(request: Request, context: RouteContext) {
     };
   });
 
-  const countHead = (f: TxFilterInput, queueFilters?: TxFilterInput) => {
-    const qf = queueFilters ?? f;
-    let q = applyTxPredicate(
-      guard.admin
-        .from("treasury_transactions")
-        .select(ruleQueueCountSelect(qf), { count: "exact", head: true })
-        .eq("client_user_id", clientId)
-        .eq("is_removed", false),
-      f
-    );
-    q = applyRuleQueueJoin(q, qf);
-    return q;
+  const chips = (chipRes.data ?? {}) as {
+    needs_label?: number;
+    suggested?: number;
+    labeled?: number;
+    pending?: number;
+    book_count?: number;
+    book_first?: string | null;
+    book_last?: string | null;
+    book_imported_at?: string | null;
   };
-
-  const filtersSansStatus: TxFilterInput = {
-    ...listFilters,
-    status: "all",
-    labeled: null,
-    ruleId: null,
-    ruleQueue: null,
-  };
-
-  const chipBase: TxFilterInput = { ...filtersSansStatus };
-
-  const [
-    filteredTotalRes,
-    { count: needsLabel },
-    { count: suggestedTotal },
-    { count: labeledTotal },
-    { count: pendingCount },
-    bookCountRes,
-    bookFirstRes,
-    bookLastRes,
-    bookImportRes,
-  ] = await Promise.all([
-    comboTotal != null
-      ? Promise.resolve({ count: comboTotal })
-      : countHead(listFilters, filters),
-    filters.ruleId
-      ? Promise.resolve({ count: 0 })
-      : countHead(withStatus(chipBase, "needs_label")),
-    filters.ruleId
-      ? Promise.resolve({ count: 0 })
-      : countHead(withStatus(chipBase, "suggested")),
-    filters.ruleId
-      ? Promise.resolve({ count: 0 })
-      : countHead(withStatus(chipBase, "labeled")),
-    guard.admin
-      .from("treasury_transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false)
-      .eq("pending", true),
-    guard.admin
-      .from("treasury_transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false),
-    guard.admin
-      .from("treasury_transactions")
-      .select("posted_date")
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false)
-      .not("posted_date", "is", null)
-      .order("posted_date", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-    guard.admin
-      .from("treasury_transactions")
-      .select("posted_date")
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false)
-      .not("posted_date", "is", null)
-      .order("posted_date", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    guard.admin
-      .from("treasury_transactions")
-      .select("created_at")
-      .eq("client_user_id", clientId)
-      .eq("is_removed", false)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  if (chipRes.error) {
+    console.error("[operator/treasury/transactions] chip_counts", chipRes.error);
+  }
 
   const filteredTotal = filteredTotalRes.count;
+  // Match prior behaviour: status chips zeroed while in a rule-queue view
+  const hideStatusChips = Boolean(filters.ruleId);
 
   return NextResponse.json({
     transactions,
@@ -455,14 +452,14 @@ export async function GET(request: Request, context: RouteContext) {
     page,
     limit,
     book: {
-      count: bookCountRes.count ?? 0,
-      first: bookFirstRes.data?.posted_date ?? null,
-      last: bookLastRes.data?.posted_date ?? null,
-      importedAt: bookImportRes.data?.created_at ?? null,
+      count: chips.book_count ?? 0,
+      first: chips.book_first ?? null,
+      last: chips.book_last ?? null,
+      importedAt: chips.book_imported_at ?? null,
     },
-    needsLabelCount: needsLabel ?? 0,
-    suggestedCount: suggestedTotal ?? 0,
-    labeledCount: labeledTotal ?? 0,
-    pendingCount: pendingCount ?? 0,
+    needsLabelCount: hideStatusChips ? 0 : (chips.needs_label ?? 0),
+    suggestedCount: hideStatusChips ? 0 : (chips.suggested ?? 0),
+    labeledCount: hideStatusChips ? 0 : (chips.labeled ?? 0),
+    pendingCount: chips.pending ?? 0,
   });
 }

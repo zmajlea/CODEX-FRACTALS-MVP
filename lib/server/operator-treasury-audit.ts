@@ -36,13 +36,17 @@ export async function writeTreasuryAudit(
     payload: Record<string, unknown>;
   }
 ): Promise<void> {
-  const { error } = await admin.from("user_audit_events").insert({
-    user_id: input.actorUserId,
-    event_type: input.eventType,
-    payload: input.payload as Json,
-  });
-
-  if (error) {
-    console.error(`[treasury-audit] ${input.eventType}`, error);
-  }
+  // Spec 67 C — fire-and-forget; never block the response on audit I/O
+  void admin
+    .from("user_audit_events")
+    .insert({
+      user_id: input.actorUserId,
+      event_type: input.eventType,
+      payload: input.payload as Json,
+    })
+    .then(({ error }) => {
+      if (error) {
+        console.error(`[treasury-audit] ${input.eventType}`, error);
+      }
+    });
 }

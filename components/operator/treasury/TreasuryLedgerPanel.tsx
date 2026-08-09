@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { TreasuryRangeCalendar } from "@/components/operator/treasury/TreasuryRangeCalendar";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
@@ -137,6 +137,7 @@ export function TreasuryLedgerPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLabel, setBulkLabel] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const chipRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draftSourceId, setDraftSourceId] = useState("");
   /** Spec 64 E — display-only pin; never counted in status totals. */
   const [pinnedRows, setPinnedRows] = useState<
@@ -425,7 +426,35 @@ export function TreasuryLedgerPanel({
       void load(applied, page, pageSize);
       return;
     }
+    const payload = (await res.json().catch(() => ({}))) as {
+      transaction?: TreasuryTransactionRow;
+    };
+    const updated = payload.transaction;
     if (typeof body.label === "string") rememberLabel(body.label);
+
+    // Spec 67 D — update row in place from PATCH; no full reload
+    if (updated) {
+      setTransactions((prev) =>
+        prev.map((t) =>
+          t.id === txId
+            ? {
+                ...t,
+                ...updated,
+                account: t.account,
+                suggestions:
+                  body.confirmSuggestion || body.label !== undefined
+                    ? []
+                    : body.rejectSuggestion && body.ruleId
+                      ? (t.suggestions ?? []).filter(
+                          (s) => s.rule_id !== body.ruleId
+                        )
+                      : (updated.suggestions ?? t.suggestions ?? []),
+              }
+            : t
+        )
+      );
+    }
+
     // Spec 64 E — pin just-categorized for display only (needs_label / suggested views).
     if (
       before &&
@@ -437,13 +466,16 @@ export function TreasuryLedgerPanel({
           ? body.label
           : before.suggestions?.[0]?.suggested_label ??
             before.suggested_label ??
+            updated?.label ??
             before.label;
       const pinned: TreasuryTransactionRow = {
         ...before,
+        ...(updated ?? {}),
         label: label || before.label,
         suggestion_status: "confirmed",
         has_pending_suggestion: false,
         suggestions: [],
+        account: before.account,
       };
       setPinnedRows((prev) => {
         const next = new Map(prev);
@@ -452,7 +484,33 @@ export function TreasuryLedgerPanel({
       });
     }
     setEditingId(null);
-    void load(applied, page, pageSize);
+
+    // Spec 67 D — debounced chip refresh (not a full reload per click)
+    if (chipRefreshTimer.current) clearTimeout(chipRefreshTimer.current);
+    chipRefreshTimer.current = setTimeout(() => {
+      void (async () => {
+        const params = buildParams(applied, page, pageSize);
+        const r = await fetch(
+          `/api/operator/treasury/clients/${clientUserId}/transactions?${params}`
+        );
+        if (!r.ok) return;
+        const data = (await r.json()) as {
+          needsLabelCount: number;
+          suggestedCount?: number;
+          labeledCount?: number;
+          pendingCount: number;
+          total: number;
+          book?: TreasuryBookStats;
+        };
+        setNeedsLabelCount(data.needsLabelCount);
+        setSuggestedTotalCount(data.suggestedCount ?? 0);
+        setLabeledCount(data.labeledCount ?? 0);
+        setPendingCount(data.pendingCount);
+        setTotal(data.total ?? 0);
+        if (data.book) setBook(data.book);
+        onNeedsLabelCount?.(data.needsLabelCount);
+      })();
+    }, 400);
   }
 
   async function applyBulkLabel() {

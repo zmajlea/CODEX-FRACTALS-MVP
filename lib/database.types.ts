@@ -2351,6 +2351,53 @@ export type Database = {
         }
         Returns: Json
       }
+      treasury_confirm_rule_suggestions: {
+        Args: {
+          p_actor: string
+          p_client: string
+          p_rule: string
+          p_transaction_ids?: string[] | null
+        }
+        Returns: Json
+      }
+      treasury_monthly_outflows: {
+        Args: {
+          p_account_id: string
+          p_client: string
+          p_from: string
+          p_label?: string | null
+          p_to: string
+        }
+        Returns: Json
+      }
+      treasury_query_summary: {
+        Args: {
+          p_account_id?: string | null
+          p_bucket: string
+          p_client: string
+          p_from?: string | null
+          p_to?: string | null
+        }
+        Returns: Json
+      }
+      treasury_rule_queue_counts: {
+        Args: { p_client: string }
+        Returns: Json
+      }
+      treasury_tx_chip_counts: {
+        Args: {
+          p_account_ids?: string[] | null
+          p_amount_exact?: number | null
+          p_amount_max?: number | null
+          p_amount_min?: number | null
+          p_client: string
+          p_direction?: string | null
+          p_from?: string | null
+          p_q?: string | null
+          p_to?: string | null
+        }
+        Returns: Json
+      }
       treasury_rule_queue_combo_confirm: {
         Args: {
           p_actor: string
