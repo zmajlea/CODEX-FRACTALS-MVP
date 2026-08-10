@@ -3,7 +3,10 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
-import { computeTreasuryCashModel } from "@/lib/server/treasury-cash-model";
+import {
+  computeTreasuryCashModel,
+  loadCashModelInputs,
+} from "@/lib/server/treasury-cash-model";
 import {
   defaultCashModelParams,
   defaultCashModelScenarios,
@@ -12,6 +15,34 @@ import {
 } from "@/lib/treasury/cash-model-types";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
+
+/** Load category series + opening balance once per account (client-side recompute). */
+export async function GET(request: Request, context: RouteContext) {
+  const { clientId } = await context.params;
+  const guard = await requireOperatorTreasuryGrant(clientId);
+  if (isGuardResponse(guard)) return guard;
+
+  const url = new URL(request.url);
+  const accountId = url.searchParams.get("account_id")?.trim();
+  if (!accountId) {
+    return NextResponse.json({ error: "account_id required" }, { status: 400 });
+  }
+
+  try {
+    const inputs = await loadCashModelInputs(
+      guard.admin,
+      clientId,
+      accountId,
+      url.searchParams.get("as_of") ?? undefined
+    );
+    return NextResponse.json(inputs);
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Load failed" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(request: Request, context: RouteContext) {
   const { clientId } = await context.params;

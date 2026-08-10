@@ -1,31 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  composeCashModelResponse,
+  type CashModelComposedResponse,
+  type CashModelLoadedInputs,
+} from "@/lib/treasury/cash-model-compose";
 import type {
-  CashModelDerivedSnapshot,
   CashModelParams,
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
-import type {
-  CashModelScenarioSummary,
-  CashModelTimelineRow,
-} from "@/lib/treasury/cash-model";
 import type { CashModelStudyRow } from "@/lib/treasury/studies";
 
-export type CashModelApiResponse = {
-  accountId: string;
-  asOf: string;
-  openingBalance: number;
-  timeline: CashModelTimelineRow[];
-  summaries: CashModelScenarioSummary[];
-  coveragePct: number;
-  degradedToTotals: boolean;
-  refused: boolean;
-  refuseReason?: string;
-  bucketBaselines: Partial<Record<string, number>>;
-  completeMonths: string[];
-  derived_snapshot: CashModelDerivedSnapshot;
-};
+export type CashModelApiResponse = CashModelComposedResponse;
 
 export type CashModelModelState = {
   study: CashModelStudyRow | null;
@@ -59,9 +52,9 @@ export function useCashModel(
   const [scenarios, setScenarios] = useState<CashModelScenario[] | null>(
     boundStudy?.scenarios ?? null
   );
-  const [result, setResult] = useState<CashModelApiResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [computing, setComputing] = useState(false);
+  const [inputs, setInputs] = useState<CashModelLoadedInputs | null>(null);
+  const [loadingStudy, setLoadingStudy] = useState(!boundStudy);
+  const [loadingInputs, setLoadingInputs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -73,18 +66,19 @@ export function useCashModel(
       setStudy(boundStudy);
       setParams(boundStudy.params);
       setScenarios(boundStudy.scenarios);
+      setLoadingStudy(false);
       return;
     }
     if (!accountId) {
       setStudy(null);
       setParams(null);
       setScenarios(null);
-      setLoading(false);
+      setLoadingStudy(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setLoadingStudy(true);
     setError(null);
 
     void (async () => {
@@ -113,7 +107,7 @@ export function useCashModel(
           setError(e instanceof Error ? e.message : "Load failed");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoadingStudy(false);
       }
     })();
 
@@ -122,47 +116,52 @@ export function useCashModel(
     };
   }, [clientUserId, accountId, boundStudy, reloadToken]);
 
-  const computeKey = useMemo(
-    () =>
-      params && scenarios
-        ? JSON.stringify({ params, scenarios, accountId })
-        : null,
-    [params, scenarios, accountId]
-  );
-
   useEffect(() => {
-    if (!accountId || !params || !scenarios) return;
+    if (!accountId) {
+      setInputs(null);
+      return;
+    }
 
     let cancelled = false;
-    setComputing(true);
+    setLoadingInputs(true);
+    setError(null);
 
     void (async () => {
       try {
+        const qs = new URLSearchParams({ account_id: accountId });
         const res = await fetch(
-          `/api/operator/treasury/clients/${clientUserId}/cash-model`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accountId, params, scenarios }),
-          }
+          `/api/operator/treasury/clients/${clientUserId}/cash-model?${qs}`
         );
-        const json = (await res.json()) as CashModelApiResponse & { error?: string };
-        if (!res.ok) throw new Error(json.error ?? "Compute failed");
-        if (!cancelled) setResult(json);
+        const json = (await res.json()) as CashModelLoadedInputs & { error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Failed to load cash model inputs");
+        if (!cancelled) setInputs(json);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Compute failed");
-          setResult(null);
+          setError(e instanceof Error ? e.message : "Load failed");
+          setInputs(null);
         }
       } finally {
-        if (!cancelled) setComputing(false);
+        if (!cancelled) setLoadingInputs(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [clientUserId, accountId, computeKey, params, scenarios]);
+  }, [clientUserId, accountId, reloadToken]);
+
+  const deferredParams = useDeferredValue(params);
+  const deferredScenarios = useDeferredValue(scenarios);
+
+  const result = useMemo((): CashModelApiResponse | null => {
+    if (!inputs || !deferredParams || !deferredScenarios) return null;
+    return composeCashModelResponse(inputs, deferredParams, deferredScenarios);
+  }, [inputs, deferredParams, deferredScenarios]);
+
+  const computing =
+    (params !== deferredParams || scenarios !== deferredScenarios) &&
+    params != null &&
+    scenarios != null;
 
   const setSelectedScenarioId = useCallback((id: string) => {
     setParams((p) => (p ? { ...p, selectedScenarioId: id } : p));
@@ -204,10 +203,25 @@ export function useCashModel(
   }, []);
 
   const saveStudy = useCallback(async () => {
-    if (!study || !params || !scenarios || !result) return;
+    if (!study || !params || !scenarios) return;
     setSaving(true);
     setError(null);
     try {
+      const computeRes = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/cash-model`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId, params, scenarios }),
+        }
+      );
+      const authoritative = (await computeRes.json()) as CashModelApiResponse & {
+        error?: string;
+      };
+      if (!computeRes.ok) {
+        throw new Error(authoritative.error ?? "Authoritative compute failed");
+      }
+
       const res = await fetch(
         `/api/operator/treasury/clients/${clientUserId}/studies/${study.id}`,
         {
@@ -218,7 +232,7 @@ export function useCashModel(
             scope: study.scope,
             params,
             scenarios,
-            derived_snapshot: result.derived_snapshot,
+            derived_snapshot: authoritative.derived_snapshot,
           }),
         }
       );
@@ -229,19 +243,29 @@ export function useCashModel(
       setStudy(json.study);
       setParams(json.study.params);
       setScenarios(json.study.scenarios);
+      setInputs((prev) =>
+        prev && prev.accountId === accountId
+          ? {
+              ...prev,
+              asOf: authoritative.asOf,
+              openingBalance: authoritative.openingBalance,
+              openingBalanceRaw: authoritative.derived_snapshot.openingBalance,
+            }
+          : prev
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
-  }, [clientUserId, study, params, scenarios, result]);
+  }, [clientUserId, study, params, scenarios, accountId]);
 
   return {
     study,
     result,
     params,
     scenarios,
-    loading,
+    loading: loadingStudy || loadingInputs,
     computing,
     saving,
     error,
