@@ -1716,6 +1716,41 @@ export type Database = {
           },
         ]
       }
+      treasury_transaction_splits: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          label: string
+          transaction_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          label: string
+          transaction_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          label?: string
+          transaction_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_transaction_splits_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_transactions: {
         Row: {
           account_id: string
@@ -2376,6 +2411,13 @@ export type Database = {
           p_transaction_ids?: string[] | null
         }
         Returns: Json
+      }
+      treasury_replace_transaction_splits: {
+        Args: {
+          p_slices?: Json
+          p_transaction_id: string
+        }
+        Returns: undefined
       }
       treasury_monthly_by_category: {
         Args: {

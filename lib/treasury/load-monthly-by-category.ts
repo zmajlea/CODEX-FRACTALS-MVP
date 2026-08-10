@@ -31,7 +31,7 @@ function nestCategoryRows(rows: MonthlyCategoryRow[]): MonthlyByCategorySeries {
   return out;
 }
 
-/** Spec 65 — one RPC scan; no fetch-all. */
+/** Spec 65 — one RPC scan; no fetch-all. Split txs contribute slices only (never label+split). */
 export async function loadMonthlyByCategory(
   admin: AdminClient,
   clientUserId: string,
