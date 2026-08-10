@@ -1,0 +1,20 @@
+# Normalize line endings: store LF in the repo, let the working tree use the
+# machine's native endings. Prevents the whole-tree CRLF<->LF flip.
+* text=auto
+
+# Binary types git must never normalise (would corrupt them).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.zip binary
