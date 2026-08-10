@@ -2377,6 +2377,16 @@ export type Database = {
         }
         Returns: Json
       }
+      treasury_monthly_by_category: {
+        Args: {
+          p_account_id: string
+          p_client: string
+          p_direction?: string | null
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       treasury_monthly_outflows: {
         Args: {
           p_account_id: string
