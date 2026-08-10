@@ -18,6 +18,12 @@ import type {
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
 import { buildRunwayStatus } from "@/lib/treasury/cash-model-status";
+import { backtestCashModel, type CashModelBacktestRow } from "@/lib/treasury/cash-model-backtest";
+import {
+  computeCashModelInterventions,
+  type CashModelIntervention,
+  toComputeInput,
+} from "@/lib/treasury/cash-model-interventions";
 import type { CashModelTimelineRow } from "@/lib/treasury/cash-model";
 import type { CashModelStudyRow } from "@/lib/treasury/studies";
 
@@ -30,6 +36,8 @@ export type CashModelModelState = {
   scenarios: CashModelScenario[] | null;
   scenarioTimelines: Record<string, CashModelTimelineRow[]> | null;
   runwayStatus: CashModelRunwayStatus | null;
+  interventions: CashModelIntervention[];
+  backtest: CashModelBacktestRow[];
   loading: boolean;
   computing: boolean;
   saving: boolean;
@@ -182,6 +190,31 @@ export function useCashModel(
     return buildRunwayStatus(result.summaries, deferredParams);
   }, [result, deferredParams]);
 
+  const interventions = useMemo((): CashModelIntervention[] => {
+    if (!inputs || !deferredParams || !deferredScenarios || !result || result.refused) {
+      return [];
+    }
+    return computeCashModelInterventions(
+      toComputeInput(inputs, deferredParams, deferredScenarios),
+      deferredParams.selectedScenarioId
+    );
+  }, [inputs, deferredParams, deferredScenarios, result]);
+
+  const backtest = useMemo((): CashModelBacktestRow[] => {
+    if (!inputs || !deferredParams || !deferredScenarios || !result || result.refused) {
+      return [];
+    }
+    return backtestCashModel(
+      inputs.categorySeries,
+      deferredParams.bucketMap ?? {},
+      inputs.openingBalance,
+      inputs.asOf,
+      deferredParams,
+      deferredScenarios,
+      { fullTimeline: result.timeline }
+    );
+  }, [inputs, deferredParams, deferredScenarios, result]);
+
   const computing =
     (params !== deferredParams || scenarios !== deferredScenarios) &&
     params != null &&
@@ -294,6 +327,8 @@ export function useCashModel(
     scenarios,
     scenarioTimelines,
     runwayStatus,
+    interventions,
+    backtest,
     loading: loadingStudy || loadingInputs,
     computing,
     saving,

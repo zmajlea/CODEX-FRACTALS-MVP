@@ -1,10 +1,13 @@
 "use client";
 
+import { CashModelBacktestSection } from "@/components/operator/treasury/cash-model/CashModelBacktestSection";
 import { CashModelCommittedFlowsCard } from "@/components/operator/treasury/cash-model/CashModelCommittedFlowsCard";
 import { CashModelCoverageMeter } from "@/components/operator/treasury/cash-model/CashModelCoverageMeter";
 import { CashModelExplainChart } from "@/components/operator/treasury/cash-model/CashModelExplainChart";
+import { CashModelInterventionsCard } from "@/components/operator/treasury/cash-model/CashModelInterventionsCard";
 import { CashModelRunwayChart } from "@/components/operator/treasury/cash-model/CashModelRunwayChart";
 import type { CashModelBucketKey } from "@/lib/treasury/cash-model-types";
+import { downloadCashModelReportHtml } from "@/lib/treasury/cash-model-report";
 import type { CashModelModelState } from "@/components/operator/treasury/cash-model/useCashModel";
 
 type Props = {
@@ -14,6 +17,7 @@ type Props = {
   onAccountIdChange: (id: string) => void;
   model: CashModelModelState;
   embedded?: boolean;
+  clientName?: string;
 };
 
 const ASSUMPTION_ROWS: Array<{
@@ -54,6 +58,7 @@ export function TreasuryCashModelPanel({
   accountId,
   onAccountIdChange,
   model,
+  clientName = "Client",
 }: Props) {
   const {
     study,
@@ -61,6 +66,9 @@ export function TreasuryCashModelPanel({
     params,
     scenarios,
     scenarioTimelines,
+    runwayStatus,
+    interventions,
+    backtest,
     loading,
     computing,
     saving,
@@ -78,6 +86,24 @@ export function TreasuryCashModelPanel({
   const selectedSummary = result?.summaries.find(
     (s) => s.scenarioId === params?.selectedScenarioId
   );
+
+  const accountName =
+    accounts.find((a) => a.id === accountId)?.name ?? accountId;
+
+  function exportReport() {
+    if (!result || !params || !scenarios) return;
+    downloadCashModelReportHtml({
+      clientName,
+      accountName,
+      generatedAt: new Date().toISOString().slice(0, 10),
+      result,
+      params,
+      scenarios,
+      runwayStatus,
+      interventions,
+      backtest,
+    });
+  }
 
   if (loading) {
     return <p className="treasury-meta">Loading cash model…</p>;
@@ -114,6 +140,14 @@ export function TreasuryCashModelPanel({
           onClick={() => void saveStudy()}
         >
           {saving ? "Saving…" : "Save snapshot"}
+        </button>
+        <button
+          type="button"
+          className="chip"
+          disabled={!result || result.refused}
+          onClick={exportReport}
+        >
+          Export report
         </button>
         {computing ? <span className="chip prov-assumed">computing…</span> : null}
       </div>
@@ -183,6 +217,13 @@ export function TreasuryCashModelPanel({
             clientUserId={clientUserId}
             accountId={accountId}
           />
+
+          <CashModelInterventionsCard
+            interventions={interventions}
+            hasBreach={!selectedSummary?.noBreachInHorizon}
+          />
+
+          <CashModelBacktestSection rows={backtest} />
 
           <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
             <p className="sec-title mb-2">Assumptions</p>

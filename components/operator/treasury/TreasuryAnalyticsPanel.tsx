@@ -181,6 +181,7 @@ export function TreasuryAnalyticsPanel({
           accountId={accountId}
           onAccountIdChange={setAccountId}
           model={cashModel}
+          clientName={clientName}
         />
       </section>
 
