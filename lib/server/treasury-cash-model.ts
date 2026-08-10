@@ -33,11 +33,12 @@ export async function loadCashModelInputs(
   asOf?: string
 ): Promise<CashModelLoadedInputs> {
   const asOfDate = (asOf ?? todayIso()).slice(0, 10);
-  const from = subtractMonths(asOfDate.slice(0, 7), 36);
+  // subtractMonths returns YYYY-MM-DD — do not append another "-01"
+  const from = subtractMonths(asOfDate, 36);
 
   const categorySeries = await loadMonthlyByCategory(admin, clientUserId, {
     accountId,
-    from: `${from}-01`,
+    from,
     to: asOfDate,
   });
 
