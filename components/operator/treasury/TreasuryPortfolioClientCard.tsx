@@ -1,5 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { CashModelRunwayChip } from "@/components/operator/treasury/cash-model/CashModelRunwayChip";
 import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import type { CashModelRunwayStatus } from "@/lib/treasury/cash-model-types";
 import { isDemoPortfolioInstrument } from "@/lib/treasury/is-demo-tenant";
 import type { OperatorTreasuryClientRow } from "@/components/operator/OperatorTreasuryPortfolio";
 
@@ -51,6 +56,27 @@ export function TreasuryPortfolioClientCard({ row, demo = false }: Props) {
   const href = `/operator/treasury/clients/${row.client_user_id}`;
   const className = `clcard${attn ? " attn" : ""}`;
 
+  const [runwayStatus, setRunwayStatus] = useState<CashModelRunwayStatus | null>(null);
+
+  useEffect(() => {
+    if (!openable) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/operator/treasury/clients/${row.client_user_id}/cash-model/status`
+        );
+        const json = (await res.json()) as { status?: CashModelRunwayStatus | null };
+        if (!cancelled) setRunwayStatus(json.status ?? null);
+      } catch {
+        if (!cancelled) setRunwayStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [openable, row.client_user_id]);
+
   const body = (
     <>
       <div className="cl-head">
@@ -77,6 +103,16 @@ export function TreasuryPortfolioClientCard({ row, demo = false }: Props) {
           <span className="cl-stat-n num">{row.needs_label_count ?? 0}</span>
         </div>
       </div>
+      {runwayStatus ? (
+        <div className="cl-rows">
+          <div className="cl-r">
+            <span className="cl-k">Runway</span>
+            <span className="cl-v">
+              <CashModelRunwayChip status={runwayStatus} compact />
+            </span>
+          </div>
+        </div>
+      ) : null}
       {nextNote || watchNote ? (
         <div className="cl-rows">
           {nextNote ? (

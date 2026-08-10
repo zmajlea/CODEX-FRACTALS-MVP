@@ -5,6 +5,7 @@ import { AnalyticsShell } from "@/components/operator/treasury/analytics/Analyti
 import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { useCashModel } from "@/components/operator/treasury/cash-model/useCashModel";
+import { CashModelRunwayChip } from "@/components/operator/treasury/cash-model/CashModelRunwayChip";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   SummaryBucket,
@@ -83,6 +84,12 @@ export function TreasuryAnalyticsPanel({
           <div className="eyebrow">Treasury record</div>
           <h1 className="title">Analytics</h1>
         </div>
+        {view === "cash_model" ? (
+          <CashModelRunwayChip
+            status={cashModel.runwayStatus}
+            computing={cashModel.computing}
+          />
+        ) : null}
       </div>
       <p className="span-line">
         Cash model projects runway from labeled history; Studies holds saved

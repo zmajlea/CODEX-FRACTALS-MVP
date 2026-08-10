@@ -8,6 +8,7 @@ import type {
   CashModelParams,
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
+import { buildRunwayStatus } from "@/lib/treasury/cash-model-status";
 import type { MonthlyByCategorySeries } from "@/lib/treasury/load-monthly-by-category";
 
 export type CashModelLoadedInputs = {
@@ -31,9 +32,10 @@ export function buildCashModelDerivedSnapshot(
   result: CashModelResult,
   params: CashModelParams,
   openingBalanceRaw: number | null,
-  asOf: string
+  asOf: string,
+  includeRunwayStatus = false
 ): CashModelDerivedSnapshot {
-  return {
+  const snapshot: CashModelDerivedSnapshot = {
     bucketBaselines: result.bucketBaselines,
     coveragePct: result.coveragePct,
     bucketMap: params.bucketMap ?? {},
@@ -42,6 +44,10 @@ export function buildCashModelDerivedSnapshot(
     historyMonthCount: result.completeMonths.length,
     historyDerived: true,
   };
+  if (includeRunwayStatus && result.summaries.length > 0) {
+    snapshot.runwayStatus = buildRunwayStatus(result.summaries, params);
+  }
+  return snapshot;
 }
 
 export function composeCashModelResponse(

@@ -38,6 +38,15 @@ export type CashModelParams = {
   excludedMonths: Array<{ month: string; reason: string }>;
 };
 
+export type CashModelRunwayStatus = {
+  level: "green" | "amber" | "red";
+  label: string;
+  selectedRunwayMonths: number | null;
+  selectedBreachMonth: string | null;
+  downsideBreachMonth: string | null;
+  noBreachInHorizon: boolean;
+};
+
 export type CashModelDerivedSnapshot = {
   bucketBaselines: Partial<Record<CashModelBucketKey, number>>;
   coveragePct: number;
@@ -47,6 +56,8 @@ export type CashModelDerivedSnapshot = {
   historyMonthCount: number;
   /** Backward-walk history is approximate — always disclosed in UI. */
   historyDerived: boolean;
+  /** Saved chip summary for portfolio triage — no category reload. */
+  runwayStatus?: CashModelRunwayStatus;
 };
 
 function unitFactors(): Record<CashModelBucketKey, number> {

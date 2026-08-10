@@ -14,8 +14,11 @@ import {
 } from "@/lib/treasury/cash-model-compose";
 import type {
   CashModelParams,
+  CashModelRunwayStatus,
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
+import { buildRunwayStatus } from "@/lib/treasury/cash-model-status";
+import type { CashModelTimelineRow } from "@/lib/treasury/cash-model";
 import type { CashModelStudyRow } from "@/lib/treasury/studies";
 
 export type CashModelApiResponse = CashModelComposedResponse;
@@ -25,6 +28,8 @@ export type CashModelModelState = {
   result: CashModelApiResponse | null;
   params: CashModelParams | null;
   scenarios: CashModelScenario[] | null;
+  scenarioTimelines: Record<string, CashModelTimelineRow[]> | null;
+  runwayStatus: CashModelRunwayStatus | null;
   loading: boolean;
   computing: boolean;
   saving: boolean;
@@ -158,6 +163,25 @@ export function useCashModel(
     return composeCashModelResponse(inputs, deferredParams, deferredScenarios);
   }, [inputs, deferredParams, deferredScenarios]);
 
+  const scenarioTimelines = useMemo((): Record<string, CashModelTimelineRow[]> | null => {
+    if (!inputs || !deferredParams || !deferredScenarios) return null;
+    const out: Record<string, CashModelTimelineRow[]> = {};
+    for (const s of deferredScenarios) {
+      const r = composeCashModelResponse(
+        inputs,
+        { ...deferredParams, selectedScenarioId: s.id },
+        deferredScenarios
+      );
+      out[s.id] = r.timeline;
+    }
+    return out;
+  }, [inputs, deferredParams, deferredScenarios]);
+
+  const runwayStatus = useMemo((): CashModelRunwayStatus | null => {
+    if (!result || !deferredParams) return null;
+    return buildRunwayStatus(result.summaries, deferredParams);
+  }, [result, deferredParams]);
+
   const computing =
     (params !== deferredParams || scenarios !== deferredScenarios) &&
     params != null &&
@@ -232,7 +256,10 @@ export function useCashModel(
             scope: study.scope,
             params,
             scenarios,
-            derived_snapshot: authoritative.derived_snapshot,
+            derived_snapshot: {
+              ...authoritative.derived_snapshot,
+              runwayStatus: buildRunwayStatus(authoritative.summaries, params),
+            },
           }),
         }
       );
@@ -265,6 +292,8 @@ export function useCashModel(
     result,
     params,
     scenarios,
+    scenarioTimelines,
+    runwayStatus,
     loading: loadingStudy || loadingInputs,
     computing,
     saving,

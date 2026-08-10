@@ -1,5 +1,9 @@
 "use client";
 
+import { CashModelCommittedFlowsCard } from "@/components/operator/treasury/cash-model/CashModelCommittedFlowsCard";
+import { CashModelCoverageMeter } from "@/components/operator/treasury/cash-model/CashModelCoverageMeter";
+import { CashModelExplainChart } from "@/components/operator/treasury/cash-model/CashModelExplainChart";
+import { CashModelRunwayChart } from "@/components/operator/treasury/cash-model/CashModelRunwayChart";
 import type { CashModelBucketKey } from "@/lib/treasury/cash-model-types";
 import type { CashModelModelState } from "@/components/operator/treasury/cash-model/useCashModel";
 
@@ -45,6 +49,7 @@ function provClass(source: "assumed" | "user-provided"): string {
 }
 
 export function TreasuryCashModelPanel({
+  clientUserId,
   accounts,
   accountId,
   onAccountIdChange,
@@ -55,6 +60,7 @@ export function TreasuryCashModelPanel({
     result,
     params,
     scenarios,
+    scenarioTimelines,
     loading,
     computing,
     saving,
@@ -155,6 +161,28 @@ export function TreasuryCashModelPanel({
               <span className="chip prov-assumed">History ending derived</span>
             </div>
           </div>
+
+          <CashModelRunwayChart
+            asOf={result.asOf}
+            threshold={selected?.minCashThreshold ?? 0}
+            selectedTimeline={result.timeline}
+            downsideTimeline={scenarioTimelines?.downside}
+            selectedScenarioId={params.selectedScenarioId}
+            selectedSummary={selectedSummary}
+          />
+
+          <CashModelCoverageMeter
+            coveragePct={result.coveragePct}
+            degradedToTotals={result.degradedToTotals}
+            timeline={result.timeline}
+          />
+
+          <CashModelExplainChart timeline={result.timeline} />
+
+          <CashModelCommittedFlowsCard
+            clientUserId={clientUserId}
+            accountId={accountId}
+          />
 
           <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
             <p className="sec-title mb-2">Assumptions</p>
