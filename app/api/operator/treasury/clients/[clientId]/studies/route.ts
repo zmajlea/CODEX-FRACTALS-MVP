@@ -7,10 +7,20 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
+import { asTreasuryStudyRow } from "@/lib/server/treasury-study-mapper";
+import {
+  defaultCashModelParams,
+  defaultCashModelScenarios,
+  emptyCashModelDerivedSnapshot,
+  isCashModelDerivedSnapshot,
+  isCashModelParams,
+  isCashModelScenarioArray,
+} from "@/lib/treasury/cash-model-types";
 import type {
   DerivedSnapshot,
   StudyParams,
   StudyScope,
+  StudyType,
   TreasuryStudyRow,
 } from "@/lib/treasury/studies";
 import type { SpendPlanScenario } from "@/lib/treasury/spend-plan";
@@ -18,21 +28,21 @@ import type { Database, Json } from "@/lib/database.types";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
-function asStudy(row: Database["public"]["Tables"]["treasury_studies"]["Row"]): TreasuryStudyRow {
-  return {
-    id: row.id,
-    client_user_id: row.client_user_id,
-    operator_tenant_id: row.operator_tenant_id,
-    created_by: row.created_by,
-    name: row.name,
-    type: row.type as "spend_plan",
-    scope: row.scope as StudyScope,
-    params: row.params as StudyParams,
-    scenarios: row.scenarios as SpendPlanScenario[],
-    derived_snapshot: row.derived_snapshot as DerivedSnapshot,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
+function validateStudyPayload(
+  type: StudyType,
+  params: unknown,
+  scenarios: unknown,
+  derived_snapshot: unknown
+): string | null {
+  if (type === "spend_plan") {
+    return null;
+  }
+  if (!isCashModelParams(params)) return "Invalid cash_model params";
+  if (!isCashModelScenarioArray(scenarios)) return "Invalid cash_model scenarios";
+  if (!isCashModelDerivedSnapshot(derived_snapshot)) {
+    return "Invalid cash_model derived_snapshot";
+  }
+  return null;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -50,7 +60,7 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  await writeOperatorTreasuryReadAudit(guard.admin, {
+  void writeOperatorTreasuryReadAudit(guard.admin, {
     actorUserId: guard.user.id,
     clientUserId: clientId,
     tenantId: guard.grant.tenantId,
@@ -59,17 +69,18 @@ export async function GET(_request: Request, context: RouteContext) {
   });
 
   return NextResponse.json({
-    studies: (data ?? []).map(asStudy),
+    studies: (data ?? []).map(asTreasuryStudyRow),
   });
 }
 
 type PostBody = {
   name?: string;
-  type?: string;
+  type?: StudyType;
   scope?: StudyScope;
-  params?: StudyParams;
-  scenarios?: SpendPlanScenario[];
-  derived_snapshot?: DerivedSnapshot;
+  params?: StudyParams | unknown;
+  scenarios?: SpendPlanScenario[] | unknown;
+  derived_snapshot?: DerivedSnapshot | unknown;
+  is_primary?: boolean;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -98,9 +109,19 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const studyType = body.type ?? "spend_plan";
-  if (studyType !== "spend_plan") {
+  const studyType: StudyType = body.type ?? "spend_plan";
+  if (studyType !== "spend_plan" && studyType !== "cash_model") {
     return NextResponse.json({ error: "Unsupported study type" }, { status: 400 });
+  }
+
+  const validationErr = validateStudyPayload(
+    studyType,
+    body.params,
+    body.scenarios,
+    body.derived_snapshot
+  );
+  if (validationErr) {
+    return NextResponse.json({ error: validationErr }, { status: 400 });
   }
 
   const insert: Database["public"]["Tables"]["treasury_studies"]["Insert"] = {
@@ -109,6 +130,7 @@ export async function POST(request: Request, context: RouteContext) {
     created_by: guard.user.id,
     name,
     type: studyType,
+    is_primary: body.is_primary ?? false,
     scope: body.scope as unknown as Json,
     params: body.params as unknown as Json,
     scenarios: body.scenarios as unknown as Json,
@@ -125,7 +147,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  await writeTreasuryAudit(guard.admin, {
+  void writeTreasuryAudit(guard.admin, {
     actorUserId: guard.user.id,
     eventType: "treasury_study_saved",
     payload: {
@@ -136,5 +158,5 @@ export async function POST(request: Request, context: RouteContext) {
     },
   });
 
-  return NextResponse.json({ study: asStudy(data) });
+  return NextResponse.json({ study: asTreasuryStudyRow(data) });
 }

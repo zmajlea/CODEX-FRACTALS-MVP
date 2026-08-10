@@ -3,7 +3,14 @@
  * Studies are operator-owned; not sealed; client never sees them.
  */
 
+import type {
+  CashModelDerivedSnapshot,
+  CashModelParams,
+  CashModelScenario,
+} from "@/lib/treasury/cash-model-types";
 import type { SpendPlanScenario, SeasonalIndexResult } from "@/lib/treasury/spend-plan";
+
+export type StudyType = "spend_plan" | "cash_model";
 
 export type StudyScope = {
   accountId: string;
@@ -57,20 +64,33 @@ export type DerivedSnapshot = {
   historyMonthCount: number;
 };
 
-export type TreasuryStudyRow = {
+export type TreasuryStudyRowBase = {
   id: string;
   client_user_id: string;
   operator_tenant_id: string | null;
   created_by: string | null;
   name: string;
-  type: "spend_plan";
+  is_primary: boolean;
   scope: StudyScope;
-  params: StudyParams;
-  scenarios: SpendPlanScenario[];
-  derived_snapshot: DerivedSnapshot;
   created_at: string;
   updated_at: string;
 };
+
+export type SpendPlanStudyRow = TreasuryStudyRowBase & {
+  type: "spend_plan";
+  params: StudyParams;
+  scenarios: SpendPlanScenario[];
+  derived_snapshot: DerivedSnapshot;
+};
+
+export type CashModelStudyRow = TreasuryStudyRowBase & {
+  type: "cash_model";
+  params: CashModelParams;
+  scenarios: CashModelScenario[];
+  derived_snapshot: CashModelDerivedSnapshot;
+};
+
+export type TreasuryStudyRow = SpendPlanStudyRow | CashModelStudyRow;
 
 export type DriftField =
   | "l0"

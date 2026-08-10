@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
+import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
 import { StudyList } from "@/components/operator/treasury/analytics/StudyList";
 import { useSpendPlanModel } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
 import { PickButton } from "@/components/operator/treasury/PickButton";
@@ -101,6 +102,22 @@ export function AnalyticsShell({
     void refreshList();
   }, [refreshList]);
 
+  // Spec 65 — idempotent primary cash_model row per account (navigation-safe)
+  useEffect(() => {
+    if (!accountId) return;
+    void (async () => {
+      await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/studies/ensure-primary-cash-model`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId }),
+        }
+      );
+      await refreshList();
+    })();
+  }, [accountId, clientUserId, refreshList]);
+
   // Deep-link / initial study
   useEffect(() => {
     if (!initialStudyId || studies.length === 0) return;
@@ -108,9 +125,9 @@ export function AnalyticsShell({
     if (row) setPendingLoad(row);
   }, [initialStudyId, studies]);
 
-  // Apply pending load once history for that account is ready
+  // Apply pending load once history for that account is ready (spend_plan only)
   useEffect(() => {
-    if (!pendingLoad) return;
+    if (!pendingLoad || pendingLoad.type !== "spend_plan") return;
     const row = pendingLoad;
     if (accountId !== row.scope.accountId) {
       onAccountIdChange(row.scope.accountId);
@@ -161,7 +178,10 @@ export function AnalyticsShell({
   ]);
 
   const dirty = useMemo(() => {
-    if (!savedRow || !modelState.inputs) return studyId == null;
+    if (savedRow?.type === "cash_model") return false;
+    if (!savedRow || savedRow.type !== "spend_plan" || !modelState.inputs) {
+      return studyId == null;
+    }
     const p = savedRow.params;
     const i = modelState.inputs;
     return (
@@ -204,11 +224,23 @@ export function AnalyticsShell({
   const handleSelect = (id: string) => {
     const row = studies.find((s) => s.id === id);
     if (!row) return;
+    if (row.type === "cash_model") {
+      if (accountId !== row.scope.accountId) {
+        onAccountIdChange(row.scope.accountId);
+      }
+      setStudyId(row.id);
+      setStudyName(row.name);
+      setSavedRow(row);
+      setPendingLoad(null);
+      setDrift(null);
+      setMessage(null);
+      return;
+    }
     setPendingLoad(row);
   };
 
   const handleKeepSaved = () => {
-    if (!savedRow || !drift?.length) return;
+    if (!savedRow || savedRow.type !== "spend_plan" || !drift?.length) return;
     // Kept-stale baselines are adjusted — same path as explicit override.
     const next = overridesFromKeepSaved(
       savedRow.derived_snapshot,
@@ -229,6 +261,10 @@ export function AnalyticsShell({
   };
 
   const handleSave = async () => {
+    if (savedRow?.type === "cash_model") {
+      setMessage("Cash model save ships in commit 3.");
+      return;
+    }
     if (!modelState.inputs || !modelState.currentSnapshot || !modelState.scenarios) {
       setMessage("Nothing to save yet — pick an account with history.");
       return;
@@ -366,6 +402,8 @@ export function AnalyticsShell({
     };
   }, [studyId, studyName]);
 
+  const activeStudyType = savedRow?.type ?? "spend_plan";
+
   return (
     <div className="analytics-shell grid gap-4 lg:grid-cols-[240px_1fr]">
       <aside
@@ -397,12 +435,12 @@ export function AnalyticsShell({
           <button
             type="button"
             className="chip"
-            disabled={busy || !modelState.currentSnapshot}
+            disabled={busy || activeStudyType === "cash_model" || !modelState.currentSnapshot}
             onClick={() => void handleSave()}
           >
             {busy ? "Saving…" : studyId ? "Save" : "Save as study"}
           </button>
-          {studyId ? (
+          {studyId && activeStudyType !== "cash_model" ? (
             <button
               type="button"
               className="chip"
@@ -458,17 +496,24 @@ export function AnalyticsShell({
           <p className="treasury-meta-fine">{message}</p>
         ) : null}
 
-        <TreasurySpendPlanPanel
-          clientUserId={clientUserId}
-          accountsData={accountsData}
-          accountId={accountId}
-          onAccountIdChange={onAccountIdChange}
-          modelState={modelState}
-          studyId={studyId}
-          embedded={embedded}
-          clientName={clientName}
-          onPick={onPick}
-        />
+        {activeStudyType === "cash_model" && savedRow?.type === "cash_model" ? (
+          <TreasuryCashModelPanel
+            studyName={studyName}
+            accountId={accountId}
+          />
+        ) : (
+          <TreasurySpendPlanPanel
+            clientUserId={clientUserId}
+            accountsData={accountsData}
+            accountId={accountId}
+            onAccountIdChange={onAccountIdChange}
+            modelState={modelState}
+            studyId={studyId}
+            embedded={embedded}
+            clientName={clientName}
+            onPick={onPick}
+          />
+        )}
       </div>
     </div>
   );

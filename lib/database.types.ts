@@ -1625,6 +1625,7 @@ export type Database = {
           created_by: string | null
           derived_snapshot: Json
           id: string
+          is_primary: boolean
           name: string
           operator_tenant_id: string | null
           params: Json
@@ -1639,6 +1640,7 @@ export type Database = {
           created_by?: string | null
           derived_snapshot: Json
           id?: string
+          is_primary?: boolean
           name: string
           operator_tenant_id?: string | null
           params: Json
@@ -1653,6 +1655,7 @@ export type Database = {
           created_by?: string | null
           derived_snapshot?: Json
           id?: string
+          is_primary?: boolean
           name?: string
           operator_tenant_id?: string | null
           params?: Json
@@ -2350,6 +2353,20 @@ export type Database = {
           p_payee_query: string
         }
         Returns: Json
+      }
+      treasury_ensure_primary_cash_model: {
+        Args: {
+          p_account: string
+          p_actor: string
+          p_client: string
+          p_derived_snapshot?: Json
+          p_name?: string
+          p_params?: Json
+          p_scenarios?: Json
+          p_scope?: Json
+          p_tenant: string
+        }
+        Returns: string
       }
       treasury_confirm_rule_suggestions: {
         Args: {

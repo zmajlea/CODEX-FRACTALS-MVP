@@ -7,11 +7,20 @@ import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
+import { asTreasuryStudyRow } from "@/lib/server/treasury-study-mapper";
+import {
+  defaultCashModelParams,
+  defaultCashModelScenarios,
+  emptyCashModelDerivedSnapshot,
+  isCashModelDerivedSnapshot,
+  isCashModelParams,
+  isCashModelScenarioArray,
+} from "@/lib/treasury/cash-model-types";
 import type {
   DerivedSnapshot,
   StudyParams,
   StudyScope,
-  TreasuryStudyRow,
+  StudyType,
 } from "@/lib/treasury/studies";
 import type { SpendPlanScenario } from "@/lib/treasury/spend-plan";
 import type { Database, Json } from "@/lib/database.types";
@@ -20,21 +29,19 @@ type RouteContext = {
   params: Promise<{ clientId: string; studyId: string }>;
 };
 
-function asStudy(row: Database["public"]["Tables"]["treasury_studies"]["Row"]): TreasuryStudyRow {
-  return {
-    id: row.id,
-    client_user_id: row.client_user_id,
-    operator_tenant_id: row.operator_tenant_id,
-    created_by: row.created_by,
-    name: row.name,
-    type: row.type as "spend_plan",
-    scope: row.scope as StudyScope,
-    params: row.params as StudyParams,
-    scenarios: row.scenarios as SpendPlanScenario[],
-    derived_snapshot: row.derived_snapshot as DerivedSnapshot,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
+function validateStudyPayload(
+  type: StudyType,
+  params: unknown,
+  scenarios: unknown,
+  derived_snapshot: unknown
+): string | null {
+  if (type === "spend_plan") return null;
+  if (!isCashModelParams(params)) return "Invalid cash_model params";
+  if (!isCashModelScenarioArray(scenarios)) return "Invalid cash_model scenarios";
+  if (!isCashModelDerivedSnapshot(derived_snapshot)) {
+    return "Invalid cash_model derived_snapshot";
+  }
+  return null;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -56,7 +63,7 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await writeOperatorTreasuryReadAudit(guard.admin, {
+  void writeOperatorTreasuryReadAudit(guard.admin, {
     actorUserId: guard.user.id,
     clientUserId: clientId,
     tenantId: guard.grant.tenantId,
@@ -64,15 +71,15 @@ export async function GET(_request: Request, context: RouteContext) {
     surface: "analytics",
   });
 
-  return NextResponse.json({ study: asStudy(data) });
+  return NextResponse.json({ study: asTreasuryStudyRow(data) });
 }
 
 type PatchBody = {
   name?: string;
   scope?: StudyScope;
-  params?: StudyParams;
-  scenarios?: SpendPlanScenario[];
-  derived_snapshot?: DerivedSnapshot;
+  params?: StudyParams | unknown;
+  scenarios?: SpendPlanScenario[] | unknown;
+  derived_snapshot?: DerivedSnapshot | unknown;
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -85,6 +92,46 @@ export async function PATCH(request: Request, context: RouteContext) {
     body = (await request.json()) as PatchBody;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { data: existing, error: loadErr } = await guard.admin
+    .from("treasury_studies")
+    .select("type")
+    .eq("id", studyId)
+    .eq("client_user_id", clientId)
+    .maybeSingle();
+
+  if (loadErr) {
+    return NextResponse.json({ error: loadErr.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const studyType = existing.type as StudyType;
+
+  if (
+    body.params !== undefined ||
+    body.scenarios !== undefined ||
+    body.derived_snapshot !== undefined
+  ) {
+    if (studyType === "cash_model") {
+      if (body.params !== undefined && !isCashModelParams(body.params)) {
+        return NextResponse.json({ error: "Invalid cash_model params" }, { status: 400 });
+      }
+      if (body.scenarios !== undefined && !isCashModelScenarioArray(body.scenarios)) {
+        return NextResponse.json({ error: "Invalid cash_model scenarios" }, { status: 400 });
+      }
+      if (
+        body.derived_snapshot !== undefined &&
+        !isCashModelDerivedSnapshot(body.derived_snapshot)
+      ) {
+        return NextResponse.json(
+          { error: "Invalid cash_model derived_snapshot" },
+          { status: 400 }
+        );
+      }
+    }
   }
 
   const update: Database["public"]["Tables"]["treasury_studies"]["Update"] = {};
@@ -124,7 +171,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   if (body.params !== undefined || body.scenarios !== undefined || body.derived_snapshot !== undefined) {
-    await writeTreasuryAudit(guard.admin, {
+    void writeTreasuryAudit(guard.admin, {
       actorUserId: guard.user.id,
       eventType: "treasury_study_saved",
       payload: {
@@ -135,13 +182,27 @@ export async function PATCH(request: Request, context: RouteContext) {
     });
   }
 
-  return NextResponse.json({ study: asStudy(data) });
+  return NextResponse.json({ study: asTreasuryStudyRow(data) });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
   const { clientId, studyId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
+
+  const { data: existing } = await guard.admin
+    .from("treasury_studies")
+    .select("is_primary, type")
+    .eq("id", studyId)
+    .eq("client_user_id", clientId)
+    .maybeSingle();
+
+  if (existing?.is_primary && existing.type === "cash_model") {
+    return NextResponse.json(
+      { error: "Cannot delete the primary cash model study" },
+      { status: 400 }
+    );
+  }
 
   const { data, error } = await guard.admin
     .from("treasury_studies")
@@ -158,7 +219,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await writeTreasuryAudit(guard.admin, {
+  void writeTreasuryAudit(guard.admin, {
     actorUserId: guard.user.id,
     eventType: "treasury_study_deleted",
     payload: {
