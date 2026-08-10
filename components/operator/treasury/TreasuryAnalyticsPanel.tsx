@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
+import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
 import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
+import { useCashModel } from "@/components/operator/treasury/cash-model/useCashModel";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
   SummaryBucket,
   TreasuryAccountsResponse,
 } from "@/lib/treasury/types";
 
-export type AnalyticsView = "forecast" | "analyzer";
+export type AnalyticsView = "cash_model" | "studies" | "forecast";
 
 type Props = {
   clientUserId: string;
@@ -29,7 +31,7 @@ export function TreasuryAnalyticsPanel({
   demo = false,
   hasSyncedData = true,
   accountsData,
-  initialView = "forecast",
+  initialView = "cash_model",
   initialStudyId,
   clientName,
   onSelectPeriod,
@@ -54,7 +56,6 @@ export function TreasuryAnalyticsPanel({
     setView(initialView);
   }, [initialView]);
 
-  // Default to first account when list arrives or current id disappears.
   useEffect(() => {
     if (accounts.length === 0) {
       if (accountId) setAccountId("");
@@ -64,6 +65,8 @@ export function TreasuryAnalyticsPanel({
       setAccountId(accounts[0]!.id);
     }
   }, [accounts, accountId]);
+
+  const cashModel = useCashModel(clientUserId, accountId);
 
   const showView = useCallback(
     (next: AnalyticsView) => {
@@ -82,8 +85,8 @@ export function TreasuryAnalyticsPanel({
         </div>
       </div>
       <p className="span-line">
-        Two engines, one place. Forecast projects how cash runs; Analyzer tests
-        whether the reserve is enough. Each number states where it came from.
+        Cash model projects runway from labeled history; Studies holds saved
+        scenarios and spend plans. Each number states where it came from.
         {demo ? (
           <>
             {" "}
@@ -93,6 +96,48 @@ export function TreasuryAnalyticsPanel({
       </p>
 
       <div className="subtabs" role="tablist" aria-label="Analytics">
+        <button
+          type="button"
+          role="tab"
+          id="t-cash-model"
+          aria-selected={view === "cash_model"}
+          aria-controls="p-cash-model"
+          onClick={() => showView("cash_model")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M4 19h16M6 19V9M11 19V5M16 19v-7" />
+          </svg>
+          Cash model
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="t-studies"
+          aria-selected={view === "studies"}
+          aria-controls="p-studies"
+          onClick={() => showView("studies")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M4 6h16M4 12h10M4 18h7" />
+          </svg>
+          Studies
+        </button>
         <button
           type="button"
           role="tab"
@@ -115,28 +160,41 @@ export function TreasuryAnalyticsPanel({
           </svg>
           Forecast
         </button>
-        <button
-          type="button"
-          role="tab"
-          id="t-analyzer"
-          aria-selected={view === "analyzer"}
-          aria-controls="p-analyzer"
-          onClick={() => showView("analyzer")}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M4 19h16M6 19V9M11 19V5M16 19v-7" />
-          </svg>
-          Analyzer
-        </button>
       </div>
+
+      <section
+        className={`tabpanel${view === "cash_model" ? " on" : ""}`}
+        id="p-cash-model"
+        role="tabpanel"
+        aria-labelledby="t-cash-model"
+      >
+        <TreasuryCashModelPanel
+          clientUserId={clientUserId}
+          accounts={accounts}
+          accountId={accountId}
+          onAccountIdChange={setAccountId}
+          model={cashModel}
+        />
+      </section>
+
+      <section
+        className={`tabpanel${view === "studies" ? " on" : ""}`}
+        id="p-studies"
+        role="tabpanel"
+        aria-labelledby="t-studies"
+      >
+        <AnalyticsShell
+          clientUserId={clientUserId}
+          accountsData={accountsData}
+          accounts={accounts}
+          accountId={accountId}
+          onAccountIdChange={setAccountId}
+          initialStudyId={initialStudyId}
+          embedded
+          clientName={clientName}
+          onPick={onPick}
+        />
+      </section>
 
       <section
         className={`tabpanel${view === "forecast" ? " on" : ""}`}
@@ -152,25 +210,6 @@ export function TreasuryAnalyticsPanel({
           accountId={accountId}
           onAccountIdChange={setAccountId}
           onSelectPeriod={onSelectPeriod}
-          onPick={onPick}
-        />
-      </section>
-
-      <section
-        className={`tabpanel${view === "analyzer" ? " on" : ""}`}
-        id="p-analyzer"
-        role="tabpanel"
-        aria-labelledby="t-analyzer"
-      >
-        <AnalyticsShell
-          clientUserId={clientUserId}
-          accountsData={accountsData}
-          accounts={accounts}
-          accountId={accountId}
-          onAccountIdChange={setAccountId}
-          initialStudyId={initialStudyId}
-          embedded
-          clientName={clientName}
           onPick={onPick}
         />
       </section>

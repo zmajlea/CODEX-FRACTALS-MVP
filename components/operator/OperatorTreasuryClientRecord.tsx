@@ -66,9 +66,11 @@ function parseInitialAnalyticsView(
   tabParam: string | undefined,
   viewParam: string | undefined
 ): AnalyticsView {
-  if (viewParam === "analyzer" || viewParam === "forecast") return viewParam;
-  if (tabParam === "spend-plan") return "analyzer";
-  return "forecast";
+  if (viewParam === "studies" || viewParam === "analyzer") return "studies";
+  if (viewParam === "cash_model") return "cash_model";
+  if (viewParam === "forecast") return "cash_model";
+  if (tabParam === "spend-plan") return "studies";
+  return "cash_model";
 }
 
 type Props = {
@@ -267,7 +269,7 @@ export function OperatorTreasuryClientRecord({
         setAnalyticsView(opts.view);
       }
       const qs = new URLSearchParams({ tab: next });
-      if (next === "analytics" && view !== "forecast") {
+      if (next === "analytics" && view !== "cash_model") {
         qs.set("view", view);
       }
       router.replace(
@@ -282,7 +284,7 @@ export function OperatorTreasuryClientRecord({
     (view: AnalyticsView) => {
       setAnalyticsView(view);
       const qs = new URLSearchParams({ tab: "analytics" });
-      if (view !== "forecast") qs.set("view", view);
+      if (view !== "cash_model") qs.set("view", view);
       router.replace(
         `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
         { scroll: false }
@@ -478,9 +480,9 @@ export function OperatorTreasuryClientRecord({
     if (nav.kind === "study") {
       setFocusStudyId(nav.id);
       setTab("analytics");
-      setAnalyticsView("analyzer");
+      setAnalyticsView("studies");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=analyzer&study=${nav.id}`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=studies&study=${nav.id}`,
         { scroll: false }
       );
       return;
@@ -502,9 +504,9 @@ export function OperatorTreasuryClientRecord({
         setDateRange({ preset: "custom", from, to });
       }
       setTab("analytics");
-      setAnalyticsView("forecast");
+      setAnalyticsView("cash_model");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=forecast`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics`,
         { scroll: false }
       );
     }

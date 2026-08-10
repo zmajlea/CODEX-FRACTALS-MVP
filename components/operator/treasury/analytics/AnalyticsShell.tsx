@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
-import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
+import { CashModelStudyView } from "@/components/operator/treasury/cash-model/CashModelStudyView";
 import { StudyList } from "@/components/operator/treasury/analytics/StudyList";
 import { useSpendPlanModel } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
 import { PickButton } from "@/components/operator/treasury/PickButton";
@@ -262,7 +262,6 @@ export function AnalyticsShell({
 
   const handleSave = async () => {
     if (savedRow?.type === "cash_model") {
-      setMessage("Cash model save ships in commit 3.");
       return;
     }
     if (!modelState.inputs || !modelState.currentSnapshot || !modelState.scenarios) {
@@ -497,9 +496,12 @@ export function AnalyticsShell({
         ) : null}
 
         {activeStudyType === "cash_model" && savedRow?.type === "cash_model" ? (
-          <TreasuryCashModelPanel
-            studyName={studyName}
+          <CashModelStudyView
+            clientUserId={clientUserId}
+            accounts={accounts}
             accountId={accountId}
+            onAccountIdChange={onAccountIdChange}
+            study={savedRow}
           />
         ) : (
           <TreasurySpendPlanPanel
