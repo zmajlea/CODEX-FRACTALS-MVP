@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
 import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
-import { TreasurySummaryPanel } from "@/components/operator/treasury/TreasurySummaryPanel";
 import { useCashModel } from "@/components/operator/treasury/cash-model/useCashModel";
 import { CashModelRunwayChip } from "@/components/operator/treasury/cash-model/CashModelRunwayChip";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
@@ -12,7 +11,8 @@ import type {
   TreasuryAccountsResponse,
 } from "@/lib/treasury/types";
 
-export type AnalyticsView = "cash_model" | "studies" | "forecast";
+/** Spec 65 Part I — Forecast retired; deep-links to forecast redirect to cash_model. */
+export type AnalyticsView = "cash_model" | "studies";
 
 type Props = {
   clientUserId: string;
@@ -30,12 +30,10 @@ type Props = {
 export function TreasuryAnalyticsPanel({
   clientUserId,
   demo = false,
-  hasSyncedData = true,
   accountsData,
   initialView = "cash_model",
   initialStudyId,
   clientName,
-  onSelectPeriod,
   onPick,
   onViewChange,
 }: Props) {
@@ -145,28 +143,6 @@ export function TreasuryAnalyticsPanel({
           </svg>
           Studies
         </button>
-        <button
-          type="button"
-          role="tab"
-          id="t-forecast"
-          aria-selected={view === "forecast"}
-          aria-controls="p-forecast"
-          onClick={() => showView("forecast")}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <circle cx="12" cy="12" r="8.5" />
-            <path d="M15.5 8.5 13 13l-4.5 2.5L11 11l4.5-2.5Z" />
-          </svg>
-          Forecast
-        </button>
       </div>
 
       <section
@@ -200,24 +176,6 @@ export function TreasuryAnalyticsPanel({
           initialStudyId={initialStudyId}
           embedded
           clientName={clientName}
-          onPick={onPick}
-        />
-      </section>
-
-      <section
-        className={`tabpanel${view === "forecast" ? " on" : ""}`}
-        id="p-forecast"
-        role="tabpanel"
-        aria-labelledby="t-forecast"
-      >
-        <TreasurySummaryPanel
-          clientUserId={clientUserId}
-          hasSyncedData={hasSyncedData}
-          embedded
-          accounts={accounts}
-          accountId={accountId}
-          onAccountIdChange={setAccountId}
-          onSelectPeriod={onSelectPeriod}
           onPick={onPick}
         />
       </section>

@@ -1,3 +1,9 @@
+/**
+ * Spec 65 Part I — operator Forecast surface retired.
+ * Recurrence detection salvaged into `lib/treasury/committed-flows.ts`
+ * (shared `detectCadence` from rule-helpers). This module remains for
+ * historical gate scripts only; the operator `/forecast` route is gone.
+ */
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";

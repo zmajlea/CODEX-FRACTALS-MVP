@@ -1,3 +1,8 @@
+/**
+ * Spec 46 / Spec 50 — operator Forecast + period summary panel.
+ * Spec 65 Part I: retired from Analytics (`Cash model | Studies`). Kept on disk
+ * for revert; not mounted. Uses summary RPC + former forecast route (route removed).
+ */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
