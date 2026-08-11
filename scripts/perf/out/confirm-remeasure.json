@@ -1,0 +1,112 @@
+[
+  {
+    "wall": 127407,
+    "before": 546,
+    "after": 0,
+    "bulk": [
+      {
+        "method": "PATCH",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions/bulk-label",
+        "status": 200,
+        "ms": 127211,
+        "size": 15
+      }
+    ],
+    "note": "from confirm3 trial 1"
+  },
+  {
+    "wall": 128262,
+    "before": 546,
+    "after": 0,
+    "bulk": [
+      {
+        "method": "PATCH",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions/bulk-label",
+        "status": 200,
+        "ms": 128023,
+        "size": 15
+      }
+    ],
+    "hits": [
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions?limit=1",
+        "status": 200,
+        "ms": 1554,
+        "size": 1703
+      },
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/rules/b6e98ac8-31f3-4bf2-a0dd-5e576ec569f1/facets",
+        "status": 200,
+        "ms": 1102,
+        "size": 86
+      },
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions?rule_id=b6e98ac8-31f3-4bf2-a0dd-5e576ec569f1&rule_queue=suggested&limit=50&page=0",
+        "status": 200,
+        "ms": 1499,
+        "size": 73544
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions/bulk-label",
+        "status": 200,
+        "ms": 128023,
+        "size": 15
+      }
+    ]
+  },
+  {
+    "wall": 127033,
+    "before": 546,
+    "after": 0,
+    "bulk": [
+      {
+        "method": "PATCH",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions/bulk-label",
+        "status": 200,
+        "ms": 126816,
+        "size": 15
+      }
+    ],
+    "hits": [
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/accounts",
+        "status": 200,
+        "ms": 2954,
+        "size": 10856
+      },
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/rules/b6e98ac8-31f3-4bf2-a0dd-5e576ec569f1/facets",
+        "status": 200,
+        "ms": 1213,
+        "size": 86
+      },
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions?limit=1",
+        "status": 200,
+        "ms": 1852,
+        "size": 1703
+      },
+      {
+        "method": "GET",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions?rule_id=b6e98ac8-31f3-4bf2-a0dd-5e576ec569f1&rule_queue=suggested&limit=50&page=0",
+        "status": 200,
+        "ms": 1585,
+        "size": 73561
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operator/treasury/clients/6d53f194-e71b-4965-aecc-eab9f81ed311/transactions/bulk-label",
+        "status": 200,
+        "ms": 126816,
+        "size": 15
+      }
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+[treasury] PLAID_CLIENT_ID or PLAID_SECRET missing ΓÇö Plaid routes will fail until configured.
+
+=== csv:0625 ===
+{"granularity":"day","data_span":{"first":"2024-05-28","last":"2026-07-10"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":15,"low":94985.3700000001,"seed_balance":95915.97,"first_period":"2026-07-11","last_period":"2026-07-25"}
+{"granularity":"week","data_span":{"first":"2024-05-28","last":"2026-07-10"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":13,"low":96340.735,"seed_balance":95915.97,"first_period":"2026-07-13","last_period":"2026-10-05"}
+{"granularity":"month","data_span":{"first":"2024-05-28","last":"2026-07-10"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":4,"low":98756.58,"seed_balance":95915.97,"first_period":"2026-08-01","last_period":"2026-11-01"}
+
+=== csv:0871 ===
+{"granularity":"day","data_span":{"first":"2024-05-28","last":"2026-07-03"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":15,"low":28624.41,"seed_balance":28624.41,"first_period":"2026-07-04","last_period":"2026-07-18"}
+{"granularity":"week","data_span":{"first":"2024-05-28","last":"2026-07-03"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":13,"low":28624.41,"seed_balance":28624.41,"first_period":"2026-07-06","last_period":"2026-09-28"}
+{"granularity":"month","data_span":{"first":"2024-05-28","last":"2026-07-03"},"refuse_projection":false,"insufficient_history":false,"refuse_reason":null,"periods":4,"low":30342.565,"seed_balance":28624.41,"first_period":"2026-08-01","last_period":"2026-11-01"}
