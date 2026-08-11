@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AnalyticsShell } from "@/components/operator/treasury/analytics/AnalyticsShell";
+import { SavedAnalytics } from "@/components/operator/treasury/analytics/SavedAnalytics";
+import { STUDY_REGISTRY } from "@/components/operator/treasury/analytics/study-registry";
 import { TreasuryCashModelPanel } from "@/components/operator/treasury/TreasuryCashModelPanel";
+import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
 import { useCashModel } from "@/components/operator/treasury/cash-model/useCashModel";
 import { CashModelRunwayChip } from "@/components/operator/treasury/cash-model/CashModelRunwayChip";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
@@ -11,8 +13,19 @@ import type {
   TreasuryAccountsResponse,
 } from "@/lib/treasury/types";
 
-/** Spec 65 Part I — Forecast retired; deep-links to forecast redirect to cash_model. */
-export type AnalyticsView = "cash_model" | "studies";
+/**
+ * Spec 65-R Part A — three extensible sections:
+ * Saved Analytics | Cash Model | Spend plan (registry-driven).
+ * Legacy: "studies" | "analyzer" → "saved".
+ */
+export type AnalyticsView = "saved" | "cash_model" | "spend_plan";
+
+export function normalizeAnalyticsView(raw: string | undefined): AnalyticsView {
+  if (raw === "studies" || raw === "analyzer" || raw === "saved") return "saved";
+  if (raw === "spend_plan" || raw === "spend-plan") return "spend_plan";
+  if (raw === "cash_model" || raw === "forecast") return "cash_model";
+  return "cash_model";
+}
 
 type Props = {
   clientUserId: string;
@@ -90,8 +103,9 @@ export function TreasuryAnalyticsPanel({
         ) : null}
       </div>
       <p className="span-line">
-        Cash model projects runway from labeled history; Studies holds saved
-        scenarios and spend plans. Each number states where it came from.
+        Saved Analytics loads any frozen study; Cash Model is the live runway
+        workbench; Spend plan authors a spend plan. Each number states where it
+        came from.
         {demo ? (
           <>
             {" "}
@@ -104,31 +118,10 @@ export function TreasuryAnalyticsPanel({
         <button
           type="button"
           role="tab"
-          id="t-cash-model"
-          aria-selected={view === "cash_model"}
-          aria-controls="p-cash-model"
-          onClick={() => showView("cash_model")}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M4 19h16M6 19V9M11 19V5M16 19v-7" />
-          </svg>
-          Cash model
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="t-studies"
-          aria-selected={view === "studies"}
-          aria-controls="p-studies"
-          onClick={() => showView("studies")}
+          id="t-saved"
+          aria-selected={view === "saved"}
+          aria-controls="p-saved"
+          onClick={() => showView("saved")}
         >
           <svg
             viewBox="0 0 24 24"
@@ -141,9 +134,55 @@ export function TreasuryAnalyticsPanel({
           >
             <path d="M4 6h16M4 12h10M4 18h7" />
           </svg>
-          Studies
+          Saved Analytics
         </button>
+        {STUDY_REGISTRY.map((entry) => (
+          <button
+            key={entry.view}
+            type="button"
+            role="tab"
+            id={`t-${entry.view}`}
+            aria-selected={view === entry.view}
+            aria-controls={`p-${entry.view}`}
+            onClick={() => showView(entry.view)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              {entry.view === "cash_model" ? (
+                <path d="M4 19h16M6 19V9M11 19V5M16 19v-7" />
+              ) : (
+                <path d="M12 3v18M5 10l7-7 7 7M5 14l7 7 7-7" />
+              )}
+            </svg>
+            {entry.navLabel}
+          </button>
+        ))}
       </div>
+
+      <section
+        className={`tabpanel${view === "saved" ? " on" : ""}`}
+        id="p-saved"
+        role="tabpanel"
+        aria-labelledby="t-saved"
+      >
+        <SavedAnalytics
+          clientUserId={clientUserId}
+          accountsData={accountsData}
+          accounts={accounts}
+          accountId={accountId}
+          onAccountIdChange={setAccountId}
+          initialStudyId={initialStudyId}
+          clientName={clientName}
+          onPick={onPick}
+        />
+      </section>
 
       <section
         className={`tabpanel${view === "cash_model" ? " on" : ""}`}
@@ -162,18 +201,16 @@ export function TreasuryAnalyticsPanel({
       </section>
 
       <section
-        className={`tabpanel${view === "studies" ? " on" : ""}`}
-        id="p-studies"
+        className={`tabpanel${view === "spend_plan" ? " on" : ""}`}
+        id="p-spend_plan"
         role="tabpanel"
-        aria-labelledby="t-studies"
+        aria-labelledby="t-spend_plan"
       >
-        <AnalyticsShell
+        <TreasurySpendPlanPanel
           clientUserId={clientUserId}
           accountsData={accountsData}
-          accounts={accounts}
           accountId={accountId}
           onAccountIdChange={setAccountId}
-          initialStudyId={initialStudyId}
           embedded
           clientName={clientName}
           onPick={onPick}

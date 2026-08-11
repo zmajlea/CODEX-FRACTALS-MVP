@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
-import { CashModelStudyView } from "@/components/operator/treasury/cash-model/CashModelStudyView";
-import { StudyList } from "@/components/operator/treasury/analytics/StudyList";
 import { useSpendPlanModel } from "@/components/operator/treasury/spend-plan/useSpendPlanModel";
-import { PickButton } from "@/components/operator/treasury/PickButton";
 import {
   defaultStudyParams,
   diffDerivedSnapshot,
@@ -14,29 +10,20 @@ import {
   type DriftEntry,
   type TreasuryStudyRow,
 } from "@/lib/treasury/studies";
-import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
-import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
+import { isKnownStudyType } from "@/components/operator/treasury/analytics/study-registry";
 
-type Props = {
+type Options = {
   clientUserId: string;
-  accountsData: TreasuryAccountsResponse | null;
-  /** Spec 50 — controlled account scope (shared with Forecast). */
-  accounts: { id: string; name: string }[];
   accountId: string;
   onAccountIdChange: (id: string) => void;
   initialStudyId?: string;
-  /** Spec 46 Stage 7 — inside Analytics Analyzer subtab. */
-  embedded?: boolean;
-  clientName?: string;
-  /** Stage 8b — shared useOptimisticPick.pick */
-  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 function fmtMoney(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
-function driftLine(d: DriftEntry): string {
+export function driftLine(d: DriftEntry): string {
   if (d.field === "seasonalIndices") {
     const months = (d.affectedMonths ?? [])
       .map((m) => String(m).padStart(2, "0"))
@@ -62,17 +49,16 @@ function driftLine(d: DriftEntry): string {
   return `${d.field}: saved ${String(d.saved)} → now ${String(d.current)}`;
 }
 
-export function AnalyticsShell({
+/**
+ * Spec 65-R — shared list / save / drift / pick for typed study panels.
+ * Ensure-primary lives in useCashModel only (no duplicate POST here).
+ */
+export function useStudyPersistence({
   clientUserId,
-  accountsData,
-  accounts,
   accountId,
   onAccountIdChange,
   initialStudyId,
-  embedded = false,
-  clientName,
-  onPick,
-}: Props) {
+}: Options) {
   const [studies, setStudies] = useState<TreasuryStudyRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [studyId, setStudyId] = useState<string | null>(null);
@@ -102,23 +88,6 @@ export function AnalyticsShell({
     void refreshList();
   }, [refreshList]);
 
-  // Spec 65 — idempotent primary cash_model row per account (navigation-safe)
-  useEffect(() => {
-    if (!accountId) return;
-    void (async () => {
-      await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/studies/ensure-primary-cash-model`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId }),
-        }
-      );
-      await refreshList();
-    })();
-  }, [accountId, clientUserId, refreshList]);
-
-  // Deep-link / initial study
   useEffect(() => {
     if (!initialStudyId || studies.length === 0) return;
     const row = studies.find((s) => s.id === initialStudyId);
@@ -127,7 +96,30 @@ export function AnalyticsShell({
 
   // Apply pending load once history for that account is ready (spend_plan only)
   useEffect(() => {
-    if (!pendingLoad || pendingLoad.type !== "spend_plan") return;
+    if (!pendingLoad) return;
+    if (!isKnownStudyType(pendingLoad.type)) {
+      setStudyId(pendingLoad.id);
+      setStudyName(pendingLoad.name);
+      setSavedRow(pendingLoad);
+      setPendingLoad(null);
+      setDrift(null);
+      setMessage(null);
+      return;
+    }
+    if (pendingLoad.type === "cash_model") {
+      if (accountId !== pendingLoad.scope.accountId) {
+        onAccountIdChange(pendingLoad.scope.accountId);
+        return;
+      }
+      setStudyId(pendingLoad.id);
+      setStudyName(pendingLoad.name);
+      setSavedRow(pendingLoad);
+      setPendingLoad(null);
+      setDrift(null);
+      setMessage(null);
+      return;
+    }
+    if (pendingLoad.type !== "spend_plan") return;
     const row = pendingLoad;
     if (accountId !== row.scope.accountId) {
       onAccountIdChange(row.scope.accountId);
@@ -153,8 +145,6 @@ export function AnalyticsShell({
         backtestMonths: row.params.backtest.months,
         bufferAdjustment: row.params.bufferAdjustment,
       },
-      // If data drifted, start on current pulled until Keep saved (→ adjusted).
-      // If no drift, restore any prior adjusted overrides from the saved row.
       overrides:
         d.length > 0 ? emptyOverrides() : row.params.overrides ?? emptyOverrides(),
       scenarios: row.scenarios,
@@ -179,8 +169,9 @@ export function AnalyticsShell({
 
   const dirty = useMemo(() => {
     if (savedRow?.type === "cash_model") return false;
+    if (!isKnownStudyType(savedRow?.type ?? "") && savedRow) return false;
     if (!savedRow || savedRow.type !== "spend_plan" || !modelState.inputs) {
-      return studyId == null;
+      return studyId == null && savedRow == null;
     }
     const p = savedRow.params;
     const i = modelState.inputs;
@@ -210,7 +201,7 @@ export function AnalyticsShell({
     accountId,
   ]);
 
-  const handleNew = () => {
+  const clearSelection = useCallback(() => {
     setStudyId(null);
     setSavedRow(null);
     setDrift(null);
@@ -219,29 +210,19 @@ export function AnalyticsShell({
     modelState.setExcludedMonths([]);
     modelState.resync();
     setMessage(null);
-  };
+  }, [modelState]);
 
-  const handleSelect = (id: string) => {
-    const row = studies.find((s) => s.id === id);
-    if (!row) return;
-    if (row.type === "cash_model") {
-      if (accountId !== row.scope.accountId) {
-        onAccountIdChange(row.scope.accountId);
-      }
-      setStudyId(row.id);
-      setStudyName(row.name);
-      setSavedRow(row);
-      setPendingLoad(null);
-      setDrift(null);
-      setMessage(null);
-      return;
-    }
-    setPendingLoad(row);
-  };
+  const selectStudy = useCallback(
+    (id: string) => {
+      const row = studies.find((s) => s.id === id);
+      if (!row) return;
+      setPendingLoad(row);
+    },
+    [studies]
+  );
 
-  const handleKeepSaved = () => {
+  const handleKeepSaved = useCallback(() => {
     if (!savedRow || savedRow.type !== "spend_plan" || !drift?.length) return;
-    // Kept-stale baselines are adjusted — same path as explicit override.
     const next = overridesFromKeepSaved(
       savedRow.derived_snapshot,
       drift,
@@ -252,18 +233,17 @@ export function AnalyticsShell({
     setMessage(
       "Kept saved baselines — chipped as adjusted (they diverge from current pulled data)."
     );
-  };
+  }, [savedRow, drift, modelState]);
 
-  const handleUseCurrent = () => {
+  const handleUseCurrent = useCallback(() => {
     modelState.setOverrides(emptyOverrides());
     setDrift(null);
     setMessage("Using current pulled baselines.");
-  };
+  }, [modelState]);
 
-  const handleSave = async () => {
-    if (savedRow?.type === "cash_model") {
-      return;
-    }
+  const handleSave = useCallback(async () => {
+    if (savedRow?.type === "cash_model") return;
+    if (!isKnownStudyType(savedRow?.type ?? "spend_plan")) return;
     if (!modelState.inputs || !modelState.currentSnapshot || !modelState.scenarios) {
       setMessage("Nothing to save yet — pick an account with history.");
       return;
@@ -303,12 +283,11 @@ export function AnalyticsShell({
       },
     };
 
-    // Freeze what data says NOW (pulled snapshot), not the adjusted view.
     const derived_snapshot = modelState.currentSnapshot;
 
     setBusy(true);
     try {
-      if (studyId) {
+      if (studyId && savedRow?.type === "spend_plan") {
         const res = await fetch(
           `/api/operator/treasury/clients/${clientUserId}/studies/${studyId}`,
           {
@@ -362,9 +341,17 @@ export function AnalyticsShell({
     } finally {
       setBusy(false);
     }
-  };
+  }, [
+    savedRow,
+    modelState,
+    accountId,
+    studyId,
+    clientUserId,
+    studyName,
+    refreshList,
+  ]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!studyId) return;
     if (!confirm("Delete this study?")) return;
     setBusy(true);
@@ -377,7 +364,7 @@ export function AnalyticsShell({
         const json = (await res.json()) as { error?: string };
         throw new Error(json.error ?? "Delete failed");
       }
-      handleNew();
+      clearSelection();
       await refreshList();
       setMessage("Study deleted.");
     } catch (e) {
@@ -385,138 +372,28 @@ export function AnalyticsShell({
     } finally {
       setBusy(false);
     }
+  }, [studyId, clientUserId, clearSelection, refreshList]);
+
+  return {
+    studies,
+    listLoading,
+    studyId,
+    studyName,
+    setStudyName,
+    savedRow,
+    drift,
+    busy,
+    message,
+    dirty,
+    modelState,
+    refreshList,
+    selectStudy,
+    clearSelection,
+    handleKeepSaved,
+    handleUseCurrent,
+    handleSave,
+    handleDelete,
   };
-
-  async function addPickableToDraft(draftKind: DraftKind, pickable: Pickable) {
-    await onPick?.(draftKind, pickable);
-  }
-
-  const studyPickable = useMemo((): Pickable | null => {
-    if (!studyId) return null;
-    return {
-      kind: "study",
-      ref: studyId,
-      label: studyName.trim() || "Untitled spend plan",
-      sublabel: "study",
-    };
-  }, [studyId, studyName]);
-
-  const activeStudyType = savedRow?.type ?? "spend_plan";
-
-  return (
-    <div className="analytics-shell grid gap-4 lg:grid-cols-[240px_1fr]">
-      <aside
-        className="panel p-3"
-        style={{ border: "1px solid var(--line)", minHeight: 320 }}
-      >
-        <StudyList
-          studies={studies}
-          activeId={studyId}
-          onSelect={handleSelect}
-          onNew={handleNew}
-          loading={listLoading}
-        />
-      </aside>
-
-      <div className="space-y-4">
-        <div
-          className="panel p-3 flex flex-wrap items-end gap-3"
-          style={{ border: "1px solid var(--line)" }}
-        >
-          <label className="flex flex-col gap-1 text-sm flex-1 min-w-[12rem]">
-            <span className="treasury-meta">Study name</span>
-            <input
-              className="field-input"
-              value={studyName}
-              onChange={(e) => setStudyName(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="chip"
-            disabled={busy || activeStudyType === "cash_model" || !modelState.currentSnapshot}
-            onClick={() => void handleSave()}
-          >
-            {busy ? "Saving…" : studyId ? "Save" : "Save as study"}
-          </button>
-          {studyId && activeStudyType !== "cash_model" ? (
-            <button
-              type="button"
-              className="chip"
-              disabled={busy}
-              onClick={() => void handleDelete()}
-            >
-              Delete
-            </button>
-          ) : null}
-          {studyPickable ? (
-            <PickButton
-              variant="header"
-              pickable={studyPickable}
-              onPick={addPickableToDraft}
-            />
-          ) : null}
-          {dirty ? (
-            <span className="chip prov-assumed">unsaved</span>
-          ) : studyId ? (
-            <span className="chip prov-pulled">saved</span>
-          ) : null}
-        </div>
-
-        {drift && drift.length > 0 ? (
-          <div
-            className="panel p-3 space-y-2"
-            style={{ border: "1px solid var(--pulse-amber, #EBC06D)" }}
-          >
-            <p className="sec-title">Data moved since this study was saved</p>
-            <ul className="text-sm space-y-1">
-              {drift.map((d) => (
-                <li key={d.field} className="treasury-meta">
-                  {driftLine(d)}
-                </li>
-              ))}
-            </ul>
-            <p className="treasury-meta-fine">
-              Keep saved applies adjusted overrides (not pulled) — the kept figure
-              diverges from what the data says now.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="chip prov-adjusted" onClick={handleKeepSaved}>
-                Keep saved
-              </button>
-              <button type="button" className="chip prov-pulled" onClick={handleUseCurrent}>
-                Use current
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {message ? (
-          <p className="treasury-meta-fine">{message}</p>
-        ) : null}
-
-        {activeStudyType === "cash_model" && savedRow?.type === "cash_model" ? (
-          <CashModelStudyView
-            clientUserId={clientUserId}
-            accounts={accounts}
-            accountId={accountId}
-            onAccountIdChange={onAccountIdChange}
-            study={savedRow}
-          />
-        ) : (
-          <TreasurySpendPlanPanel
-            clientUserId={clientUserId}
-            accountsData={accountsData}
-            accountId={accountId}
-            onAccountIdChange={onAccountIdChange}
-            modelState={modelState}
-            studyId={studyId}
-            embedded={embedded}
-            clientName={clientName}
-            onPick={onPick}
-          />
-        )}
-      </div>
-    </div>
-  );
 }
+
+export type StudyPersistence = ReturnType<typeof useStudyPersistence>;

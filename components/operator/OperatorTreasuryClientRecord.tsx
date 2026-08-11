@@ -66,10 +66,14 @@ function parseInitialAnalyticsView(
   tabParam: string | undefined,
   viewParam: string | undefined
 ): AnalyticsView {
-  if (viewParam === "studies" || viewParam === "analyzer") return "studies";
+  // Spec 65-R: studies/analyzer → saved; spend-plan tab → spend_plan; forecast → cash_model
+  if (viewParam === "studies" || viewParam === "analyzer" || viewParam === "saved") {
+    return "saved";
+  }
+  if (viewParam === "spend_plan" || viewParam === "spend-plan") return "spend_plan";
   if (viewParam === "cash_model") return "cash_model";
   if (viewParam === "forecast") return "cash_model";
-  if (tabParam === "spend-plan") return "studies";
+  if (tabParam === "spend-plan") return "spend_plan";
   return "cash_model";
 }
 
@@ -480,9 +484,9 @@ export function OperatorTreasuryClientRecord({
     if (nav.kind === "study") {
       setFocusStudyId(nav.id);
       setTab("analytics");
-      setAnalyticsView("studies");
+      setAnalyticsView("saved");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=studies&study=${nav.id}`,
+        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=saved&study=${nav.id}`,
         { scroll: false }
       );
       return;
