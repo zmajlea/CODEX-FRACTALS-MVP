@@ -811,9 +811,10 @@ async function main() {
   for (const ym of oddMonths) {
     const mk = `${ym}-01`;
     // Labels deliberately avoid taxonomy name-match (no collection/payroll/opex tokens)
+    // Burn shape: NCF −10k so threshold 50k / open 80k breaches like the main gate book
     (oddSeries["Widget sales"] ??= {})[mk] = { in: 100_000, out: 0 };
-    (oddSeries["People costs"] ??= {})[mk] = { in: 0, out: 55_000 };
-    (oddSeries["Facilities"] ??= {})[mk] = { in: 0, out: 40_000 };
+    (oddSeries["People costs"] ??= {})[mk] = { in: 0, out: 60_000 };
+    (oddSeries["Facilities"] ??= {})[mk] = { in: 0, out: 50_000 };
   }
   const oddParams: CashModelParams = {
     ...defaultCashModelParams(),
@@ -1014,7 +1015,7 @@ async function main() {
   );
 
   // 17 NCF sign — build vs burn render with opposite sign (dot only; bars stay abs)
-  const explainSrc = readFileSync(
+  const explainSrcSign = readFileSync(
     join(ROOT, "components/operator/treasury/cash-model/CashModelExplainChart.tsx"),
     "utf8"
   );
@@ -1024,8 +1025,8 @@ async function main() {
     buildMonth != null &&
     burnMonth != null &&
     buildMonth.ncf * burnMonth.ncf < 0 &&
-    explainSrc.includes("row.ncf * amp") &&
-    !explainSrc.includes("Math.abs(row.ncf)");
+    explainSrcSign.includes("row.ncf * amp") &&
+    !explainSrcSign.includes("Math.abs(row.ncf)");
   record(
     17,
     "NCF sign",
@@ -1106,21 +1107,21 @@ async function main() {
     interventions,
     backtest: bt,
   });
-  const baseSum = result.summaries.find((s) => s.scenarioId === "base")!;
+  const liqBaseSum = result.summaries.find((s) => s.scenarioId === "base")!;
   const kpiOk =
     liqSrc.includes("cash-model-liquidity-summary") &&
     liqSrc.includes("selectedSummary?.minEnding") &&
     liqSrc.includes("thresholdMarginAtLow") &&
     reportHtml.includes("Liquidity Summary") &&
-    reportHtml.includes(fmtGateMoney(baseSum.minEnding.value)) &&
-    (baseSum.breachMonth
+    reportHtml.includes(fmtGateMoney(liqBaseSum.minEnding.value)) &&
+    (liqBaseSum.breachMonth
       ? reportHtml.toLowerCase().includes("breach")
       : true);
   record(
     19,
     "Liquidity Summary KPIs",
     kpiOk,
-    `minEnding=${baseSum.minEnding.value}; breach=${baseSum.breachMonth}; report has Liquidity Summary`
+    `minEnding=${liqBaseSum.minEnding.value}; breach=${liqBaseSum.breachMonth}; report has Liquidity Summary`
   );
 
   // 12 Build
