@@ -12,8 +12,12 @@ import {
 } from "@/lib/treasury/cash-model-types";
 import type { MonthlyByCategorySeries } from "@/lib/treasury/load-monthly-by-category";
 
-const INFLOW_BUCKETS: CashModelBucketKey[] = ["collections", "other_income", "uncategorized_in"];
-const OUTFLOW_BUCKETS: CashModelBucketKey[] = [
+export const INFLOW_BUCKETS: CashModelBucketKey[] = [
+  "collections",
+  "other_income",
+  "uncategorized_in",
+];
+export const OUTFLOW_BUCKETS: CashModelBucketKey[] = [
   "payroll",
   "opex",
   "debt_service",
@@ -138,6 +142,22 @@ function ncfForMonth(
   for (const b of INFLOW_BUCKETS) inflow += byBucket[b] ?? 0;
   for (const b of OUTFLOW_BUCKETS) outflow += byBucket[b] ?? 0;
   return inflow - outflow;
+}
+
+export function inflowFromBuckets(
+  byBucket: Partial<Record<CashModelBucketKey, number>>
+): number {
+  let inflow = 0;
+  for (const b of INFLOW_BUCKETS) inflow += byBucket[b] ?? 0;
+  return inflow;
+}
+
+export function outflowFromBuckets(
+  byBucket: Partial<Record<CashModelBucketKey, number>>
+): number {
+  let outflow = 0;
+  for (const b of OUTFLOW_BUCKETS) outflow += byBucket[b] ?? 0;
+  return outflow;
 }
 
 function computeCoverage(

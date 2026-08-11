@@ -2,12 +2,14 @@
 
 import { CashModelBacktestSection } from "@/components/operator/treasury/cash-model/CashModelBacktestSection";
 import { CashModelBucketMapEditor } from "@/components/operator/treasury/cash-model/CashModelBucketMapEditor";
-import { CashModelCommittedFlowsCard } from "@/components/operator/treasury/cash-model/CashModelCommittedFlowsCard";
-import { CashModelCoverageMeter } from "@/components/operator/treasury/cash-model/CashModelCoverageMeter";
-import { CashModelExplainChart } from "@/components/operator/treasury/cash-model/CashModelExplainChart";
+import { CashModelCategoryDivisionCard } from "@/components/operator/treasury/cash-model/CashModelCategoryDivisionCard";
 import { CashModelInterventionsCard } from "@/components/operator/treasury/cash-model/CashModelInterventionsCard";
-import { CashModelRunwayChart } from "@/components/operator/treasury/cash-model/CashModelRunwayChart";
+import { CashModelLiquiditySummary } from "@/components/operator/treasury/cash-model/CashModelLiquiditySummary";
 import type { CashModelBucketKey } from "@/lib/treasury/cash-model-types";
+import {
+  inflowFromBuckets,
+  outflowFromBuckets,
+} from "@/lib/treasury/cash-model";
 import { downloadCashModelReportHtml } from "@/lib/treasury/cash-model-report";
 import type { CashModelModelState } from "@/components/operator/treasury/cash-model/useCashModel";
 
@@ -111,7 +113,10 @@ export function TreasuryCashModelPanel({
   }
 
   function onSaveAsVariant() {
-    const name = window.prompt("Variant name", `${study?.name ?? "Cash model"} — variant`);
+    const name = window.prompt(
+      "Variant name",
+      `${study?.name ?? "Cash model"} — variant`
+    );
     if (!name) return;
     void saveAsVariant(name);
   }
@@ -121,7 +126,9 @@ export function TreasuryCashModelPanel({
   }
 
   if (!study || !params || !scenarios) {
-    return <p className="treasury-meta">Select an account to open the cash model.</p>;
+    return (
+      <p className="treasury-meta">Select an account to open the cash model.</p>
+    );
   }
 
   return (
@@ -160,28 +167,27 @@ export function TreasuryCashModelPanel({
         >
           Save as variant
         </button>
-        <button
-          type="button"
-          className="chip"
-          disabled={!result || result.refused}
-          onClick={exportReport}
-        >
-          Export report
-        </button>
         {computing ? <span className="chip prov-assumed">computing…</span> : null}
       </div>
 
-      {error ? <p className="treasury-meta text-[var(--cinnabar,#E67E50)]">{error}</p> : null}
+      {error ? (
+        <p className="treasury-meta text-[var(--cinnabar,#E67E50)]">{error}</p>
+      ) : null}
 
       {result?.refused ? (
         <div className="panel p-4" style={{ border: "1px solid var(--line)" }}>
           <p className="sec-title">Cannot project</p>
-          <p className="treasury-meta">{result.refuseReason ?? "Insufficient history"}</p>
+          <p className="treasury-meta">
+            {result.refuseReason ?? "Insufficient history"}
+          </p>
         </div>
       ) : null}
 
       {/* Block 1 — Configuration & limits */}
-      <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
+      <div
+        className="panel p-3 overflow-x-auto"
+        style={{ border: "1px solid var(--line)" }}
+      >
         <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
           <p className="sec-title">Assumptions</p>
           <div className="flex flex-wrap gap-3 items-end">
@@ -258,7 +264,10 @@ export function TreasuryCashModelPanel({
                       className={`field-input w-28 ${downside ? provClass(downside.source) : ""}`}
                       value={downside?.minCashThreshold ?? 0}
                       onChange={(e) =>
-                        updateScenarioThreshold("downside", Number(e.target.value))
+                        updateScenarioThreshold(
+                          "downside",
+                          Number(e.target.value)
+                        )
                       }
                     />
                   ) : (
@@ -266,7 +275,9 @@ export function TreasuryCashModelPanel({
                       type="number"
                       step="0.01"
                       className={`field-input w-20 ${downside ? provClass(downside.source) : ""}`}
-                      value={downside?.factors[row.key as CashModelBucketKey] ?? 1}
+                      value={
+                        downside?.factors[row.key as CashModelBucketKey] ?? 1
+                      }
                       onChange={(e) =>
                         updateScenarioFactor(
                           "downside",
@@ -306,11 +317,21 @@ export function TreasuryCashModelPanel({
 
       {result && !result.refused ? (
         <>
+          {/* Block 2 — Where the money goes */}
+          <CashModelCategoryDivisionCard
+            clientUserId={clientUserId}
+            accountId={accountId}
+            coveragePct={result.coveragePct}
+            degradedToTotals={result.degradedToTotals}
+            timeline={result.timeline}
+          />
+
+          {/* Block 3 — The calculation */}
           <div
             className="panel p-4 space-y-2"
             style={{ border: "1px solid var(--line)" }}
           >
-            <p className="sec-title">Runway headline</p>
+            <p className="sec-title">The calculation</p>
             <p className="text-lg font-medium">
               {selectedSummary?.noBreachInHorizon
                 ? `No breach in ${params.horizon}-month horizon`
@@ -328,74 +349,83 @@ export function TreasuryCashModelPanel({
                 ? ` · low ${fmtMoney(selectedSummary.minEnding.value)} (${monthLabel(selectedSummary.minEnding.month)})`
                 : ""}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="chip prov-pulled">
-                Coverage {Math.round(result.coveragePct * 100)}%
-              </span>
-              {result.degradedToTotals ? (
-                <span className="chip prov-assumed">Totals-only (low coverage)</span>
-              ) : null}
-              <span className="chip prov-assumed">History ending derived</span>
-            </div>
+            <span className="chip prov-assumed">History ending derived</span>
           </div>
 
-          <CashModelRunwayChart
-            asOf={result.asOf}
-            threshold={selected?.minCashThreshold ?? 0}
-            selectedTimeline={result.timeline}
-            downsideTimeline={scenarioTimelines?.downside}
-            selectedScenarioId={params.selectedScenarioId}
-            selectedSummary={selectedSummary}
-          />
-
-          <CashModelCoverageMeter
-            coveragePct={result.coveragePct}
-            degradedToTotals={result.degradedToTotals}
-            timeline={result.timeline}
-          />
-
-          <CashModelExplainChart timeline={result.timeline} />
-
-          <CashModelCommittedFlowsCard
-            clientUserId={clientUserId}
-            accountId={accountId}
-          />
-
-          <CashModelInterventionsCard
-            interventions={interventions}
-            hasBreach={!selectedSummary?.noBreachInHorizon}
-          />
-
-          <CashModelBacktestSection rows={backtest} />
-
-          <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
+          <div
+            className="panel p-3 overflow-x-auto"
+            style={{ border: "1px solid var(--line)" }}
+          >
             <p className="sec-title mb-2">Cascade</p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="treasury-meta text-left">
                   <th className="py-1 pr-2">Month</th>
                   <th className="py-1 pr-2">Kind</th>
+                  <th className="py-1 pr-2 text-right">Beginning</th>
+                  <th className="py-1 pr-2 text-right">In</th>
+                  <th className="py-1 pr-2 text-right">Out</th>
                   <th className="py-1 pr-2 text-right">NCF</th>
                   <th className="py-1 pr-2 text-right">Ending</th>
                   <th className="py-1 text-right">Breach</th>
                 </tr>
               </thead>
               <tbody>
-                {result.timeline.map((row) => (
-                  <tr key={`${row.month}-${row.kind}`} className="border-t border-[var(--line)]">
-                    <td className="py-1 pr-2">{monthLabel(row.month)}</td>
-                    <td className="py-1 pr-2 treasury-meta">
-                      {row.kind}
-                      {row.historyDerived ? " · derived" : ""}
-                    </td>
-                    <td className="py-1 pr-2 text-right">{fmtMoney(row.ncf)}</td>
-                    <td className="py-1 pr-2 text-right">{fmtMoney(row.ending)}</td>
-                    <td className="py-1 text-right">{row.breachFlag ? "yes" : "—"}</td>
-                  </tr>
-                ))}
+                {result.timeline.map((row, i) => {
+                  const beginning = row.ending - row.ncf;
+                  const inn = inflowFromBuckets(row.byBucket);
+                  const out = outflowFromBuckets(row.byBucket);
+                  return (
+                    <tr
+                      key={`${row.month}-${row.kind}-${i}`}
+                      className="border-t border-[var(--line)]"
+                    >
+                      <td className="py-1 pr-2">{monthLabel(row.month)}</td>
+                      <td className="py-1 pr-2 treasury-meta">
+                        {row.kind}
+                        {row.historyDerived ? " · derived" : ""}
+                      </td>
+                      <td className="py-1 pr-2 text-right">{fmtMoney(beginning)}</td>
+                      <td className="py-1 pr-2 text-right">{fmtMoney(inn)}</td>
+                      <td className="py-1 pr-2 text-right">{fmtMoney(out)}</td>
+                      <td className="py-1 pr-2 text-right">{fmtMoney(row.ncf)}</td>
+                      <td className="py-1 pr-2 text-right">
+                        {fmtMoney(row.ending)}
+                      </td>
+                      <td className="py-1 text-right">
+                        {row.breachFlag ? "yes" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Block 4 — Liquidity Summary */}
+          <CashModelLiquiditySummary
+            clientUserId={clientUserId}
+            accountId={accountId}
+            asOf={result.asOf}
+            horizon={params.horizon}
+            threshold={selected?.minCashThreshold ?? 0}
+            openingBalance={result.openingBalance}
+            timeline={result.timeline}
+            downsideTimeline={scenarioTimelines?.downside}
+            selectedScenarioId={params.selectedScenarioId}
+            selectedSummary={selectedSummary}
+            runwayStatus={runwayStatus}
+            interventions={interventions}
+            onExport={exportReport}
+          />
+
+          {/* Operator detail */}
+          <CashModelInterventionsCard
+            interventions={interventions}
+            hasBreach={!selectedSummary?.noBreachInHorizon}
+          />
+
+          <CashModelBacktestSection rows={backtest} />
         </>
       ) : null}
     </div>

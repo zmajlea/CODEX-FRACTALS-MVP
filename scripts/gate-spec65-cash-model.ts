@@ -1,11 +1,9 @@
 /**
- * Spec 65 gate — Cash Model on ana_gate_client_4. Reset after.
+ * Spec 65 / 65-R gate — Cash Model on ana_gate_client_4. Reset after.
  * Usage: npx tsx scripts/gate-spec65-cash-model.ts
  *
- * Checks (spec order):
- * 1 Registry  2 Cascade/breach oracle  3 Scenario sensitivity  4 Coverage/degrade
- * 5 Loader reconcile  6 Splits  7 Backward history  8 Warning chip
- * 9 Interventions  10 Forecast retired  11 Charts  12 Build (assert artifacts)
+ * Checks 1–12 (original) + 13–19 (65-R revision).
+ * Check 16 MUST use a variable-NCF book (constant burn masks the off-by-one).
  */
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
@@ -15,6 +13,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import ws from "ws";
 import {
   computeCashModel,
+  endingAtMonthFromHistory,
 } from "../lib/treasury/cash-model";
 import { backtestCashModel } from "../lib/treasury/cash-model-backtest";
 import {
@@ -33,8 +32,10 @@ import { buildRunwayStatus } from "../lib/treasury/cash-model-status";
 import type { MonthlyByCategorySeries } from "../lib/treasury/load-monthly-by-category";
 import { loadMonthlyByCategory } from "../lib/treasury/load-monthly-by-category";
 import { directMonthlyByCategory } from "../lib/treasury/reconcile-monthly-by-category";
-import { addMonths } from "../lib/treasury/period-bounds";
+import { addMonths, startOfMonth } from "../lib/treasury/period-bounds";
 import type { Database } from "../lib/database.types";
+import { buildCashModelReportHtml } from "../lib/treasury/cash-model-report";
+import { composeCashModelResponse } from "../lib/treasury/cash-model-compose";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -89,6 +90,10 @@ function record(id: number, name: string, ok: boolean, detail: string) {
   results.push({ id, name, ok, detail });
   log(`${ok ? "PASS" : "FAIL"} ${id}. ${name} — ${detail}`);
   if (!ok) throw new Error(`Check ${id} failed: ${detail}`);
+}
+
+function fmtGateMoney(n: number): string {
+  return `$${Math.round(n).toLocaleString()}`;
 }
 
 function monthKey(ym: string): string {
@@ -413,12 +418,11 @@ async function main() {
     `coverage=${(degraded.coveragePct * 100).toFixed(1)}% degraded=${degraded.degradedToTotals} uncat_in=${degraded.bucketBaselines.uncategorized_in} uncat_out=${degraded.bucketBaselines.uncategorized_out}`
   );
 
-  // 7 Backward history — projection seam starts at current_balance (opening)
+  // 7 Backward history — last complete month anchors to openingBalance (65-R fix)
   const firstProjectedEnding = result.timeline.find((r) => r.kind === "projected");
   const lastActual = [...result.timeline].reverse().find((r) => r.kind === "actual");
-  // Backward walk: June ending = opening − ncf(June) when asOf month is July (not in history)
-  // i.e. ending[June] = 80k − (−10k) = 90k
-  const expectedLastActual = OPENING - EXPECTED_NCF;
+  // Spec 65-R: ending[lastComplete] = opening (not opening − ncf)
+  const expectedLastActual = OPENING;
   const historyOk =
     firstProjectedEnding != null &&
     Math.abs(firstProjectedEnding.ending - (OPENING + EXPECTED_NCF)) < 0.01 &&
@@ -770,8 +774,9 @@ async function main() {
   const forecastRetired =
     !analyticsSrc.includes('id="t-forecast"') &&
     !analyticsSrc.includes(">Forecast<") &&
-    analyticsSrc.includes("Cash model") &&
-    analyticsSrc.includes("Studies") &&
+    analyticsSrc.includes("Cash Model") &&
+    analyticsSrc.includes("Saved Analytics") &&
+    analyticsSrc.includes("Spend plan") &&
     recordSrc.includes('viewParam === "forecast"') &&
     recordSrc.includes('return "cash_model"') &&
     forecastRouteGone &&
@@ -783,7 +788,7 @@ async function main() {
     10,
     "Forecast retired",
     forecastRetired,
-    `routeGone=${forecastRouteGone}; detectCadence salvage=${committedSrc.includes("detectCadence")}; client summary intact=${clientTrendSrc.includes("/api/treasury/summary")}`
+    `routeGone=${forecastRouteGone}; three-section IA; detectCadence salvage=${committedSrc.includes("detectCadence")}; client summary intact=${clientTrendSrc.includes("/api/treasury/summary")}`
   );
 
   // Backtest smoke (not numbered, supports credibility)
@@ -798,6 +803,326 @@ async function main() {
   );
   log(`backtest rows=${bt.length} (informational)`);
 
+  // ——— Spec 65-R checks 13–19 ———
+
+  // 13 Config moves the model on a non-name-match book
+  const oddSeries: MonthlyByCategorySeries = {};
+  const oddMonths = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
+  for (const ym of oddMonths) {
+    const mk = `${ym}-01`;
+    // Labels deliberately avoid taxonomy name-match (no collection/payroll/opex tokens)
+    (oddSeries["Widget sales"] ??= {})[mk] = { in: 100_000, out: 0 };
+    (oddSeries["People costs"] ??= {})[mk] = { in: 0, out: 55_000 };
+    (oddSeries["Facilities"] ??= {})[mk] = { in: 0, out: 40_000 };
+  }
+  const oddParams: CashModelParams = {
+    ...defaultCashModelParams(),
+    bucketMap: {
+      "Widget sales": "collections",
+      "People costs": "payroll",
+      "Facilities": "opex",
+    },
+  };
+  const oddScenarios = scenariosAt(THRESHOLD);
+  const oddBase = computeCashModel({
+    categorySeries: oddSeries,
+    bucketMap: oddParams.bucketMap,
+    openingBalance: OPENING,
+    asOf: AS_OF,
+    params: oddParams,
+    scenarios: oddScenarios,
+    excludedMonthSet: new Set(),
+  });
+  const oddBoosted = computeCashModel({
+    categorySeries: oddSeries,
+    bucketMap: oddParams.bucketMap,
+    openingBalance: OPENING,
+    asOf: AS_OF,
+    params: oddParams,
+    scenarios: oddScenarios.map((s) =>
+      s.id === "base"
+        ? {
+            ...s,
+            factors: { ...s.factors, collections: 1.25 },
+            source: "user-provided" as const,
+          }
+        : s
+    ),
+    excludedMonthSet: new Set(),
+  });
+  const oddUnmapped = computeCashModel({
+    categorySeries: oddSeries,
+    bucketMap: {},
+    openingBalance: OPENING,
+    asOf: AS_OF,
+    params: { ...oddParams, bucketMap: {} },
+    scenarios: oddScenarios.map((s) =>
+      s.id === "base"
+        ? {
+            ...s,
+            factors: { ...s.factors, collections: 1.25 },
+            source: "user-provided" as const,
+          }
+        : s
+    ),
+    excludedMonthSet: new Set(),
+  });
+  const oddBaseBreach = oddBase.summaries.find((s) => s.scenarioId === "base")?.breachMonth;
+  const oddBoostBreach = oddBoosted.summaries.find((s) => s.scenarioId === "base")?.breachMonth;
+  const oddUnmappedBreach = oddUnmapped.summaries.find((s) => s.scenarioId === "base")?.breachMonth;
+  const configMoves =
+    !oddBase.refused &&
+    oddBaseBreach != null &&
+    oddBoostBreach !== oddBaseBreach &&
+    // Without bucket map, collections factor is inert (labels land in other_income/other_out)
+    oddUnmappedBreach === oddBaseBreach;
+  record(
+    13,
+    "Config moves model (mapped book)",
+    configMoves,
+    `mapped base breach=${oddBaseBreach} boosted=${oddBoostBreach}; unmapped+boost still ${oddUnmappedBreach} (inert without map)`
+  );
+
+  // 14 Bucket-map editor persists (study params round-trip)
+  const mapStudyName = `gate-bucket-map-${Date.now()}`;
+  const { data: mapStudy, error: mapInsErr } = await admin
+    .from("treasury_studies")
+    .insert({
+      client_user_id: clientId,
+      name: mapStudyName,
+      type: "cash_model",
+      is_primary: false,
+      scope: { accountId: ACCOUNT_ID, label: null },
+      params: oddParams,
+      scenarios: oddScenarios,
+      derived_snapshot: {
+        bucketBaselines: oddBase.bucketBaselines,
+        coveragePct: oddBase.coveragePct,
+        bucketMap: oddParams.bucketMap,
+        openingBalance: OPENING,
+        asOf: AS_OF,
+        historyMonthCount: 6,
+        historyDerived: true,
+      },
+    })
+    .select("*")
+    .single();
+  assert(!mapInsErr && mapStudy, `bucket map study insert: ${mapInsErr?.message}`);
+  const { data: mapReload } = await admin
+    .from("treasury_studies")
+    .select("params")
+    .eq("id", mapStudy!.id)
+    .maybeSingle();
+  const reloadedMap = (mapReload?.params as CashModelParams | null)?.bucketMap ?? {};
+  const mapPersists =
+    reloadedMap["Widget sales"] === "collections" &&
+    reloadedMap["People costs"] === "payroll" &&
+    reloadedMap["Facilities"] === "opex";
+  const recomputed = computeCashModel({
+    categorySeries: oddSeries,
+    bucketMap: reloadedMap as Record<string, CashModelBucketKey>,
+    openingBalance: OPENING,
+    asOf: AS_OF,
+    params: { ...oddParams, bucketMap: reloadedMap as Record<string, CashModelBucketKey> },
+    scenarios: oddScenarios,
+    excludedMonthSet: new Set(),
+  });
+  record(
+    14,
+    "Bucket-map persists",
+    mapPersists &&
+      recomputed.summaries.find((s) => s.scenarioId === "base")?.breachMonth === oddBaseBreach,
+    `reloaded=${JSON.stringify(reloadedMap)}; breach=${recomputed.summaries.find((s) => s.scenarioId === "base")?.breachMonth}`
+  );
+
+  // 15 Rules CTA — visible when coverage low, hidden when high
+  const divisionSrc = readFileSync(
+    join(ROOT, "components/operator/treasury/cash-model/CashModelCategoryDivisionCard.tsx"),
+    "utf8"
+  );
+  const rulesCtaWired =
+    divisionSrc.includes("cash-model-rules-cta") &&
+    divisionSrc.includes("coveragePct < 0.95") &&
+    divisionSrc.includes('tab: "rules"');
+  record(
+    15,
+    "Rules CTA",
+    rulesCtaWired && oddBase.coveragePct > 0.9,
+    `cta wired=${rulesCtaWired}; mapped coverage=${(oddBase.coveragePct * 100).toFixed(1)}% (high → CTA hidden); uncat path uses coveragePct < 0.95`
+  );
+
+  // 16 Off-by-one fixed — VARIABLE NCF book (constant burn masks the bug)
+  const varSeries: MonthlyByCategorySeries = {};
+  // Distinct monthly NCFs so ncf[m] ≠ ncf[m+1]
+  const varShape: Array<{ ym: string; coll: number; pay: number; opex: number }> = [
+    { ym: "2026-01", coll: 100_000, pay: 60_000, opex: 50_000 }, // ncf -10k
+    { ym: "2026-02", coll: 130_000, pay: 60_000, opex: 50_000 }, // ncf +20k
+    { ym: "2026-03", coll: 70_000, pay: 60_000, opex: 50_000 }, // ncf -40k
+    { ym: "2026-04", coll: 110_000, pay: 60_000, opex: 50_000 }, // ncf 0
+    { ym: "2026-05", coll: 90_000, pay: 60_000, opex: 50_000 }, // ncf -20k
+    { ym: "2026-06", coll: 105_000, pay: 60_000, opex: 50_000 }, // ncf -5k
+  ];
+  for (const row of varShape) {
+    const mk = `${row.ym}-01`;
+    (varSeries["Collections"] ??= {})[mk] = { in: row.coll, out: 0 };
+    (varSeries["Payroll"] ??= {})[mk] = { in: 0, out: row.pay };
+    (varSeries["Opex operating"] ??= {})[mk] = { in: 0, out: row.opex };
+  }
+  const varOpening = 200_000;
+  const varResult = computeCashModel({
+    categorySeries: varSeries,
+    bucketMap: {},
+    openingBalance: varOpening,
+    asOf: AS_OF,
+    params,
+    scenarios: scenariosAt(10_000),
+    excludedMonthSet: new Set(),
+  });
+  const midMonth = "2026-03-01";
+  const modelMid = varResult.timeline.find(
+    (r) => r.kind === "actual" && r.month.startsWith("2026-03")
+  );
+  const oracleMid = endingAtMonthFromHistory(
+    varOpening,
+    varSeries,
+    {},
+    AS_OF,
+    midMonth
+  );
+  // Wrong formula (pre-fix): ending[m] = ending[m+1] − ncf[m] diverges on variable book
+  const ncfByMonth: Record<string, number> = {};
+  for (const row of varShape) {
+    ncfByMonth[`${row.ym}-01`] = row.coll - row.pay - row.opex;
+  }
+  const lastVar = "2026-06-01";
+  const wrongWalk: Record<string, number> = { [lastVar]: varOpening };
+  for (const ym of ["2026-05", "2026-04", "2026-03", "2026-02", "2026-01"]) {
+    const m = `${ym}-01`;
+    const next = addMonths(startOfMonth(m), 1);
+    wrongWalk[m] = (wrongWalk[next] ?? varOpening) - (ncfByMonth[m] ?? 0);
+  }
+  const offByOneFixed =
+    modelMid != null &&
+    oracleMid != null &&
+    Math.abs(modelMid.ending - oracleMid) < 0.01 &&
+    Math.abs(modelMid.ending - wrongWalk[midMonth]) > 1;
+  record(
+    16,
+    "Off-by-one fixed (variable NCF)",
+    offByOneFixed,
+    `mid=${modelMid?.ending} oracle=${oracleMid} wrongWalk=${wrongWalk[midMonth]} (must diverge); ncfs Jan..Jun=${varShape.map((r) => r.coll - r.pay - r.opex).join(",")}`
+  );
+
+  // 17 NCF sign — build vs burn render with opposite sign (dot only; bars stay abs)
+  const explainSrc = readFileSync(
+    join(ROOT, "components/operator/treasury/cash-model/CashModelExplainChart.tsx"),
+    "utf8"
+  );
+  const buildMonth = varResult.timeline.find((r) => r.kind === "actual" && r.ncf > 0);
+  const burnMonth = varResult.timeline.find((r) => r.kind === "actual" && r.ncf < 0);
+  const ncfSignOk =
+    buildMonth != null &&
+    burnMonth != null &&
+    buildMonth.ncf * burnMonth.ncf < 0 &&
+    explainSrc.includes("row.ncf * amp") &&
+    !explainSrc.includes("Math.abs(row.ncf)");
+  record(
+    17,
+    "NCF sign",
+    ncfSignOk,
+    `build=${buildMonth?.ncf}@${buildMonth?.month} burn=${burnMonth?.ncf}@${burnMonth?.month}; overlay uses signed ncf (bars keep Mag.abs)`
+  );
+
+  // 18 IA — three sections; save-as-variant; unknown type inert
+  const studyListSrc = readFileSync(
+    join(ROOT, "components/operator/treasury/analytics/StudyList.tsx"),
+    "utf8"
+  );
+  const hookSrc = readFileSync(
+    join(ROOT, "components/operator/treasury/cash-model/useCashModel.ts"),
+    "utf8"
+  );
+  const iaOk =
+    analyticsSrc.includes("Saved Analytics") &&
+    analyticsSrc.includes("Cash Model") &&
+    analyticsSrc.includes("Spend plan") &&
+    analyticsSrc.includes('AnalyticsView = "saved" | "cash_model" | "spend_plan"') &&
+    studyListSrc.includes("Unsupported type") &&
+    studyListSrc.includes("isKnownStudyType") &&
+    hookSrc.includes("saveAsVariant") &&
+    hookSrc.includes("is_primary: false");
+  const { data: variantRow, error: varErr } = await admin
+    .from("treasury_studies")
+    .insert({
+      client_user_id: clientId,
+      name: `gate-variant-${Date.now()}`,
+      type: "cash_model",
+      is_primary: false,
+      scope: { accountId: ACCOUNT_ID, label: null },
+      params,
+      scenarios,
+      derived_snapshot: {
+        bucketBaselines: result.bucketBaselines,
+        coveragePct: result.coveragePct,
+        bucketMap: {},
+        openingBalance: OPENING,
+        asOf: AS_OF,
+        historyMonthCount: 6,
+        historyDerived: true,
+      },
+    })
+    .select("id, is_primary, type")
+    .single();
+  record(
+    18,
+    "IA three sections + variant",
+    iaOk && !varErr && variantRow?.is_primary === false && variantRow.type === "cash_model",
+    `iaOk=${iaOk}; variant id=${variantRow?.id} primary=${variantRow?.is_primary}`
+  );
+
+  // 19 Liquidity Summary KPIs equal model summary
+  const liqSrc = readFileSync(
+    join(ROOT, "components/operator/treasury/cash-model/CashModelLiquiditySummary.tsx"),
+    "utf8"
+  );
+  const reportHtml = buildCashModelReportHtml({
+    clientName: "Gate",
+    accountName: ACCOUNT_ID,
+    generatedAt: AS_OF,
+    result: composeCashModelResponse(
+      {
+        accountId: ACCOUNT_ID,
+        asOf: AS_OF,
+        openingBalance: OPENING,
+        openingBalanceRaw: OPENING,
+        categorySeries: series,
+      },
+      params,
+      scenarios
+    ),
+    params,
+    scenarios,
+    runwayStatus: buildRunwayStatus(result.summaries, params),
+    interventions,
+    backtest: bt,
+  });
+  const baseSum = result.summaries.find((s) => s.scenarioId === "base")!;
+  const kpiOk =
+    liqSrc.includes("cash-model-liquidity-summary") &&
+    liqSrc.includes("selectedSummary?.minEnding") &&
+    liqSrc.includes("thresholdMarginAtLow") &&
+    reportHtml.includes("Liquidity Summary") &&
+    reportHtml.includes(fmtGateMoney(baseSum.minEnding.value)) &&
+    (baseSum.breachMonth
+      ? reportHtml.toLowerCase().includes("breach")
+      : true);
+  record(
+    19,
+    "Liquidity Summary KPIs",
+    kpiOk,
+    `minEnding=${baseSum.minEnding.value}; breach=${baseSum.breachMonth}; report has Liquidity Summary`
+  );
+
   // 12 Build
   log("npm run build");
   execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
@@ -806,7 +1131,7 @@ async function main() {
   log("wipe client 4");
   await wipe(admin, clientId);
 
-  console.log("\n=== Spec 65 gate summary ===");
+  console.log("\n=== Spec 65 / 65-R gate summary ===");
   for (const r of results.sort((a, b) => a.id - b.id)) {
     console.log(`${r.ok ? "✓" : "✗"} ${r.id}. ${r.name}: ${r.detail}`);
   }
