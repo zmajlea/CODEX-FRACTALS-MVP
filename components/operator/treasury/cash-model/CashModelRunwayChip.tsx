@@ -11,7 +11,7 @@ type Props = {
 const LEVEL_CLASS: Record<CashModelRunwayStatus["level"], string> = {
   green: "chip prov-pulled",
   amber: "chip prov-assumed",
-  red: "chip",
+  red: "chip cm-runway-chip--red",
 };
 
 export function CashModelRunwayChip({ status, computing, compact }: Props) {
@@ -23,14 +23,6 @@ export function CashModelRunwayChip({ status, computing, compact }: Props) {
   return (
     <span
       className={`${LEVEL_CLASS[status.level]}${compact ? " text-xs" : ""}`}
-      style={
-        status.level === "red"
-          ? {
-              borderColor: "var(--cinnabar,#E67E50)",
-              color: "var(--cinnabar,#E67E50)",
-            }
-          : undefined
-      }
       title="Runway status"
     >
       {status.label}

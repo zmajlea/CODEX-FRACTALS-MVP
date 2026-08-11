@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { CashModelCommittedFlowsCard } from "@/components/operator/treasury/cash-model/CashModelCommittedFlowsCard";
-import { CashModelExplainChart } from "@/components/operator/treasury/cash-model/CashModelExplainChart";
 import { CashModelRunwayChart } from "@/components/operator/treasury/cash-model/CashModelRunwayChart";
 import type { CashModelIntervention } from "@/lib/treasury/cash-model-interventions";
 import { minimalClearingIntervention } from "@/lib/treasury/cash-model-interventions";
@@ -26,6 +25,8 @@ type Props = {
   runwayStatus: CashModelRunwayStatus | null;
   interventions: CashModelIntervention[];
   onExport?: () => void;
+  /** Spec 68 — chart lives with headline; default true for embedded study views. */
+  showChart?: boolean;
 };
 
 function fmtMoney(n: number): string {
@@ -42,7 +43,8 @@ function monthLabel(iso: string): string {
 }
 
 /**
- * Spec 65-R Block 4 — Liquidity Summary (client-facing monthly report frame).
+ * Spec 65-R Block 4 / Spec 68 Part E — Liquidity Summary KPI tiles.
+ * By-bucket chart lives in CategoryDivisionCard (deduped).
  */
 export function CashModelLiquiditySummary({
   clientUserId,
@@ -58,6 +60,7 @@ export function CashModelLiquiditySummary({
   runwayStatus,
   interventions,
   onExport,
+  showChart = true,
 }: Props) {
   const kpis = useMemo(() => {
     const projected = timeline.filter((r) => r.kind === "projected");
@@ -97,8 +100,8 @@ export function CashModelLiquiditySummary({
   }, [interventions, clearing]);
 
   return (
-    <div className="space-y-3" data-testid="cash-model-liquidity-summary">
-      <div className="panel p-4 space-y-3" style={{ border: "1px solid var(--line)" }}>
+    <div className="cm-liquidity space-y-3" data-testid="cash-model-liquidity-summary">
+      <div className="cm-liquidity-card panel p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="sec-title">Liquidity Summary</p>
@@ -114,27 +117,27 @@ export function CashModelLiquiditySummary({
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <p className="treasury-meta-fine">Avg monthly burn</p>
-            <p className="font-medium">{fmtMoney(kpis.avgProjectedBurn)}</p>
+        <div className="cm-kpis">
+          <div className="cm-kpi">
+            <p className="cm-kpi-lbl">Avg monthly burn</p>
+            <p className="cm-kpi-val">{fmtMoney(kpis.avgProjectedBurn)}</p>
             {kpis.avgActualNcf != null ? (
               <p className="treasury-meta-fine">
                 vs trailing-6 actual {fmtMoney(kpis.avgActualNcf)}
               </p>
             ) : null}
           </div>
-          <div>
-            <p className="treasury-meta-fine">Lowest projected cash</p>
-            <p className="font-medium">
+          <div className="cm-kpi">
+            <p className="cm-kpi-lbl">Lowest projected cash</p>
+            <p className="cm-kpi-val">
               {kpis.minEnding
                 ? `${fmtMoney(kpis.minEnding.value)} · ${monthLabel(kpis.minEnding.month)}`
                 : "—"}
             </p>
           </div>
-          <div>
-            <p className="treasury-meta-fine">First threshold breach</p>
-            <p className="font-medium">
+          <div className="cm-kpi">
+            <p className="cm-kpi-lbl">First threshold breach</p>
+            <p className="cm-kpi-val">
               {kpis.noBreach
                 ? `none in ${horizon}-mo horizon`
                 : kpis.breachMonth
@@ -142,9 +145,9 @@ export function CashModelLiquiditySummary({
                   : "—"}
             </p>
           </div>
-          <div>
-            <p className="treasury-meta-fine">Runway</p>
-            <p className="font-medium">
+          <div className="cm-kpi">
+            <p className="cm-kpi-lbl">Runway</p>
+            <p className="cm-kpi-val">
               {kpis.runwayMonths != null
                 ? `${kpis.runwayMonths} months`
                 : runwayStatus?.noBreachInHorizon
@@ -152,29 +155,25 @@ export function CashModelLiquiditySummary({
                   : "—"}
             </p>
           </div>
-          <div>
-            <p className="treasury-meta-fine">Threshold margin at low</p>
-            <p className="font-medium">{fmtMoney(kpis.thresholdMargin)}</p>
-          </div>
         </div>
 
         {collectionsLine ? (
-          <p className="text-sm" data-testid="collections-improvement-line">
+          <p className="cm-improve text-sm" data-testid="collections-improvement-line">
             {collectionsLine}
           </p>
         ) : null}
       </div>
 
-      <CashModelRunwayChart
-        asOf={asOf}
-        threshold={threshold}
-        selectedTimeline={timeline}
-        downsideTimeline={downsideTimeline}
-        selectedScenarioId={selectedScenarioId}
-        selectedSummary={selectedSummary}
-      />
-
-      <CashModelExplainChart timeline={timeline} />
+      {showChart ? (
+        <CashModelRunwayChart
+          asOf={asOf}
+          threshold={threshold}
+          selectedTimeline={timeline}
+          downsideTimeline={downsideTimeline}
+          selectedScenarioId={selectedScenarioId}
+          selectedSummary={selectedSummary}
+        />
+      ) : null}
 
       <CashModelCommittedFlowsCard
         clientUserId={clientUserId}

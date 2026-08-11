@@ -32,8 +32,7 @@ function monthShort(iso: string): string {
 }
 
 /**
- * Spec 65-R Block 2 — Where the money goes.
- * Explain chart + coverage + monthly by-bucket table + Rules CTA.
+ * Spec 65-R Block 2 / Spec 68 Part E — Where the money goes (air + tokens).
  */
 export function CashModelCategoryDivisionCard({
   clientUserId,
@@ -60,7 +59,6 @@ export function CashModelCategoryDivisionCard({
       amount += Math.abs(row.byBucket.uncategorized_in ?? 0);
       amount += Math.abs(row.byBucket.uncategorized_out ?? 0);
     }
-    // Approximate transaction count from coverage gap — UI uses dollar + month span.
     const monthCount = actuals.length;
     return { amount, monthCount };
   }, [actuals]);
@@ -74,8 +72,8 @@ export function CashModelCategoryDivisionCard({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="panel p-3 space-y-2" style={{ border: "1px solid var(--line)" }}>
+    <div className="cm-division space-y-3">
+      <div className="cm-division-intro panel p-3 space-y-2">
         <p className="sec-title">Where the money goes</p>
         <p className="treasury-meta text-sm">
           Last six actual months by Tim bucket, plus the next projected month.
@@ -92,11 +90,7 @@ export function CashModelCategoryDivisionCard({
       <CashModelExplainChart timeline={timeline} />
 
       {showRulesCta ? (
-        <div
-          className="panel p-3 space-y-2"
-          style={{ border: "1px solid var(--pulse-amber, #EBC06D)" }}
-          data-testid="cash-model-rules-cta"
-        >
+        <div className="cm-rules-cta panel p-3 space-y-2" data-testid="cash-model-rules-cta">
           <p className="text-sm font-medium">
             {fmtMoney(uncategorizedStats.amount)} across the last{" "}
             {uncategorizedStats.monthCount} months is uncategorized — create
@@ -108,7 +102,7 @@ export function CashModelCategoryDivisionCard({
         </div>
       ) : null}
 
-      <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
+      <div className="cm-bucket-table panel p-3 overflow-x-auto">
         <p className="sec-title mb-2">Monthly by bucket</p>
         <table className="w-full text-sm">
           <thead>

@@ -1341,3 +1341,175 @@
 [data-r1] .conn-resting:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 [data-r1] .conn-progress{ font-size:var(--t-meta); color:var(--mute); padding:6px 11px; border:1px solid var(--line);
   border-radius:999px; display:inline-block; }
+
+/* ==========================================================================
+   Spec 68 — Cash Model + Rules visual reshape (presentation only)
+   Append by hand — do NOT regenerate via namespace-summit-r1.mjs.
+   Tokens only; no hardcoded hex in this block.
+   ========================================================================== */
+
+[data-r1] .cm-reshape{ display:flex; flex-direction:column; gap:16px; }
+[data-r1] .cm-err{ color:var(--su-neg); }
+[data-r1] .cm-runway-chip--red{
+  border-color:color-mix(in srgb,var(--su-neg) 55%, var(--line));
+  color:var(--su-neg);
+}
+[data-r1] .field-input{
+  font:inherit; font-size:13px; padding:7px 10px; border:1px solid var(--line);
+  border-radius:6px; background:var(--paper); color:var(--ink); width:100%;
+}
+[data-r1] .field-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+
+/* Part A — Assumptions control card */
+[data-r1] .cm-controls{ display:flex; flex-direction:column; gap:12px; }
+[data-r1] .cm-controls .sec-title{ margin:0; }
+[data-r1] .cm-seg{ margin-bottom:0; }
+[data-r1] .cm-dials{
+  display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;
+}
+[data-r1] .cm-dial{
+  display:flex; flex-direction:column; gap:4px;
+  font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--mute); font-weight:600;
+}
+[data-r1] .cm-dial .field-input,
+[data-r1] .cm-dial input{
+  width:6.5rem; font-variant-numeric:tabular-nums; text-transform:none; letter-spacing:0;
+  font-size:14px; color:var(--ink); font-weight:500;
+}
+[data-r1] .cm-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:2px; }
+[data-r1] .cm-note{ flex:1 1 220px; font-size:var(--t-meta); color:var(--mute); }
+
+/* Part B — Runway headline */
+[data-r1] .cm-headline-block{ margin:4px 0 2px; }
+[data-r1] .cm-headline{
+  font-size:18px; font-weight:700; color:var(--ink); margin:0 0 4px; line-height:1.3;
+}
+[data-r1] .cm-headline-bad{ color:var(--su-neg); }
+[data-r1] .cm-headline-sub{ color:var(--mute); font-size:13px; margin:0 0 8px; }
+
+/* Part C — Runway chart */
+[data-r1] .cm-runway .cm-chartbox{ margin:6px 0 4px; }
+[data-r1] .cm-runway-svg .cm-grid{
+  stroke:var(--line); stroke-width:0.7;
+}
+[data-r1] .cm-runway-svg .cm-floor{
+  stroke:var(--su-neg); stroke-width:1.4; stroke-dasharray:5 4; opacity:.85;
+}
+[data-r1] .cm-runway-svg .cm-floor-label{
+  fill:var(--su-neg); font-family:var(--font-mono, ui-monospace, monospace);
+  font-size:9px; font-weight:600;
+}
+[data-r1] .cm-runway-svg .cm-today{
+  stroke:var(--slate); stroke-width:1.2; stroke-dasharray:3 3; opacity:.55;
+}
+[data-r1] .cm-runway-svg .cm-today-label{
+  fill:var(--mute); font-family:var(--font-mono, ui-monospace, monospace); font-size:9px;
+}
+[data-r1] .cm-runway-svg .cm-path-actual{
+  stroke:var(--brand-2); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;
+}
+[data-r1] .cm-runway-svg .cm-path-projected{
+  stroke:var(--brand-2); stroke-width:2.2; stroke-dasharray:6 5;
+  stroke-linecap:round; stroke-linejoin:round; opacity:.9;
+}
+[data-r1] .cm-runway-svg .cm-path-downside{
+  stroke:var(--su-warn); stroke-width:1.8; stroke-dasharray:4 4; opacity:.8;
+}
+[data-r1] .cm-runway-svg .cm-breach-line{
+  stroke:var(--su-neg); stroke-width:1.2; stroke-dasharray:2 3; opacity:.7;
+}
+[data-r1] .cm-runway-svg .cm-breach-dot{
+  fill:var(--su-neg); stroke:var(--paper); stroke-width:1.5;
+}
+[data-r1] .cm-chart-caption{ font-size:var(--t-meta); color:var(--mute); margin:0; line-height:1.45; }
+
+/* Part D — Cascade */
+[data-r1] .cm-casc-table{ border-collapse:collapse; font-size:12.5px; }
+[data-r1] .cm-casc-table th{
+  text-align:left; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--mute); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line);
+}
+[data-r1] .cm-casc-table th.num,
+[data-r1] .cm-casc-table td.num{
+  text-align:right; font-variant-numeric:tabular-nums;
+  font-family:var(--font-mono, ui-monospace, monospace); font-size:12px; white-space:nowrap;
+}
+[data-r1] .cm-casc-table td{
+  padding:9px 10px; border-bottom:1px solid color-mix(in srgb,var(--line) 70%, transparent);
+  color:var(--ink); vertical-align:top;
+}
+[data-r1] .cm-casc-table tr.cm-casc-breach td{
+  background:color-mix(in srgb,var(--su-neg) 8%, var(--paper));
+}
+[data-r1] .cm-casc-table tr.cm-casc-breach td.num:last-child{ color:var(--su-neg); font-weight:700; }
+
+/* Part E — Liquidity KPIs + coverage + division */
+[data-r1] .cm-kpis{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px;
+}
+[data-r1] .cm-kpi{
+  background:color-mix(in srgb,var(--brand) 4%, var(--paper));
+  border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+}
+[data-r1] .cm-kpi-lbl{
+  margin:0 0 4px; font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--mute); font-weight:600;
+}
+[data-r1] .cm-kpi-val{
+  margin:0; font-size:17px; font-weight:700;
+  font-family:var(--font-mono, ui-monospace, monospace); color:var(--ink);
+  font-variant-numeric:tabular-nums; line-height:1.25;
+}
+[data-r1] .cm-improve{ color:var(--slate); margin:0; }
+
+[data-r1] .cm-coverage{ border:1px solid var(--line); }
+[data-r1] .cm-cov-track{
+  height:8px; border-radius:999px; overflow:hidden; background:var(--line);
+}
+[data-r1] .cm-cov-fill{ height:100%; border-radius:999px; }
+[data-r1] .cm-cov-fill--hi{ background:color-mix(in srgb,var(--brand-2) 80%, var(--paper)); }
+[data-r1] .cm-cov-fill--mid{ background:color-mix(in srgb,var(--su-warn) 85%, var(--paper)); }
+[data-r1] .cm-cov-fill--lo{ background:color-mix(in srgb,var(--su-neg) 80%, var(--paper)); }
+
+[data-r1] .cm-explain{ border:1px solid var(--line); }
+[data-r1] .cm-bucket-slice.cm-bucket-in{ fill:color-mix(in srgb,var(--brand-2) 70%, var(--paper)); }
+[data-r1] .cm-bucket-slice.cm-bucket-out{ fill:color-mix(in srgb,var(--su-neg) 75%, var(--paper)); }
+[data-r1] .cm-bucket-slice.cm-bucket-uncat{ fill:color-mix(in srgb,var(--mute) 55%, var(--paper)); }
+[data-r1] .cm-bucket-slice.is-proj{ opacity:.72; }
+[data-r1] .cm-ncf-dot{ fill:var(--ink); opacity:.7; }
+[data-r1] .cm-ncf-dot--neg{ fill:color-mix(in srgb,var(--su-neg) 85%, var(--ink)); }
+
+[data-r1] .cm-division-intro,
+[data-r1] .cm-bucket-table{ border:1px solid var(--line); }
+[data-r1] .cm-rules-cta{
+  border:1px solid color-mix(in srgb,var(--su-warn) 55%, var(--line));
+  background:color-mix(in srgb,var(--su-warn) 6%, var(--paper));
+}
+
+/* Part F — Rules creator popup polish */
+[data-r1] .rule-analyze-backdrop{ background:var(--scrim); }
+[data-r1] .rule-analyze-field{
+  display:flex; flex-direction:column; gap:4px;
+  font-size:11.5px; color:var(--mute); font-weight:600;
+}
+[data-r1] .rule-analyze-field .field-input{ width:100%; font-weight:500; color:var(--ink); }
+[data-r1] .rule-analyze-promise{
+  margin:0 0 4px; font-size:var(--t-body); font-weight:600; color:var(--brand);
+}
+[data-r1] .rule-analyze-promise-n{ font-variant-numeric:tabular-nums; }
+[data-r1] .rule-analyze-summary-meta{ margin:0; font-size:var(--t-meta); color:var(--mute); }
+[data-r1] .rule-analyze-err{ color:var(--su-neg); margin:0 0 8px; }
+[data-r1] .dist-toggle{ display:flex; gap:6px; margin-bottom:9px; flex-wrap:wrap; }
+[data-r1] .rule-analyze-bars li.is-selected .rule-analyze-bar-btn{
+  border:1px solid color-mix(in srgb,var(--brand-2) 45%, var(--line));
+  background:color-mix(in srgb,var(--brand-2) 8%, var(--paper));
+}
+[data-r1] .rule-analyze-bars .bar{
+  background:var(--brand-2); opacity:.7; height:9px; border-radius:3px;
+}
+[data-r1] .rule-analyze-col--filters{
+  border-right:1px solid var(--line); padding-right:12px;
+}
+@media (max-width:900px){
+  [data-r1] .rule-analyze-col--filters{ border-right:none; padding-right:0; border-bottom:1px solid var(--line); padding-bottom:12px; }
+}

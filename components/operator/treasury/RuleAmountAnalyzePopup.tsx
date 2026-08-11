@@ -383,26 +383,26 @@ export function RuleAmountAnalyzePopup({
     <div className="rule-analyze-col rule-analyze-col--filters">
       <section className="rule-analyze-group">
         <h4 className="rule-analyze-group-title">Identity</h4>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           Rule name
           <input
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={localName}
             onChange={(e) => setLocalName(e.target.value)}
             placeholder="Optional"
           />
         </label>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           Payee contains
           <input
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={localPayee}
             onChange={(e) => setLocalPayee(e.target.value)}
             placeholder="When payee contains"
             autoFocus
           />
         </label>
-        <div className="text-xs">
+        <div className="rule-analyze-field">
           Category to assign
           <CategoryPicker
             value={localLabel}
@@ -416,30 +416,30 @@ export function RuleAmountAnalyzePopup({
 
       <section className="rule-analyze-group">
         <h4 className="rule-analyze-group-title">Amount</h4>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           Min
           <input
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={localMin}
             onChange={(e) => setLocalMin(e.target.value)}
             inputMode="decimal"
             placeholder="Any"
           />
         </label>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           Max
           <input
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={localMax}
             onChange={(e) => setLocalMax(e.target.value)}
             inputMode="decimal"
             placeholder="Any"
           />
         </label>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           Direction
           <select
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={localDir}
             onChange={(e) =>
               setLocalDir(e.target.value as "in" | "out" | "")
@@ -454,20 +454,20 @@ export function RuleAmountAnalyzePopup({
 
       <section className="rule-analyze-group">
         <h4 className="rule-analyze-group-title">Time</h4>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           From
           <input
             type="date"
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
           />
         </label>
-        <label className="text-xs">
+        <label className="rule-analyze-field">
           To
           <input
             type="date"
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="field-input"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
           />
@@ -537,15 +537,21 @@ export function RuleAmountAnalyzePopup({
             aria-label="Updating matches"
           />
         ) : null}
-        {error ? <p className="text-sm text-cinnabar">{error}</p> : null}
+        {error ? <p className="rule-analyze-err text-sm">{error}</p> : null}
 
         {stats ? (
           <div className="rule-analyze-summary">
-            <p className="text-sm">
-              {stats.total.toLocaleString()} match ·{" "}
-              {suggestN.toLocaleString()} will be suggested
+            <p className="rule-analyze-promise">
+              <span className="rule-analyze-promise-n">
+                {stats.total.toLocaleString()}
+              </span>{" "}
+              match ·{" "}
+              <span className="rule-analyze-promise-n">
+                {suggestN.toLocaleString()}
+              </span>{" "}
+              will be suggested
             </p>
-            <p className="text-xs text-codex-muted">
+            <p className="rule-analyze-summary-meta">
               Active-period averages · month{" "}
               {stats.points_per_period.avg_per_active_month != null
                 ? Number(stats.points_per_period.avg_per_active_month).toFixed(1)
@@ -562,11 +568,11 @@ export function RuleAmountAnalyzePopup({
           {filterCol}
 
           <div className="rule-analyze-col rule-analyze-col--dist">
-            <div className="flex gap-2 mb-2">
+            <div className="dist-toggle">
               <button
                 type="button"
                 className={
-                  view === "month" ? "btn text-xs" : "btn btn-secondary text-xs"
+                  view === "month" ? "btn text-xs" : "btn ghost text-xs"
                 }
                 disabled={!stats}
                 onClick={() => {
@@ -580,7 +586,7 @@ export function RuleAmountAnalyzePopup({
               <button
                 type="button"
                 className={
-                  view === "week" ? "btn text-xs" : "btn btn-secondary text-xs"
+                  view === "week" ? "btn text-xs" : "btn ghost text-xs"
                 }
                 disabled={!stats}
                 onClick={() => {

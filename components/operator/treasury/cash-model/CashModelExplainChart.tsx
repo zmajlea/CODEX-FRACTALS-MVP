@@ -40,6 +40,12 @@ function monthShort(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 }
 
+function bucketClass(bucket: CashModelBucketKey, raw: number): string {
+  if (bucket.startsWith("uncategorized")) return "cm-bucket-uncat";
+  return raw >= 0 ? "cm-bucket-in" : "cm-bucket-out";
+}
+
+/** Spec 68 Part E — by-bucket stacked bars via token classes (no hex). */
 export function CashModelExplainChart({ timeline }: Props) {
   const chart = useMemo(() => {
     const width = 640;
@@ -72,11 +78,11 @@ export function CashModelExplainChart({ timeline }: Props) {
   if (!timeline.length) return null;
 
   return (
-    <div className="panel p-3 space-y-2" style={{ border: "1px solid var(--line)" }}>
+    <div className="cm-explain panel p-3 space-y-2">
       <p className="sec-title">By bucket</p>
-      <div className="fc-chartwrap">
+      <div className="cm-chartbox fc-chartwrap">
         <svg
-          className="fc-svg"
+          className="fc-svg cm-explain-svg"
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           role="img"
           aria-label="Monthly flows by bucket"
@@ -104,19 +110,14 @@ export function CashModelExplainChart({ timeline }: Props) {
                 {slices.map((s) => (
                   <rect
                     key={s.bucket}
+                    className={`cm-bucket-slice ${bucketClass(s.bucket, s.raw)}${
+                      row.kind === "projected" ? " is-proj" : ""
+                    }`}
                     x={x}
                     y={s.y}
                     width={chart.barW}
                     height={s.h}
                     rx={1}
-                    fill={
-                      s.bucket.startsWith("uncategorized")
-                        ? "color-mix(in srgb, var(--mute) 55%, var(--paper))"
-                        : s.raw >= 0
-                          ? "color-mix(in srgb, var(--brand-2) 70%, var(--paper))"
-                          : "color-mix(in srgb, var(--su-neg) 75%, var(--paper))"
-                    }
-                    opacity={row.kind === "projected" ? 0.72 : 1}
                   />
                 ))}
                 <title>
@@ -134,15 +135,10 @@ export function CashModelExplainChart({ timeline }: Props) {
             return (
               <circle
                 key={`ncf-${row.month}`}
+                className={row.ncf >= 0 ? "cm-ncf-dot" : "cm-ncf-dot cm-ncf-dot--neg"}
                 cx={x}
                 cy={y}
                 r={2}
-                fill={
-                  row.ncf >= 0
-                    ? "var(--ink)"
-                    : "color-mix(in srgb, var(--su-neg) 85%, var(--ink))"
-                }
-                opacity={0.7}
               />
             );
           })}
@@ -159,7 +155,7 @@ export function CashModelExplainChart({ timeline }: Props) {
           ))}
         </svg>
       </div>
-      <div className="flex flex-wrap gap-2 treasury-meta text-xs">
+      <div className="cm-explain-legend flex flex-wrap gap-2 treasury-meta text-xs">
         {BUCKET_ORDER.filter((b) => b.startsWith("uncategorized") || !b.includes("other")).map(
           (b) => (
             <span key={b} className="chip prov-assumed">

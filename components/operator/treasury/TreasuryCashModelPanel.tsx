@@ -1,15 +1,13 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { CashModelBacktestSection } from "@/components/operator/treasury/cash-model/CashModelBacktestSection";
 import { CashModelBucketMapEditor } from "@/components/operator/treasury/cash-model/CashModelBucketMapEditor";
 import { CashModelCategoryDivisionCard } from "@/components/operator/treasury/cash-model/CashModelCategoryDivisionCard";
 import { CashModelInterventionsCard } from "@/components/operator/treasury/cash-model/CashModelInterventionsCard";
 import { CashModelLiquiditySummary } from "@/components/operator/treasury/cash-model/CashModelLiquiditySummary";
+import { CashModelRunwayChart } from "@/components/operator/treasury/cash-model/CashModelRunwayChart";
 import type { CashModelBucketKey } from "@/lib/treasury/cash-model-types";
-import {
-  inflowFromBuckets,
-  outflowFromBuckets,
-} from "@/lib/treasury/cash-model";
 import { downloadCashModelReportHtml } from "@/lib/treasury/cash-model-report";
 import type { CashModelModelState } from "@/components/operator/treasury/cash-model/useCashModel";
 
@@ -23,23 +21,12 @@ type Props = {
   clientName?: string;
 };
 
-const ASSUMPTION_ROWS: Array<{
-  key: CashModelBucketKey | "threshold";
-  label: string;
-  isThreshold?: boolean;
-}> = [
-  { key: "collections", label: "Collection factor" },
-  { key: "payroll", label: "Payroll factor" },
-  { key: "opex", label: "Other opex factor" },
-  { key: "threshold", label: "Minimum cash threshold", isThreshold: true },
-];
+type SegMode = "base" | "downside" | "selected";
+
+const DOWNSIDE_PRESET = { collections: 0.9, payroll: 1.05, opex: 1.08 };
 
 function fmtMoney(n: number): string {
   return `$${Math.round(n).toLocaleString()}`;
-}
-
-function fmtPctFactor(n: number): string {
-  return n.toFixed(2);
 }
 
 function monthLabel(iso: string): string {
@@ -51,10 +38,21 @@ function monthLabel(iso: string): string {
   });
 }
 
-function provClass(source: "assumed" | "user-provided"): string {
-  return source === "user-provided" ? "prov-user-provided" : "prov-assumed";
+function otherOutFromBuckets(
+  byBucket: Partial<Record<CashModelBucketKey, number>>
+): number {
+  return (
+    (byBucket.debt_service ?? 0) +
+    (byBucket.capex ?? 0) +
+    (byBucket.other_out ?? 0) +
+    (byBucket.uncategorized_out ?? 0)
+  );
 }
 
+/**
+ * Spec 68 — presentation reshape toward Tim R2 guide.
+ * Selected is a visual state: dial edits mutate the active scenario (Base or Downside).
+ */
 export function TreasuryCashModelPanel({
   clientUserId,
   accounts,
@@ -86,16 +84,33 @@ export function TreasuryCashModelPanel({
     saveAsVariant,
   } = model;
 
+  const [segMode, setSegMode] = useState<SegMode>("base");
+  const [actionNote, setActionNote] = useState(
+    "Downside = collections ×0.90 · payroll ×1.05 · opex ×1.08. Edit any dial and you're in \"Selected\"."
+  );
+
   const base = scenarios?.find((s) => s.id === "base");
-  const downside = scenarios?.find((s) => s.id === "downside");
   const selected =
     scenarios?.find((s) => s.id === params?.selectedScenarioId) ?? base;
   const selectedSummary = result?.summaries.find(
     (s) => s.scenarioId === params?.selectedScenarioId
   );
+  const activeId = selected?.id ?? "base";
 
   const accountName =
     accounts.find((a) => a.id === accountId)?.name ?? accountId;
+
+  const visualSelected = useMemo(() => {
+    if (segMode === "selected") return true;
+    if (!selected) return false;
+    return selected.source === "user-provided";
+  }, [segMode, selected]);
+
+  const pressedSeg: SegMode = visualSelected
+    ? "selected"
+    : params?.selectedScenarioId === "downside"
+      ? "downside"
+      : "base";
 
   function exportReport() {
     if (!result || !params || !scenarios) return;
@@ -121,6 +136,65 @@ export function TreasuryCashModelPanel({
     void saveAsVariant(name);
   }
 
+  function pickSeg(next: SegMode) {
+    if (next === "base") {
+      setSelectedScenarioId("base");
+      setSegMode("base");
+      setActionNote(
+        "Downside = collections ×0.90 · payroll ×1.05 · opex ×1.08. Edit any dial and you're in \"Selected\"."
+      );
+      return;
+    }
+    if (next === "downside") {
+      setSelectedScenarioId("downside");
+      setSegMode("downside");
+      setActionNote(
+        "Downside = collections ×0.90 · payroll ×1.05 · opex ×1.08. Edit any dial and you're in \"Selected\"."
+      );
+      return;
+    }
+    setSegMode("selected");
+  }
+
+  function onDialFactor(bucket: CashModelBucketKey, value: number) {
+    updateScenarioFactor(activeId, bucket, value);
+    setSegMode("selected");
+  }
+
+  function onDialThreshold(value: number) {
+    updateScenarioThreshold(activeId, value);
+    setSegMode("selected");
+  }
+
+  function quickBoostCollections() {
+    const cur = selected?.factors.collections ?? 1;
+    updateScenarioFactor(activeId, "collections", Math.round(cur * 1.1 * 100) / 100);
+    setSegMode("selected");
+    setActionNote(
+      "+10% collections applied to the dials — a computed what-if; nothing changes in the client's data."
+    );
+  }
+
+  function quickCutOpex() {
+    const cur = selected?.factors.opex ?? 1;
+    updateScenarioFactor(activeId, "opex", Math.round(cur * 0.9 * 100) / 100);
+    setSegMode("selected");
+    setActionNote(
+      "−10% opex applied to the dials — a computed what-if; nothing changes in the client's data."
+    );
+  }
+
+  function quickResetBase() {
+    updateScenarioFactor("base", "collections", 1);
+    updateScenarioFactor("base", "payroll", 1);
+    updateScenarioFactor("base", "opex", 1);
+    setSelectedScenarioId("base");
+    setSegMode("base");
+    setActionNote(
+      "Downside = collections ×0.90 · payroll ×1.05 · opex ×1.08. Edit any dial and you're in \"Selected\"."
+    );
+  }
+
   if (loading) {
     return <p className="treasury-meta">Loading cash model…</p>;
   }
@@ -131,12 +205,16 @@ export function TreasuryCashModelPanel({
     );
   }
 
+  const threshold = selected?.minCashThreshold ?? 0;
+  const marginAbs = selectedSummary
+    ? Math.abs(selectedSummary.thresholdMarginAtLow)
+    : 0;
+  const belowFloor =
+    selectedSummary != null && selectedSummary.thresholdMarginAtLow < 0;
+
   return (
-    <div className="space-y-4">
-      <div
-        className="panel p-3 flex flex-wrap items-end gap-3"
-        style={{ border: "1px solid var(--line)" }}
-      >
+    <div className="cm-reshape space-y-4">
+      <div className="cm-toolbar panel p-3 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm min-w-[12rem]">
           <span className="treasury-meta">Account</span>
           <select
@@ -170,12 +248,10 @@ export function TreasuryCashModelPanel({
         {computing ? <span className="chip prov-assumed">computing…</span> : null}
       </div>
 
-      {error ? (
-        <p className="treasury-meta text-[var(--cinnabar,#E67E50)]">{error}</p>
-      ) : null}
+      {error ? <p className="treasury-meta cm-err">{error}</p> : null}
 
       {result?.refused ? (
-        <div className="panel p-4" style={{ border: "1px solid var(--line)" }}>
+        <div className="panel p-4">
           <p className="sec-title">Cannot project</p>
           <p className="treasury-meta">
             {result.refuseReason ?? "Insufficient history"}
@@ -183,130 +259,118 @@ export function TreasuryCashModelPanel({
         </div>
       ) : null}
 
-      {/* Block 1 — Configuration & limits */}
-      <div
-        className="panel p-3 overflow-x-auto"
-        style={{ border: "1px solid var(--line)" }}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
-          <p className="sec-title">Assumptions</p>
-          <div className="flex flex-wrap gap-3 items-end">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="treasury-meta">Horizon (months)</span>
-              <input
-                type="number"
-                min={1}
-                max={36}
-                className="field-input w-20"
-                value={params.horizon}
-                onChange={(e) => setHorizon(Number(e.target.value))}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="treasury-meta">Scenario</span>
-              <select
-                className="field-input w-auto text-sm"
-                value={params.selectedScenarioId}
-                onChange={(e) => setSelectedScenarioId(e.target.value)}
-              >
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+      {/* Part A — Assumptions control card */}
+      <div className="cm-controls panel p-4 space-y-3">
+        <div className="cm-controls-top flex flex-wrap items-end justify-between gap-3">
+          <p className="sec-title mb-0">Assumptions</p>
+          <label className="cm-dial">
+            <span>Horizon (months)</span>
+            <input
+              type="number"
+              min={1}
+              max={36}
+              className="field-input"
+              value={params.horizon}
+              onChange={(e) => setHorizon(Number(e.target.value))}
+            />
+          </label>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="treasury-meta text-left">
-              <th className="py-1 pr-3">Input</th>
-              <th className="py-1 pr-3">Base</th>
-              <th className="py-1 pr-3">Downside</th>
-              <th className="py-1">Selected</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ASSUMPTION_ROWS.map((row) => (
-              <tr key={row.key} className="border-t border-[var(--line)]">
-                <td className="py-2 pr-3">{row.label}</td>
-                <td className="py-2 pr-3">
-                  {row.isThreshold ? (
-                    <input
-                      type="number"
-                      className={`field-input w-28 ${base ? provClass(base.source) : ""}`}
-                      value={base?.minCashThreshold ?? 0}
-                      onChange={(e) =>
-                        updateScenarioThreshold("base", Number(e.target.value))
-                      }
-                    />
-                  ) : (
-                    <input
-                      type="number"
-                      step="0.01"
-                      className={`field-input w-20 ${base ? provClass(base.source) : ""}`}
-                      value={base?.factors[row.key as CashModelBucketKey] ?? 1}
-                      onChange={(e) =>
-                        updateScenarioFactor(
-                          "base",
-                          row.key as CashModelBucketKey,
-                          Number(e.target.value)
-                        )
-                      }
-                    />
-                  )}
-                </td>
-                <td className="py-2 pr-3">
-                  {row.isThreshold ? (
-                    <input
-                      type="number"
-                      className={`field-input w-28 ${downside ? provClass(downside.source) : ""}`}
-                      value={downside?.minCashThreshold ?? 0}
-                      onChange={(e) =>
-                        updateScenarioThreshold(
-                          "downside",
-                          Number(e.target.value)
-                        )
-                      }
-                    />
-                  ) : (
-                    <input
-                      type="number"
-                      step="0.01"
-                      className={`field-input w-20 ${downside ? provClass(downside.source) : ""}`}
-                      value={
-                        downside?.factors[row.key as CashModelBucketKey] ?? 1
-                      }
-                      onChange={(e) =>
-                        updateScenarioFactor(
-                          "downside",
-                          row.key as CashModelBucketKey,
-                          Number(e.target.value)
-                        )
-                      }
-                    />
-                  )}
-                </td>
-                <td className="py-2">
-                  {selected ? (
-                    row.isThreshold ? (
-                      <span className={`chip ${provClass(selected.source)}`}>
-                        {fmtMoney(selected.minCashThreshold)}
-                      </span>
-                    ) : (
-                      <span className={`chip ${provClass(selected.source)}`}>
-                        {fmtPctFactor(
-                          selected.factors[row.key as CashModelBucketKey] ?? 1
-                        )}
-                      </span>
-                    )
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+        <div className="seg cm-seg" role="group" aria-label="Scenario">
+          <button
+            type="button"
+            aria-pressed={pressedSeg === "base"}
+            onClick={() => pickSeg("base")}
+          >
+            Base
+          </button>
+          <button
+            type="button"
+            aria-pressed={pressedSeg === "downside"}
+            onClick={() => pickSeg("downside")}
+          >
+            Downside
+          </button>
+          <button
+            type="button"
+            aria-pressed={pressedSeg === "selected"}
+            onClick={() => pickSeg("selected")}
+          >
+            Selected
+          </button>
+        </div>
+
+        <div className="cm-dials">
+          <label className="cm-dial">
+            <span>Collections ×</span>
+            <input
+              type="number"
+              step="0.01"
+              min={0.5}
+              max={1.5}
+              className="field-input"
+              value={selected?.factors.collections ?? 1}
+              onChange={(e) =>
+                onDialFactor("collections", Number(e.target.value))
+              }
+            />
+          </label>
+          <label className="cm-dial">
+            <span>Payroll ×</span>
+            <input
+              type="number"
+              step="0.01"
+              min={0.5}
+              max={1.5}
+              className="field-input"
+              value={selected?.factors.payroll ?? 1}
+              onChange={(e) => onDialFactor("payroll", Number(e.target.value))}
+            />
+          </label>
+          <label className="cm-dial">
+            <span>Opex ×</span>
+            <input
+              type="number"
+              step="0.01"
+              min={0.5}
+              max={1.5}
+              className="field-input"
+              value={selected?.factors.opex ?? 1}
+              onChange={(e) => onDialFactor("opex", Number(e.target.value))}
+            />
+          </label>
+          <label className="cm-dial">
+            <span>Minimum cash ($)</span>
+            <input
+              type="number"
+              step={1000}
+              min={0}
+              className="field-input"
+              value={threshold}
+              onChange={(e) => onDialThreshold(Number(e.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="cm-actions flex flex-wrap items-center gap-2">
+          <button type="button" className="btn" onClick={quickBoostCollections}>
+            +10% collections
+          </button>
+          <button type="button" className="btn ghost" onClick={quickCutOpex}>
+            −10% opex
+          </button>
+          <button type="button" className="btn ghost" onClick={quickResetBase}>
+            Reset to Base
+          </button>
+          <span className="cm-note treasury-meta">{actionNote}</span>
+        </div>
+        {pressedSeg === "downside" ? (
+          <p className="treasury-meta-fine">
+            Preset factors · collections ×{DOWNSIDE_PRESET.collections.toFixed(2)} ·
+            payroll ×{DOWNSIDE_PRESET.payroll.toFixed(2)} · opex ×
+            {DOWNSIDE_PRESET.opex.toFixed(2)}
+          </p>
+        ) : null}
       </div>
 
       <CashModelBucketMapEditor
@@ -317,84 +381,92 @@ export function TreasuryCashModelPanel({
 
       {result && !result.refused ? (
         <>
-          {/* Block 2 — Where the money goes */}
-          <CashModelCategoryDivisionCard
-            clientUserId={clientUserId}
-            accountId={accountId}
-            coveragePct={result.coveragePct}
-            degradedToTotals={result.degradedToTotals}
-            timeline={result.timeline}
-          />
-
-          {/* Block 3 — The calculation */}
-          <div
-            className="panel p-4 space-y-2"
-            style={{ border: "1px solid var(--line)" }}
-          >
-            <p className="sec-title">The calculation</p>
-            <p className="text-lg font-medium">
+          {/* Parts B–C — Runway headline + chart */}
+          <div className="cm-headline-block">
+            <p className="cm-headline">
               {selectedSummary?.noBreachInHorizon
                 ? `No breach in ${params.horizon}-month horizon`
-                : selectedSummary?.breachMonth
-                  ? `Breach · ${monthLabel(selectedSummary.breachMonth)}${
-                      selectedSummary.runwayMonths != null
-                        ? ` (${selectedSummary.runwayMonths} months)`
-                        : ""
-                    }`
+                : selectedSummary?.runwayMonths != null &&
+                    selectedSummary.breachMonth
+                  ? <>
+                      Runway {selectedSummary.runwayMonths} months ·{" "}
+                      <span className="cm-headline-bad">
+                        cash floor breached {monthLabel(selectedSummary.breachMonth)}
+                      </span>
+                    </>
                   : "—"}
             </p>
-            <p className="treasury-meta">
-              Opening {fmtMoney(result.openingBalance)} as of {result.asOf}
-              {selectedSummary
-                ? ` · low ${fmtMoney(selectedSummary.minEnding.value)} (${monthLabel(selectedSummary.minEnding.month)})`
-                : ""}
+            <p className="cm-headline-sub">
+              {selectedSummary?.minEnding
+                ? `Lowest projected cash ${fmtMoney(selectedSummary.minEnding.value)} in ${monthLabel(selectedSummary.minEnding.month)}${
+                    belowFloor
+                      ? ` · ${fmtMoney(marginAbs)} below the ${fmtMoney(threshold)} floor.`
+                      : ` · ${fmtMoney(marginAbs)} above the ${fmtMoney(threshold)} floor.`
+                  }`
+                : `Opening ${fmtMoney(result.openingBalance)} as of ${result.asOf}`}
             </p>
             <span className="chip prov-assumed">History ending derived</span>
           </div>
 
-          <div
-            className="panel p-3 overflow-x-auto"
-            style={{ border: "1px solid var(--line)" }}
-          >
-            <p className="sec-title mb-2">Cascade</p>
-            <table className="w-full text-sm">
+          <CashModelRunwayChart
+            asOf={result.asOf}
+            threshold={threshold}
+            selectedTimeline={result.timeline}
+            downsideTimeline={scenarioTimelines?.downside}
+            selectedScenarioId={params.selectedScenarioId}
+            selectedSummary={selectedSummary}
+          />
+
+          {/* Part D — Cascade */}
+          <div className="cm-cascade panel p-3 overflow-x-auto">
+            <p className="sec-title mb-1">The calculation, month by month</p>
+            <p className="treasury-meta mb-3">
+              Beginning + collections − payroll − opex − other outflows → ending.
+              Months below the floor are flagged.
+            </p>
+            <table className="cm-casc-table w-full text-sm">
               <thead>
-                <tr className="treasury-meta text-left">
-                  <th className="py-1 pr-2">Month</th>
-                  <th className="py-1 pr-2">Kind</th>
-                  <th className="py-1 pr-2 text-right">Beginning</th>
-                  <th className="py-1 pr-2 text-right">In</th>
-                  <th className="py-1 pr-2 text-right">Out</th>
-                  <th className="py-1 pr-2 text-right">NCF</th>
-                  <th className="py-1 pr-2 text-right">Ending</th>
-                  <th className="py-1 text-right">Breach</th>
+                <tr>
+                  <th>Month</th>
+                  <th className="num">Beginning</th>
+                  <th className="num">Collections</th>
+                  <th className="num">Payroll</th>
+                  <th className="num">Opex</th>
+                  <th className="num">Other Out</th>
+                  <th className="num">Net</th>
+                  <th className="num">Ending</th>
                 </tr>
               </thead>
               <tbody>
                 {result.timeline.map((row, i) => {
                   const beginning = row.ending - row.ncf;
-                  const inn = inflowFromBuckets(row.byBucket);
-                  const out = outflowFromBuckets(row.byBucket);
+                  const collections =
+                    (row.byBucket.collections ?? 0) +
+                    (row.byBucket.other_income ?? 0) +
+                    (row.byBucket.uncategorized_in ?? 0);
+                  const payroll = Math.abs(row.byBucket.payroll ?? 0);
+                  const opex = Math.abs(row.byBucket.opex ?? 0);
+                  const otherOut = Math.abs(otherOutFromBuckets(row.byBucket));
                   return (
                     <tr
                       key={`${row.month}-${row.kind}-${i}`}
-                      className="border-t border-[var(--line)]"
+                      className={row.breachFlag ? "cm-casc-breach" : undefined}
                     >
-                      <td className="py-1 pr-2">{monthLabel(row.month)}</td>
-                      <td className="py-1 pr-2 treasury-meta">
-                        {row.kind}
-                        {row.historyDerived ? " · derived" : ""}
+                      <td>
+                        {monthLabel(row.month)}
+                        <span className="treasury-meta-fine">
+                          {" "}
+                          · {row.kind}
+                          {row.historyDerived ? " · derived" : ""}
+                        </span>
                       </td>
-                      <td className="py-1 pr-2 text-right">{fmtMoney(beginning)}</td>
-                      <td className="py-1 pr-2 text-right">{fmtMoney(inn)}</td>
-                      <td className="py-1 pr-2 text-right">{fmtMoney(out)}</td>
-                      <td className="py-1 pr-2 text-right">{fmtMoney(row.ncf)}</td>
-                      <td className="py-1 pr-2 text-right">
-                        {fmtMoney(row.ending)}
-                      </td>
-                      <td className="py-1 text-right">
-                        {row.breachFlag ? "yes" : "—"}
-                      </td>
+                      <td className="num">{fmtMoney(beginning)}</td>
+                      <td className="num">{fmtMoney(collections)}</td>
+                      <td className="num">{fmtMoney(payroll)}</td>
+                      <td className="num">{fmtMoney(opex)}</td>
+                      <td className="num">{fmtMoney(otherOut)}</td>
+                      <td className="num">{fmtMoney(row.ncf)}</td>
+                      <td className="num">{fmtMoney(row.ending)}</td>
                     </tr>
                   );
                 })}
@@ -402,13 +474,13 @@ export function TreasuryCashModelPanel({
             </table>
           </div>
 
-          {/* Block 4 — Liquidity Summary */}
+          {/* Part E — Liquidity Summary (KPIs + export; chart owned above) */}
           <CashModelLiquiditySummary
             clientUserId={clientUserId}
             accountId={accountId}
             asOf={result.asOf}
             horizon={params.horizon}
-            threshold={selected?.minCashThreshold ?? 0}
+            threshold={threshold}
             openingBalance={result.openingBalance}
             timeline={result.timeline}
             downsideTimeline={scenarioTimelines?.downside}
@@ -417,9 +489,17 @@ export function TreasuryCashModelPanel({
             runwayStatus={runwayStatus}
             interventions={interventions}
             onExport={exportReport}
+            showChart={false}
           />
 
-          {/* Operator detail */}
+          <CashModelCategoryDivisionCard
+            clientUserId={clientUserId}
+            accountId={accountId}
+            coveragePct={result.coveragePct}
+            degradedToTotals={result.degradedToTotals}
+            timeline={result.timeline}
+          />
+
           <CashModelInterventionsCard
             interventions={interventions}
             hasBreach={!selectedSummary?.noBreachInHorizon}

@@ -21,6 +21,7 @@ function fmtMoney(n: number): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+/** Spec 68 Part E — coverage meter air + token fills (no hex). */
 export function CashModelCoverageMeter({
   coveragePct,
   degradedToTotals,
@@ -37,35 +38,26 @@ export function CashModelCoverageMeter({
     { in: 0, out: 0 }
   );
 
+  const fillClass =
+    pct >= 65 ? "cm-cov-fill--hi" : pct >= 35 ? "cm-cov-fill--mid" : "cm-cov-fill--lo";
+
   return (
-    <div className="panel p-4 space-y-3" style={{ border: "1px solid var(--line)" }}>
+    <div className="cm-coverage panel p-4 space-y-3">
       <p className="sec-title">Coverage</p>
       <p className="treasury-meta">
         {pct}% of the last 6 months&apos; flow is categorized
         {degradedToTotals ? " · totals-only mode (low coverage)" : ""}
       </p>
       <div
-        className="h-2 rounded-full overflow-hidden"
-        style={{ background: "var(--line)" }}
+        className="cm-cov-track"
         role="meter"
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${pct}%`,
-            background:
-              pct >= 65
-                ? "color-mix(in srgb, var(--brand-2) 80%, var(--paper))"
-                : pct >= 35
-                  ? "color-mix(in srgb, var(--pulse-amber,#EBC06D) 85%, var(--paper))"
-                  : "color-mix(in srgb, var(--su-neg) 80%, var(--paper))",
-          }}
-        />
+        <div className={`cm-cov-fill ${fillClass}`} style={{ width: `${pct}%` }} />
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="cm-cov-chips flex flex-wrap gap-2">
         {DISPLAY_BUCKETS.map((b) => {
           const total = recent.reduce(
             (sum, row) => sum + Math.abs(row.byBucket[b] ?? 0),

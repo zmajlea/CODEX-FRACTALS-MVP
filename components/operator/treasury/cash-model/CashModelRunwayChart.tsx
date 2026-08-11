@@ -37,6 +37,7 @@ function linePath(
   return { d, dashed };
 }
 
+/** Spec 68 Part C — guide-style runway SVG (tokens only). */
 export function CashModelRunwayChart({
   asOf,
   threshold,
@@ -49,8 +50,8 @@ export function CashModelRunwayChart({
 
   const chart = useMemo(() => {
     const width = 640;
-    const height = 220;
-    const pad = { top: 20, right: 16, bottom: 32, left: 52 };
+    const height = 240;
+    const pad = { top: 28, right: 16, bottom: 36, left: 52 };
     const innerW = width - pad.left - pad.right;
     const innerH = height - pad.top - pad.bottom;
 
@@ -79,14 +80,12 @@ export function CashModelRunwayChart({
       .map((r) => ({
         x: xAt(months.indexOf(r.month)),
         y: yAt(r.ending),
-        row: r,
       }));
     const projectedPts = selectedTimeline
       .filter((r) => r.kind === "projected")
       .map((r) => ({
         x: xAt(months.indexOf(r.month)),
         y: yAt(r.ending),
-        row: r,
       }));
 
     if (actualPts.length && projectedPts.length) {
@@ -107,6 +106,11 @@ export function CashModelRunwayChart({
     const breachPt = breachRow
       ? { x: xAt(months.indexOf(breachRow.month)), y: yAt(breachRow.ending) }
       : null;
+
+    const ticks = [maxY, (maxY + minY) / 2, minY].map((v) => ({
+      v,
+      y: yAt(v),
+    }));
 
     const labelIdx = [0, Math.floor((n - 1) / 2), n - 1].filter(
       (v, i, a) => a.indexOf(v) === i
@@ -129,13 +133,14 @@ export function CashModelRunwayChart({
       breachPt,
       labelIdx,
       months,
+      ticks,
     };
   }, [asOf, selectedTimeline, downsideTimeline, showDownside, threshold]);
 
   if (!selectedTimeline.length) return null;
 
   return (
-    <div className="panel p-3 space-y-2" style={{ border: "1px solid var(--line)" }}>
+    <div className="cm-runway panel p-3 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="sec-title mb-0">Runway</p>
         {downsideTimeline && selectedScenarioId !== "downside" ? (
@@ -149,90 +154,103 @@ export function CashModelRunwayChart({
           </label>
         ) : null}
       </div>
-      <div className="fc-chartwrap">
+      <div className="cm-chartbox fc-chartwrap">
         <svg
-          className="fc-svg"
+          className="fc-svg cm-runway-svg"
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           role="img"
           aria-label="Ending cash runway chart"
         >
+          {chart.ticks.map((t) => (
+            <g key={`tick-${t.v}`}>
+              <line
+                className="cm-grid"
+                x1={chart.pad.left}
+                y1={t.y}
+                x2={chart.width - chart.pad.right}
+                y2={t.y}
+              />
+              <text
+                className="fc-ylabel"
+                x={chart.pad.left - 4}
+                y={t.y + 3}
+                textAnchor="end"
+              >
+                {fmtAxis(t.v)}
+              </text>
+            </g>
+          ))}
           <line
-            className="fc-grid"
+            className="cm-floor"
             x1={chart.pad.left}
             y1={chart.thresholdY}
             x2={chart.width - chart.pad.right}
             y2={chart.thresholdY}
           />
           <text
-            className="fc-covlabel"
+            className="cm-floor-label"
             x={chart.width - chart.pad.right}
             y={chart.thresholdY - 4}
             textAnchor="end"
           >
-            Min cash
+            Minimum cash
           </text>
           {chart.seamIdx > 0 ? (
             <>
               <line
+                className="cm-today"
                 x1={chart.xAt(chart.seamIdx)}
                 y1={chart.pad.top}
                 x2={chart.xAt(chart.seamIdx)}
                 y2={chart.pad.top + chart.innerH}
-                stroke="var(--mute)"
-                strokeWidth={1}
-                strokeDasharray="3 3"
               />
               <text
-                className="fc-xlabel t"
-                x={chart.xAt(chart.seamIdx) + 4}
-                y={chart.pad.top + 10}
-                fontSize={8}
+                className="cm-today-label"
+                x={chart.xAt(chart.seamIdx)}
+                y={chart.pad.top - 6}
+                textAnchor="middle"
               >
-                Today
+                today
               </text>
             </>
           ) : null}
           {chart.actualPath ? (
             <path
+              className="cm-path-actual"
               d={chart.actualPath.d}
               fill="none"
-              stroke="var(--ink)"
-              strokeWidth={2}
             />
           ) : null}
           {chart.projectedPath ? (
             <path
+              className="cm-path-projected"
               d={chart.projectedPath.d}
               fill="none"
-              stroke="var(--ink)"
-              strokeWidth={2}
-              strokeDasharray="6 4"
+              strokeDasharray="6 5"
             />
           ) : null}
           {chart.downsidePath ? (
             <path
+              className="cm-path-downside"
               d={chart.downsidePath.d}
               fill="none"
-              stroke="var(--cinnabar,#E67E50)"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              opacity={0.85}
+              strokeDasharray="4 4"
             />
           ) : null}
           {chart.breachPt ? (
             <>
               <line
+                className="cm-breach-line"
                 x1={chart.breachPt.x}
                 y1={chart.pad.top}
                 x2={chart.breachPt.x}
                 y2={chart.pad.top + chart.innerH}
-                className="fc-cov"
               />
               <circle
+                className="cm-breach-dot"
                 cx={chart.breachPt.x}
                 cy={chart.breachPt.y}
-                r={4}
-                fill="var(--su-neg)"
+                r={4.5}
               />
             </>
           ) : null}
@@ -241,28 +259,26 @@ export function CashModelRunwayChart({
               key={chart.months[i]}
               className="fc-xlabel"
               x={chart.xAt(i)}
-              y={chart.height - 8}
+              y={chart.height - 10}
               textAnchor="middle"
             >
               {monthShort(chart.months[i]!)}
             </text>
           ))}
-          <text className="fc-ylabel" x={chart.pad.left - 4} y={chart.yAt(chart.maxY) + 3} textAnchor="end">
-            {fmtAxis(chart.maxY)}
-          </text>
-          <text className="fc-ylabel" x={chart.pad.left - 4} y={chart.yAt(chart.minY) + 3} textAnchor="end">
-            {fmtAxis(chart.minY)}
-          </text>
         </svg>
       </div>
-      {selectedSummary?.breachMonth && !selectedSummary.noBreachInHorizon ? (
-        <p className="treasury-meta">
-          Breach · {selectedSummary.breachMonth.slice(0, 7)}
-          {selectedSummary.runwayMonths != null
-            ? ` (${selectedSummary.runwayMonths} months)`
-            : ""}
-        </p>
-      ) : null}
+      <p className="cm-chart-caption treasury-meta">
+        Solid line: recent history from the ledger. Dashed: the next months under
+        the assumptions. The flat line is the minimum-cash floor; the marker is
+        the first month below it.
+        {selectedSummary?.breachMonth && !selectedSummary.noBreachInHorizon
+          ? ` Breach · ${selectedSummary.breachMonth.slice(0, 7)}${
+              selectedSummary.runwayMonths != null
+                ? ` (${selectedSummary.runwayMonths} months)`
+                : ""
+            }.`
+          : ""}
+      </p>
     </div>
   );
 }
