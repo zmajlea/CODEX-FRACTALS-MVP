@@ -13,6 +13,7 @@ import {
   type CashModelLoadedInputs,
 } from "@/lib/treasury/cash-model-compose";
 import type {
+  CashModelBucketKey,
   CashModelParams,
   CashModelRunwayStatus,
   CashModelScenario,
@@ -38,11 +39,14 @@ export type CashModelModelState = {
   runwayStatus: CashModelRunwayStatus | null;
   interventions: CashModelIntervention[];
   backtest: CashModelBacktestRow[];
+  categorySeries: CashModelLoadedInputs["categorySeries"] | null;
   loading: boolean;
   computing: boolean;
   saving: boolean;
   error: string | null;
   setSelectedScenarioId: (id: string) => void;
+  setHorizon: (horizon: number) => void;
+  updateBucketMap: (label: string, bucket: CashModelBucketKey | null) => void;
   updateScenarioFactor: (
     scenarioId: string,
     bucket: keyof CashModelScenario["factors"],
@@ -50,6 +54,7 @@ export type CashModelModelState = {
   ) => void;
   updateScenarioThreshold: (scenarioId: string, value: number) => void;
   saveStudy: () => Promise<void>;
+  saveAsVariant: (name: string) => Promise<void>;
   refresh: () => void;
 };
 
@@ -224,6 +229,24 @@ export function useCashModel(
     setParams((p) => (p ? { ...p, selectedScenarioId: id } : p));
   }, []);
 
+  const setHorizon = useCallback((horizon: number) => {
+    const h = Math.max(1, Math.min(36, Math.round(horizon)));
+    setParams((p) => (p ? { ...p, horizon: h } : p));
+  }, []);
+
+  const updateBucketMap = useCallback(
+    (label: string, bucket: CashModelBucketKey | null) => {
+      setParams((p) => {
+        if (!p) return p;
+        const next = { ...p.bucketMap };
+        if (bucket == null) delete next[label];
+        else next[label] = bucket;
+        return { ...p, bucketMap: next };
+      });
+    },
+    []
+  );
+
   const updateScenarioFactor = useCallback(
     (
       scenarioId: string,
@@ -320,6 +343,67 @@ export function useCashModel(
     }
   }, [clientUserId, study, params, scenarios, accountId]);
 
+  const saveAsVariant = useCallback(
+    async (name: string) => {
+      if (!params || !scenarios || !result) return;
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setError("Variant name required");
+        return;
+      }
+      setSaving(true);
+      setError(null);
+      try {
+        const computeRes = await fetch(
+          `/api/operator/treasury/clients/${clientUserId}/cash-model`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId, params, scenarios }),
+          }
+        );
+        const authoritative = (await computeRes.json()) as CashModelApiResponse & {
+          error?: string;
+        };
+        if (!computeRes.ok) {
+          throw new Error(authoritative.error ?? "Authoritative compute failed");
+        }
+
+        const res = await fetch(
+          `/api/operator/treasury/clients/${clientUserId}/studies`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: trimmed,
+              type: "cash_model",
+              is_primary: false,
+              scope: { accountId, label: null },
+              params,
+              scenarios,
+              derived_snapshot: {
+                ...authoritative.derived_snapshot,
+                runwayStatus: buildRunwayStatus(authoritative.summaries, params),
+              },
+            }),
+          }
+        );
+        const json = (await res.json()) as {
+          study?: CashModelStudyRow;
+          error?: string;
+        };
+        if (!res.ok || !json.study) {
+          throw new Error(json.error ?? "Save as variant failed");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save as variant failed");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [clientUserId, accountId, params, scenarios, result]
+  );
+
   return {
     study,
     result,
@@ -329,14 +413,18 @@ export function useCashModel(
     runwayStatus,
     interventions,
     backtest,
+    categorySeries: inputs?.categorySeries ?? null,
     loading: loadingStudy || loadingInputs,
     computing,
     saving,
     error,
     setSelectedScenarioId,
+    setHorizon,
+    updateBucketMap,
     updateScenarioFactor,
     updateScenarioThreshold,
     saveStudy,
+    saveAsVariant,
     refresh,
   };
 }

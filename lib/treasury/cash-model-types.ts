@@ -66,7 +66,9 @@ function unitFactors(): Record<CashModelBucketKey, number> {
   return out;
 }
 
-export function defaultCashModelScenarios(): CashModelScenario[] {
+export function defaultCashModelScenarios(
+  minCashThreshold = 500_000
+): CashModelScenario[] {
   const baseFactors = unitFactors();
   const downsideFactors = { ...baseFactors, collections: 0.9, payroll: 1.05, opex: 1.08 };
   return [
@@ -74,17 +76,30 @@ export function defaultCashModelScenarios(): CashModelScenario[] {
       id: "base",
       name: "Base",
       factors: baseFactors,
-      minCashThreshold: 500_000,
+      minCashThreshold,
       source: "assumed",
     },
     {
       id: "downside",
       name: "Downside",
       factors: downsideFactors,
-      minCashThreshold: 500_000,
+      minCashThreshold,
       source: "assumed",
     },
   ];
+}
+
+/**
+ * Spec 65-R — when $500k is unrealistic for the book, seed from
+ * round(3 × trailing-avg monthly outflow), marked assumed.
+ */
+export function scaleAwareMinCashThreshold(
+  trailingAvgMonthlyOutflow: number,
+  fallback = 500_000
+): number {
+  const scaled = Math.round(3 * Math.max(0, trailingAvgMonthlyOutflow));
+  if (scaled > 0 && scaled < fallback) return Math.max(scaled, 1_000);
+  return fallback;
 }
 
 export function defaultCashModelParams(): CashModelParams {

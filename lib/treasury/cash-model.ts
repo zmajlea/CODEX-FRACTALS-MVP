@@ -262,12 +262,18 @@ function buildTimelineForScenario(
     historyNcfs[month] = ncfForMonth(byBucket);
   }
 
-  const endingByMonth: Record<string, number> = { [asOfMonth]: input.openingBalance };
-  for (const month of [...history].reverse()) {
-    if (month === asOfMonth) continue;
-    const nextMonth = addMonths(month, 1);
-    const nextEnding = endingByMonth[nextMonth] ?? input.openingBalance;
-    endingByMonth[month] = nextEnding - (historyNcfs[month] ?? 0);
+  // Spec 65-R: anchor last complete month to openingBalance; walk back with
+  // ending[m] = ending[m+1] − ncf[m+1] (not ncf[m] — that shifted history early).
+  const lastComplete = history.at(-1);
+  const endingByMonth: Record<string, number> = {};
+  if (lastComplete) {
+    endingByMonth[lastComplete] = input.openingBalance;
+    for (const month of [...history].reverse()) {
+      if (month === lastComplete) continue;
+      const nextMonth = addMonths(month, 1);
+      const nextEnding = endingByMonth[nextMonth] ?? input.openingBalance;
+      endingByMonth[month] = nextEnding - (historyNcfs[nextMonth] ?? 0);
+    }
   }
 
   for (const month of history) {
@@ -407,14 +413,18 @@ export function computeCashModel(input: CashModelComputeInput): CashModelResult 
   };
 }
 
-/** Reconstruct ending at asOf from backward walk — gate oracle helper. */
-export function endingAtAsOfFromHistory(
+/**
+ * Independent backward walk — gate oracle.
+ * Anchors ending[lastComplete] = openingBalance; ending[m] = ending[m+1] − ncf[m+1].
+ * Returns ending at `targetMonth` (must be in history).
+ */
+export function endingAtMonthFromHistory(
   openingBalance: number,
   categorySeries: MonthlyByCategorySeries,
   bucketMap: Record<string, CashModelBucketKey>,
   asOf: string,
-  excludedMonthSet: Set<string>
-): number {
+  targetMonth: string
+): number | null {
   const bucketSeries = buildBucketSeries(categorySeries, bucketMap);
   const allMonths = allMonthsFromBuckets(bucketSeries);
   const completeMonths = deriveCompleteMonths(
@@ -423,16 +433,43 @@ export function endingAtAsOfFromHistory(
   );
   const asOfMonth = startOfMonth(asOf.slice(0, 10));
   const history = completeMonths.filter((m) => m <= asOfMonth);
+  const lastComplete = history.at(-1);
+  if (!lastComplete) return null;
   const ncfs: Record<string, number> = {};
   for (const month of history) {
     const byBucket: Partial<Record<CashModelBucketKey, number>> = {};
     for (const b of CASH_MODEL_BUCKET_KEYS) byBucket[b] = bucketSeries[b][month] ?? 0;
     ncfs[month] = ncfForMonth(byBucket);
   }
-  let ending = openingBalance;
+  const endingByMonth: Record<string, number> = {
+    [lastComplete]: openingBalance,
+  };
   for (const month of [...history].reverse()) {
-    if (month === asOfMonth) break;
-    ending -= ncfs[month] ?? 0;
+    if (month === lastComplete) continue;
+    const nextMonth = addMonths(month, 1);
+    const nextEnding = endingByMonth[nextMonth] ?? openingBalance;
+    endingByMonth[month] = nextEnding - (ncfs[nextMonth] ?? 0);
   }
-  return ending;
+  const key = startOfMonth(targetMonth.slice(0, 10));
+  return endingByMonth[key] ?? null;
+}
+
+/** @deprecated Use endingAtMonthFromHistory — kept for gate check 7 seam assert. */
+export function endingAtAsOfFromHistory(
+  openingBalance: number,
+  categorySeries: MonthlyByCategorySeries,
+  bucketMap: Record<string, CashModelBucketKey>,
+  asOf: string,
+  _excludedMonthSet: Set<string>
+): number {
+  const asOfMonth = startOfMonth(asOf.slice(0, 10));
+  return (
+    endingAtMonthFromHistory(
+      openingBalance,
+      categorySeries,
+      bucketMap,
+      asOf,
+      asOfMonth
+    ) ?? openingBalance
+  );
 }

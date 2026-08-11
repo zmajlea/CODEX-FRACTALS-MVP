@@ -1,6 +1,7 @@
 "use client";
 
 import { CashModelBacktestSection } from "@/components/operator/treasury/cash-model/CashModelBacktestSection";
+import { CashModelBucketMapEditor } from "@/components/operator/treasury/cash-model/CashModelBucketMapEditor";
 import { CashModelCommittedFlowsCard } from "@/components/operator/treasury/cash-model/CashModelCommittedFlowsCard";
 import { CashModelCoverageMeter } from "@/components/operator/treasury/cash-model/CashModelCoverageMeter";
 import { CashModelExplainChart } from "@/components/operator/treasury/cash-model/CashModelExplainChart";
@@ -69,14 +70,18 @@ export function TreasuryCashModelPanel({
     runwayStatus,
     interventions,
     backtest,
+    categorySeries,
     loading,
     computing,
     saving,
     error,
     setSelectedScenarioId,
+    setHorizon,
+    updateBucketMap,
     updateScenarioFactor,
     updateScenarioThreshold,
     saveStudy,
+    saveAsVariant,
   } = model;
 
   const base = scenarios?.find((s) => s.id === "base");
@@ -103,6 +108,12 @@ export function TreasuryCashModelPanel({
       interventions,
       backtest,
     });
+  }
+
+  function onSaveAsVariant() {
+    const name = window.prompt("Variant name", `${study?.name ?? "Cash model"} — variant`);
+    if (!name) return;
+    void saveAsVariant(name);
   }
 
   if (loading) {
@@ -144,6 +155,14 @@ export function TreasuryCashModelPanel({
         <button
           type="button"
           className="chip"
+          disabled={saving || computing || !result || result.refused}
+          onClick={onSaveAsVariant}
+        >
+          Save as variant
+        </button>
+        <button
+          type="button"
+          className="chip"
           disabled={!result || result.refused}
           onClick={exportReport}
         >
@@ -160,6 +179,130 @@ export function TreasuryCashModelPanel({
           <p className="treasury-meta">{result.refuseReason ?? "Insufficient history"}</p>
         </div>
       ) : null}
+
+      {/* Block 1 — Configuration & limits */}
+      <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
+          <p className="sec-title">Assumptions</p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="treasury-meta">Horizon (months)</span>
+              <input
+                type="number"
+                min={1}
+                max={36}
+                className="field-input w-20"
+                value={params.horizon}
+                onChange={(e) => setHorizon(Number(e.target.value))}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="treasury-meta">Scenario</span>
+              <select
+                className="field-input w-auto text-sm"
+                value={params.selectedScenarioId}
+                onChange={(e) => setSelectedScenarioId(e.target.value)}
+              >
+                {scenarios.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="treasury-meta text-left">
+              <th className="py-1 pr-3">Input</th>
+              <th className="py-1 pr-3">Base</th>
+              <th className="py-1 pr-3">Downside</th>
+              <th className="py-1">Selected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ASSUMPTION_ROWS.map((row) => (
+              <tr key={row.key} className="border-t border-[var(--line)]">
+                <td className="py-2 pr-3">{row.label}</td>
+                <td className="py-2 pr-3">
+                  {row.isThreshold ? (
+                    <input
+                      type="number"
+                      className={`field-input w-28 ${base ? provClass(base.source) : ""}`}
+                      value={base?.minCashThreshold ?? 0}
+                      onChange={(e) =>
+                        updateScenarioThreshold("base", Number(e.target.value))
+                      }
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.01"
+                      className={`field-input w-20 ${base ? provClass(base.source) : ""}`}
+                      value={base?.factors[row.key as CashModelBucketKey] ?? 1}
+                      onChange={(e) =>
+                        updateScenarioFactor(
+                          "base",
+                          row.key as CashModelBucketKey,
+                          Number(e.target.value)
+                        )
+                      }
+                    />
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  {row.isThreshold ? (
+                    <input
+                      type="number"
+                      className={`field-input w-28 ${downside ? provClass(downside.source) : ""}`}
+                      value={downside?.minCashThreshold ?? 0}
+                      onChange={(e) =>
+                        updateScenarioThreshold("downside", Number(e.target.value))
+                      }
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.01"
+                      className={`field-input w-20 ${downside ? provClass(downside.source) : ""}`}
+                      value={downside?.factors[row.key as CashModelBucketKey] ?? 1}
+                      onChange={(e) =>
+                        updateScenarioFactor(
+                          "downside",
+                          row.key as CashModelBucketKey,
+                          Number(e.target.value)
+                        )
+                      }
+                    />
+                  )}
+                </td>
+                <td className="py-2">
+                  {selected ? (
+                    row.isThreshold ? (
+                      <span className={`chip ${provClass(selected.source)}`}>
+                        {fmtMoney(selected.minCashThreshold)}
+                      </span>
+                    ) : (
+                      <span className={`chip ${provClass(selected.source)}`}>
+                        {fmtPctFactor(
+                          selected.factors[row.key as CashModelBucketKey] ?? 1
+                        )}
+                      </span>
+                    )
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <CashModelBucketMapEditor
+        categorySeries={categorySeries}
+        bucketMap={params.bucketMap ?? {}}
+        onChange={updateBucketMap}
+      />
 
       {result && !result.refused ? (
         <>
@@ -224,107 +367,6 @@ export function TreasuryCashModelPanel({
           />
 
           <CashModelBacktestSection rows={backtest} />
-
-          <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
-            <p className="sec-title mb-2">Assumptions</p>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="treasury-meta text-left">
-                  <th className="py-1 pr-3">Input</th>
-                  <th className="py-1 pr-3">Base</th>
-                  <th className="py-1 pr-3">Downside</th>
-                  <th className="py-1">
-                    Selected
-                    <select
-                      className="field-input ml-2 inline-block w-auto text-xs"
-                      value={params.selectedScenarioId}
-                      onChange={(e) => setSelectedScenarioId(e.target.value)}
-                    >
-                      {scenarios.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {ASSUMPTION_ROWS.map((row) => (
-                  <tr key={row.key} className="border-t border-[var(--line)]">
-                    <td className="py-2 pr-3">{row.label}</td>
-                    <td className="py-2 pr-3">
-                      {row.isThreshold ? (
-                        <input
-                          type="number"
-                          className={`field-input w-28 ${base ? provClass(base.source) : ""}`}
-                          value={base?.minCashThreshold ?? 0}
-                          onChange={(e) =>
-                            updateScenarioThreshold("base", Number(e.target.value))
-                          }
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          className={`field-input w-20 ${base ? provClass(base.source) : ""}`}
-                          value={base?.factors[row.key as CashModelBucketKey] ?? 1}
-                          onChange={(e) =>
-                            updateScenarioFactor(
-                              "base",
-                              row.key as CashModelBucketKey,
-                              Number(e.target.value)
-                            )
-                          }
-                        />
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {row.isThreshold ? (
-                        <input
-                          type="number"
-                          className={`field-input w-28 ${downside ? provClass(downside.source) : ""}`}
-                          value={downside?.minCashThreshold ?? 0}
-                          onChange={(e) =>
-                            updateScenarioThreshold("downside", Number(e.target.value))
-                          }
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          className={`field-input w-20 ${downside ? provClass(downside.source) : ""}`}
-                          value={downside?.factors[row.key as CashModelBucketKey] ?? 1}
-                          onChange={(e) =>
-                            updateScenarioFactor(
-                              "downside",
-                              row.key as CashModelBucketKey,
-                              Number(e.target.value)
-                            )
-                          }
-                        />
-                      )}
-                    </td>
-                    <td className="py-2">
-                      {selected ? (
-                        row.isThreshold ? (
-                          <span className={`chip ${provClass(selected.source)}`}>
-                            {fmtMoney(selected.minCashThreshold)}
-                          </span>
-                        ) : (
-                          <span className={`chip ${provClass(selected.source)}`}>
-                            {fmtPctFactor(
-                              selected.factors[row.key as CashModelBucketKey] ?? 1
-                            )}
-                          </span>
-                        )
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
 
           <div className="panel p-3 overflow-x-auto" style={{ border: "1px solid var(--line)" }}>
             <p className="sec-title mb-2">Cascade</p>

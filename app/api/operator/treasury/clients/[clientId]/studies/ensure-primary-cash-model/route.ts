@@ -4,10 +4,12 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import { asTreasuryStudyRow } from "@/lib/server/treasury-study-mapper";
+import { loadCashModelInputs } from "@/lib/server/treasury-cash-model";
 import {
   defaultCashModelParams,
   defaultCashModelScenarios,
   emptyCashModelDerivedSnapshot,
+  scaleAwareMinCashThreshold,
 } from "@/lib/treasury/cash-model-types";
 import type { Json } from "@/lib/database.types";
 
@@ -16,6 +18,24 @@ type RouteContext = { params: Promise<{ clientId: string }> };
 type PostBody = {
   accountId?: string;
 };
+
+/** Trailing-6 complete months' average monthly outflow (abs outflows). */
+function trailingAvgMonthlyOutflow(
+  categorySeries: Record<string, Record<string, { in: number; out: number }>>
+): number {
+  const monthTotals = new Map<string, number>();
+  for (const months of Object.values(categorySeries)) {
+    for (const [month, cell] of Object.entries(months)) {
+      monthTotals.set(month, (monthTotals.get(month) ?? 0) + (cell.out ?? 0));
+    }
+  }
+  const sorted = [...monthTotals.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, v]) => v);
+  if (sorted.length === 0) return 0;
+  const window = sorted.slice(-6);
+  return window.reduce((a, b) => a + b, 0) / window.length;
+}
 
 /** Spec 65 — idempotent primary cash_model row per client+account (navigation-safe). */
 export async function POST(request: Request, context: RouteContext) {
@@ -35,8 +55,17 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "accountId required" }, { status: 400 });
   }
 
+  let threshold = 500_000;
+  try {
+    const inputs = await loadCashModelInputs(guard.admin, clientId, accountId);
+    const avgOut = trailingAvgMonthlyOutflow(inputs.categorySeries);
+    threshold = scaleAwareMinCashThreshold(avgOut);
+  } catch {
+    // Empty book / loader miss — keep Tim default
+  }
+
   const params = defaultCashModelParams();
-  const scenarios = defaultCashModelScenarios();
+  const scenarios = defaultCashModelScenarios(threshold);
   const derived_snapshot = emptyCashModelDerivedSnapshot();
 
   const { data: studyId, error: rpcErr } = await guard.admin.rpc(

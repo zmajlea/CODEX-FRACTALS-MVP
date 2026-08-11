@@ -127,14 +127,21 @@ export function CashModelExplainChart({ timeline }: Props) {
           })}
           {timeline.map((row, i) => {
             const x = chart.pad.left + i * (chart.barW + chart.barGap) + chart.barW / 2;
-            const y = chart.pad.top + chart.innerH - (Math.abs(row.ncf) / chart.maxTotal) * (chart.innerH - 8);
+            // Spec 65-R: signed NCF for the overlay dot only — bar magnitudes stay abs.
+            const midY = chart.pad.top + chart.innerH / 2;
+            const amp = (chart.innerH / 2 - 4) / chart.maxTotal;
+            const y = midY - row.ncf * amp;
             return (
               <circle
                 key={`ncf-${row.month}`}
                 cx={x}
                 cy={y}
                 r={2}
-                fill="var(--ink)"
+                fill={
+                  row.ncf >= 0
+                    ? "var(--ink)"
+                    : "color-mix(in srgb, var(--su-neg) 85%, var(--ink))"
+                }
                 opacity={0.7}
               />
             );
