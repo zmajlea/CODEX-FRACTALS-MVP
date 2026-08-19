@@ -11,6 +11,11 @@ import { createClient } from "@/utils/supabase/server";
 
 export const runtime = "nodejs";
 
+/** OAuth callback must use 303 — 307 preserves POST and breaks claude.ai/auth_callback. */
+function redirectToClient(url: URL) {
+  return NextResponse.redirect(url, 303);
+}
+
 async function readForm(req: Request) {
   const fd = await req.formData();
   const out: Record<string, string> = {};
@@ -39,7 +44,7 @@ export async function POST(req: Request) {
 
   if (decision === "deny") {
     redirect.searchParams.set("error", "access_denied");
-    return NextResponse.redirect(redirect);
+    return redirectToClient(redirect);
   }
 
   const admin = createSupabaseAdminClient();
@@ -62,13 +67,13 @@ export async function POST(req: Request) {
   const tier = await getTier(supabase, user.id);
   if (tier !== "operator" && tier !== "global_admin") {
     redirect.searchParams.set("error", "access_denied");
-    return NextResponse.redirect(redirect);
+    return redirectToClient(redirect);
   }
 
   const tenantId = await getPrimaryOperatorTenantId(supabase, user.id);
   if (!tenantId) {
     redirect.searchParams.set("error", "access_denied");
-    return NextResponse.redirect(redirect);
+    return redirectToClient(redirect);
   }
 
   const scope = parseScopeString(scopeRaw).join(" ");
@@ -83,5 +88,5 @@ export async function POST(req: Request) {
   });
 
   redirect.searchParams.set("code", code);
-  return NextResponse.redirect(redirect);
+  return redirectToClient(redirect);
 }
