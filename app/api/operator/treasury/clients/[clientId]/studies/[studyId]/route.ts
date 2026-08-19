@@ -80,6 +80,7 @@ type PatchBody = {
   params?: StudyParams | unknown;
   scenarios?: SpendPlanScenario[] | unknown;
   derived_snapshot?: DerivedSnapshot | unknown;
+  status?: "pending" | "confirmed" | "discarded";
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -110,7 +111,23 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const studyType = existing.type as StudyType;
 
-  if (
+  if (studyType === "external_model") {
+    if (
+      body.params !== undefined ||
+      body.scenarios !== undefined ||
+      body.derived_snapshot !== undefined
+    ) {
+      return NextResponse.json(
+        { error: "external_model payload is immutable via PATCH" },
+        { status: 400 }
+      );
+    }
+    if (body.status !== undefined) {
+      if (!["pending", "confirmed", "discarded"].includes(body.status)) {
+        return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      }
+    }
+  } else if (
     body.params !== undefined ||
     body.scenarios !== undefined ||
     body.derived_snapshot !== undefined
@@ -141,6 +158,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
     }
     update.name = name;
+  }
+  if (body.status !== undefined && studyType === "external_model") {
+    update.status = body.status;
   }
   if (body.scope !== undefined) update.scope = body.scope as unknown as Json;
   if (body.params !== undefined) update.params = body.params as unknown as Json;
@@ -192,12 +212,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   const { data: existing } = await guard.admin
     .from("treasury_studies")
-    .select("is_primary, type")
+    .select("is_primary, type, status")
     .eq("id", studyId)
     .eq("client_user_id", clientId)
     .maybeSingle();
 
-  if (existing?.is_primary && existing.type === "cash_model") {
+  if (existing?.type === "external_model" && existing.status === "pending") {
+    // allow discard of pending MCP studies
+  } else if (existing?.is_primary && existing.type === "cash_model") {
     return NextResponse.json(
       { error: "Cannot delete the primary cash model study" },
       { status: 400 }

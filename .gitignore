@@ -34,6 +34,7 @@ supabase/.branches/
 
 # Local scratch / debug artifacts
 tmp-*/
+scripts/.mcp-gate-tokens.json
 *.headers
 tmp-*.log
 tmp-*.tar.gz

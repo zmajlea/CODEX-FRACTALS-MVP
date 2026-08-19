@@ -10,7 +10,7 @@ import type {
 } from "@/lib/treasury/cash-model-types";
 import type { SpendPlanScenario, SeasonalIndexResult } from "@/lib/treasury/spend-plan";
 
-export type StudyType = "spend_plan" | "cash_model";
+export type StudyType = "spend_plan" | "cash_model" | "external_model";
 
 export type StudyScope = {
   accountId: string;
@@ -72,6 +72,8 @@ export type TreasuryStudyRowBase = {
   name: string;
   is_primary: boolean;
   scope: StudyScope;
+  status?: string;
+  source?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -90,7 +92,26 @@ export type CashModelStudyRow = TreasuryStudyRowBase & {
   derived_snapshot: CashModelDerivedSnapshot;
 };
 
-export type TreasuryStudyRow = SpendPlanStudyRow | CashModelStudyRow;
+export type ExternalModelDerivedSnapshot = {
+  results: Record<string, unknown>;
+  validationReport: Record<string, unknown>;
+  engineBaseline: Record<string, unknown> | null;
+  submittedAt: string;
+};
+
+export type ExternalModelStudyRow = TreasuryStudyRowBase & {
+  type: "external_model";
+  status: "pending" | "confirmed" | "discarded";
+  source: string | null;
+  params: Record<string, unknown>;
+  scenarios: unknown[];
+  derived_snapshot: ExternalModelDerivedSnapshot;
+};
+
+export type TreasuryStudyRow =
+  | SpendPlanStudyRow
+  | CashModelStudyRow
+  | ExternalModelStudyRow;
 
 export type DriftField =
   | "l0"

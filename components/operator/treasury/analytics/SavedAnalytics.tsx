@@ -10,6 +10,7 @@ import {
 import { isKnownStudyType } from "@/components/operator/treasury/analytics/study-registry";
 import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
 import { PickButton } from "@/components/operator/treasury/PickButton";
+import { PendingExternalResults } from "@/components/operator/treasury/analytics/PendingExternalResults";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { CashModelStudyRow } from "@/lib/treasury/studies";
 import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
@@ -68,7 +69,9 @@ export function SavedAnalytics({
   const activeType = known ? saved!.type : null;
 
   return (
-    <div className="saved-analytics grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
+    <div className="saved-analytics space-y-4">
+      <PendingExternalResults clientUserId={clientUserId} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
       <aside
         className="panel p-3"
         style={{ border: "1px solid var(--line)", minHeight: 320 }}
@@ -223,6 +226,7 @@ export function SavedAnalytics({
             ) : null}
           </>
         )}
+      </div>
       </div>
     </div>
   );

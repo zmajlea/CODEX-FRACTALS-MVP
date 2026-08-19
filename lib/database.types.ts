@@ -681,6 +681,108 @@ export type Database = {
         }
         Relationships: []
       }
+      mcp_audit_log: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          ip: string | null
+          ok: boolean
+          operator_user_id: string
+          tenant_id: string
+          tool: string
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip?: string | null
+          ok?: boolean
+          operator_user_id: string
+          tenant_id: string
+          tool: string
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          ip?: string | null
+          ok?: boolean
+          operator_user_id?: string
+          tenant_id?: string
+          tool?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_audit_log_operator_user_id_fkey"
+            columns: ["operator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mcp_audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operator_api_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_used_at: string | null
+          operator_user_id: string
+          revoked_at: string | null
+          scopes: string[]
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          operator_user_id: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          operator_user_id?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_api_tokens_operator_user_id_fkey"
+            columns: ["operator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_api_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operator_modules: {
         Row: {
           allowed: boolean
@@ -1631,6 +1733,8 @@ export type Database = {
           params: Json
           scenarios: Json
           scope: Json
+          source: string | null
+          status: string
           type: string
           updated_at: string
         }
@@ -1646,6 +1750,8 @@ export type Database = {
           params: Json
           scenarios: Json
           scope: Json
+          source?: string | null
+          status?: string
           type?: string
           updated_at?: string
         }
@@ -1661,6 +1767,8 @@ export type Database = {
           params?: Json
           scenarios?: Json
           scope?: Json
+          source?: string | null
+          status?: string
           type?: string
           updated_at?: string
         }
