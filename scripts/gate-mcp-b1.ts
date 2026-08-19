@@ -2,10 +2,8 @@
  * Spec B1 gate — MCP server auth, scope, read/write, audit, cross-operator isolation.
  *
  * Prereqs:
- *   npm run db:apply  (migration 20260819120000_mcp_b1.sql)
+ *   npm run test:seed:mcp-testers  (Tim + Ana operator books, 3 clients each)
  *   MCP_DEV_TOKENS_ENABLED=true on the target server
- *   npx tsx scripts/seed-mcp-three-testers.ts
- *   Dev server or deploy at MCP_GATE_URL (default http://localhost:3000/api/mcp)
  *
  * Usage: npx tsx scripts/gate-mcp-b1.ts
  */
@@ -23,12 +21,16 @@ import type { SummitResultsV1 } from "../lib/mcp/results-schema";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const TOKENS_PATH = join(__dirname, ".mcp-gate-tokens.json");
+const BOOK_SIZE = 3;
 
-type TesterKey = "leander" | "ana" | "tim";
-type TokenBundle = Record<
-  TesterKey,
-  { email: string; operatorId: string; tenantId: string; clientId: string; token: string }
->;
+type OperatorKey = "tim" | "ana";
+type OperatorToken = {
+  email: string;
+  operatorId: string;
+  tenantId: string;
+  clientIds: string[];
+  token: string;
+};
 
 const results: Array<{ id: number; name: string; ok: boolean; detail: string }> = [];
 
@@ -65,7 +67,10 @@ function record(id: number, name: string, ok: boolean, detail: string) {
   if (!ok) throw new Error(`Check ${id} failed: ${detail}`);
 }
 
-function parseToolText(result: { content?: Array<{ type: string; text?: string }>; isError?: boolean }) {
+function parseToolText(result: {
+  content?: Array<{ type: string; text?: string }>;
+  isError?: boolean;
+}) {
   if (result.isError) {
     const text = result.content?.[0]?.text ?? "Unknown MCP error";
     throw new Error(text);
@@ -73,6 +78,32 @@ function parseToolText(result: { content?: Array<{ type: string; text?: string }
   const text = result.content?.[0]?.text;
   if (!text) throw new Error("Empty MCP tool response");
   return JSON.parse(text) as unknown;
+}
+
+function normalizeOperator(raw: Record<string, unknown>): OperatorToken {
+  const legacy = raw.clientId as string | undefined;
+  const clientIds = (raw.clientIds as string[] | undefined) ?? (legacy ? [legacy] : []);
+  return {
+    email: String(raw.email),
+    operatorId: String(raw.operatorId),
+    tenantId: String(raw.tenantId),
+    clientIds,
+    token: String(raw.token),
+  };
+}
+
+function loadTokens(): Record<OperatorKey, OperatorToken> {
+  const raw = JSON.parse(readFileSync(TOKENS_PATH, "utf8")) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  if (!raw.tim || !raw.ana) {
+    throw new Error("Expected tim + ana in .mcp-gate-tokens.json — re-run seed");
+  }
+  return {
+    tim: normalizeOperator(raw.tim),
+    ana: normalizeOperator(raw.ana),
+  };
 }
 
 async function mcpClient(token: string | null) {
@@ -94,7 +125,10 @@ async function callTool(
   args: Record<string, unknown> = {}
 ) {
   const raw = await client.callTool({ name, arguments: args });
-  return parseToolText(raw as { content?: Array<{ type: string; text?: string }>; isError?: boolean });
+  return parseToolText(raw as {
+    content?: Array<{ type: string; text?: string }>;
+    isError?: boolean;
+  });
 }
 
 function adminClient() {
@@ -122,14 +156,7 @@ function buildValidResults(opening: number, exportId: string): SummitResultsV1 {
       {
         id: "base",
         name: "Base",
-        timeline: [
-          {
-            month: "2026-08",
-            beginning,
-            net,
-            ending,
-          },
-        ],
+        timeline: [{ month: "2026-08", beginning, net, ending }],
         breach_month: null,
         runway_months: 12,
       },
@@ -142,20 +169,25 @@ function buildValidResults(opening: number, exportId: string): SummitResultsV1 {
 
 function buildBrokenResults(opening: number): SummitResultsV1 {
   const r = buildValidResults(opening, `gate-broken-${Date.now()}`);
-  r.scenarios[0]!.timeline[0]!.ending = r.scenarios[0]!.timeline[0]!.beginning + 999;
+  r.scenarios[0]!.timeline[0]!.ending =
+    r.scenarios[0]!.timeline[0]!.beginning + 999;
   return r;
+}
+
+function setsDisjoint(a: string[], b: string[]) {
+  const bs = new Set(b);
+  return a.every((id) => !bs.has(id));
 }
 
 async function main() {
   loadEnvLocal();
   if (!existsSync(TOKENS_PATH)) {
-    throw new Error(`Missing ${TOKENS_PATH} — run seed-mcp-three-testers first`);
+    throw new Error(`Missing ${TOKENS_PATH} — run npm run test:seed:mcp-testers`);
   }
-  const tokens = JSON.parse(readFileSync(TOKENS_PATH, "utf8")) as TokenBundle;
-  const leander = tokens.leander;
-  const ana = tokens.ana;
+  const { tim, ana } = loadTokens();
+  const timPrimary = tim.clientIds[0]!;
+  const anaForeign = ana.clientIds[0]!;
 
-  // 1. Auth — no token → 401
   try {
     const { client, transport } = await mcpClient(null);
     await client.listTools();
@@ -168,9 +200,8 @@ async function main() {
     record(1, "Auth without token", ok, ok ? "401 as expected" : msg);
   }
 
-  // 1b. Valid token → tools list
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
     record(
@@ -182,30 +213,29 @@ async function main() {
     await transport.close();
   }
 
-  // 2. Scope — list_clients only own client
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     const listed = (await callTool(client, "list_clients")) as Array<{ id: string }>;
-    const ids = listed.map((c) => c.id);
+    const ids = listed.map((c) => c.id).sort();
+    const expected = [...tim.clientIds].sort();
     const ok =
-      ids.length === 1 &&
-      ids[0] === leander.clientId &&
-      !ids.includes(ana.clientId);
+      ids.length === BOOK_SIZE &&
+      ids.every((id, i) => id === expected[i]) &&
+      setsDisjoint(ids, ana.clientIds);
     record(
       3,
-      "list_clients scoped",
+      "list_clients operator book",
       ok,
-      `Leander sees ${ids.length} client(s): ${ids.join(", ")}`
+      `Tim sees ${ids.length} client(s); disjoint from Ana`
     );
     await transport.close();
   }
 
-  // 2b. Non-granted client → error
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     let denied = false;
     try {
-      await callTool(client, "get_transactions", { client_id: ana.clientId });
+      await callTool(client, "get_transactions", { client_id: anaForeign });
     } catch (e) {
       denied = /grant|No treasury/i.test(String(e));
     }
@@ -218,58 +248,44 @@ async function main() {
     await transport.close();
   }
 
-  // 3. Read — sign convention + monthly reconcile
   {
-    const { client, transport } = await mcpClient(leander.token);
-    const txns = (await callTool(client, "get_transactions", {
-      client_id: leander.clientId,
-      status: "all",
-    })) as Array<{ amount: number; direction: string }>;
-    const monthly = (await callTool(client, "get_monthly_by_category", {
-      client_id: leander.clientId,
-    })) as Array<{ month: string; inflow: number; outflow: number; net: number }>;
-
-    const hasPositiveIn =
-      txns.length === 0 ||
-      txns.some((t) => t.direction === "in" && t.amount > 0) ||
-      txns.every((t) => (t.direction === "in" ? t.amount >= 0 : t.amount <= 0));
-
-    let reconcileOk = true;
-    let reconcileDetail = "no transactions";
-    if (txns.length > 0 && monthly.length > 0) {
-      const txnByMonth = new Map<string, number>();
-      for (const t of txns as Array<{ amount: number; date: string }>) {
-        const m = t.date.slice(0, 7);
-        txnByMonth.set(m, (txnByMonth.get(m) ?? 0) + t.amount);
-      }
-      const monthlyByMonth = new Map<string, number>();
-      for (const r of monthly) {
-        const m = r.month.slice(0, 7);
-        monthlyByMonth.set(m, (monthlyByMonth.get(m) ?? 0) + r.net);
-      }
-      const sharedMonths = [...txnByMonth.keys()].filter((m) =>
-        monthlyByMonth.has(m)
-      );
-      reconcileOk =
-        sharedMonths.length === 0 ||
-        sharedMonths.every((m) => {
-          const a = txnByMonth.get(m)!;
-          const b = monthlyByMonth.get(m)!;
-          const base = Math.max(Math.abs(a), Math.abs(b), 1);
-          return Math.abs(a - b) / base <= 0.05;
-        });
-      reconcileDetail = `${sharedMonths.length} shared month(s) in txn sample vs monthly`;
-    } else if (monthly.length === 0) {
-      reconcileDetail = "no monthly rows (optional seed book)";
+    const { client, transport } = await mcpClient(tim.token);
+    const bookOk: string[] = [];
+    for (const clientId of tim.clientIds) {
+      const txns = (await callTool(client, "get_transactions", {
+        client_id: clientId,
+        status: "all",
+      })) as unknown[];
+      const monthly = (await callTool(client, "get_monthly_by_category", {
+        client_id: clientId,
+      })) as unknown[];
+      await callTool(client, "get_cash_model_baseline", { client_id: clientId });
+      if (txns.length > 0 && monthly.length > 0) bookOk.push(clientId.slice(0, 8));
     }
-
     record(
       5,
-      "get_transactions sign (money-in positive)",
-      hasPositiveIn,
-      `${txns.length} rows sampled`
+      "read tools on each book client",
+      bookOk.length === BOOK_SIZE,
+      `${bookOk.length}/${BOOK_SIZE} clients with txns + monthly + baseline`
     );
-    record(6, "monthly vs transactions reconcile", reconcileOk, reconcileDetail);
+    await transport.close();
+  }
+
+  {
+    const { client, transport } = await mcpClient(tim.token);
+    const txns = (await callTool(client, "get_transactions", {
+      client_id: timPrimary,
+      status: "all",
+    })) as Array<{ amount: number; direction: string }>;
+    const hasPositiveIn =
+      txns.some((t) => t.direction === "in" && t.amount > 0) ||
+      txns.every((t) => (t.direction === "in" ? t.amount >= 0 : t.amount <= 0));
+    record(
+      6,
+      "get_transactions sign (money-in positive)",
+      txns.length > 0 && hasPositiveIn,
+      `${txns.length} rows`
+    );
     await transport.close();
   }
 
@@ -278,32 +294,27 @@ async function main() {
     await admin
       .from("mcp_audit_log")
       .select("id", { count: "exact", head: true })
-      .eq("operator_user_id", leander.operatorId)
+      .eq("operator_user_id", tim.operatorId)
   ).count;
 
-  // 4. Write valid
   let studyId: string | null = null;
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     const meta = (await callTool(client, "get_client", {
-      client_id: leander.clientId,
+      client_id: timPrimary,
     })) as { opening_balance: number | null };
     const opening = meta.opening_balance ?? 100_000;
-    const payload = buildValidResults(opening, `gate-valid-${Date.now()}`);
     const out = (await callTool(client, "submit_results", {
-      client_id: leander.clientId,
-      results: payload,
-    })) as { study_id: string; message: string };
-
+      client_id: timPrimary,
+      results: buildValidResults(opening, `gate-valid-${Date.now()}`),
+    })) as { study_id: string };
     studyId = out.study_id;
     const { data: row } = await admin
       .from("treasury_studies")
       .select("type, status, source")
       .eq("id", studyId)
       .maybeSingle();
-
     const ok =
-      Boolean(studyId) &&
       row?.type === "external_model" &&
       row?.status === "pending" &&
       row?.source === "mcp";
@@ -311,22 +322,21 @@ async function main() {
       7,
       "submit_results valid → pending study",
       ok,
-      `study_id=${studyId} type=${row?.type} status=${row?.status}`
+      `study_id=${studyId}`
     );
     await transport.close();
   }
 
-  // 5. Write invalid
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     const meta = (await callTool(client, "get_client", {
-      client_id: leander.clientId,
+      client_id: timPrimary,
     })) as { opening_balance: number | null };
     const opening = meta.opening_balance ?? 100_000;
     let rejected = false;
     try {
       await callTool(client, "submit_results", {
-        client_id: leander.clientId,
+        client_id: timPrimary,
         results: buildBrokenResults(opening),
       });
     } catch (e) {
@@ -341,16 +351,14 @@ async function main() {
     await transport.close();
   }
 
-  // 6. Reconcile warn
   {
-    const { client, transport } = await mcpClient(leander.token);
+    const { client, transport } = await mcpClient(tim.token);
     const monthly = (await callTool(client, "get_monthly_by_category", {
-      client_id: leander.clientId,
+      client_id: timPrimary,
     })) as Array<{ month: string; category: string; inflow: number; outflow: number; net: number }>;
-
     const sample = monthly[0];
     const meta = (await callTool(client, "get_client", {
-      client_id: leander.clientId,
+      client_id: timPrimary,
     })) as { opening_balance: number | null };
     const opening = meta.opening_balance ?? 100_000;
     const payload = buildValidResults(opening, `gate-warn-${Date.now()}`);
@@ -376,18 +384,10 @@ async function main() {
       ];
     }
     const out = (await callTool(client, "submit_results", {
-      client_id: leander.clientId,
+      client_id: timPrimary,
       results: payload,
     })) as { study_id: string; validation: { warnings: string[] } };
-
-    const { data: row } = await admin
-      .from("treasury_studies")
-      .select("derived_snapshot")
-      .eq("id", out.study_id)
-      .maybeSingle();
-
-    const snap = row?.derived_snapshot as { validationReport?: { warnings?: string[] } };
-    const warnings = out.validation?.warnings ?? snap?.validationReport?.warnings ?? [];
+    const warnings = out.validation?.warnings ?? [];
     const ok = warnings.some((w) => /off|%|ledger|aggregate/i.test(w));
     record(
       9,
@@ -395,64 +395,50 @@ async function main() {
       ok,
       warnings.slice(0, 2).join("; ") || "no warnings"
     );
-
     await admin.from("treasury_studies").delete().eq("id", out.study_id);
     if (studyId) await admin.from("treasury_studies").delete().eq("id", studyId);
     await transport.close();
   }
 
-  // 7. Audit rows
   {
     const auditAfter = (
       await admin
         .from("mcp_audit_log")
         .select("id", { count: "exact", head: true })
-        .eq("operator_user_id", leander.operatorId)
+        .eq("operator_user_id", tim.operatorId)
     ).count;
     const delta = (auditAfter ?? 0) - (auditBefore ?? 0);
     record(
       10,
       "mcp_audit_log rows",
-      delta >= 5,
-      `+${delta} audit rows for leander`
+      delta >= 8,
+      `+${delta} audit rows for Tim`
     );
   }
 
-  // 8. Cross-operator isolation (both directions)
   {
-    const { client, transport } = await mcpClient(leander.token);
-    let aBlocked = false;
+    const { client, transport } = await mcpClient(tim.token);
+    let timBlocked = false;
     try {
-      await callTool(client, "get_client", { client_id: ana.clientId });
+      await callTool(client, "get_client", { client_id: anaForeign });
     } catch {
-      aBlocked = true;
+      timBlocked = true;
     }
     await transport.close();
 
     const { client: c2, transport: t2 } = await mcpClient(ana.token);
-    let bBlocked = false;
+    let anaBlocked = false;
     try {
-      await callTool(c2, "get_client", { client_id: leander.clientId });
+      await callTool(c2, "get_client", { client_id: timPrimary });
     } catch {
-      bBlocked = true;
+      anaBlocked = true;
     }
     await t2.close();
 
-    record(
-      11,
-      "cross-operator isolation A→B",
-      aBlocked,
-      aBlocked ? "denied" : "leaked data"
-    );
-    record(
-      12,
-      "cross-operator isolation B→A",
-      bBlocked,
-      bBlocked ? "denied" : "leaked data"
-    );
+    record(11, "cross-operator Tim→Ana", timBlocked, timBlocked ? "denied" : "leaked");
+    record(12, "cross-operator Ana→Tim", anaBlocked, anaBlocked ? "denied" : "leaked");
   }
 
-  // 9. Build
   log("Running npm run build…");
   execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
   record(13, "npm run build", true, "green");

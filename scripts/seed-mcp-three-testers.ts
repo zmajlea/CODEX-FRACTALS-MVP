@@ -1,9 +1,10 @@
 /**
- * Spec B1 Amendment 1 — three MCP testers, each on its own tenant with one client grant.
- * Prerequisite: npm run test:seed:ana-gate (clients 1–4 exist).
+ * Spec B1 — MCP operator books: Tim + Ana, each with ~3 demo clients on its own tenant.
+ * Each client gets the ana-gate FFM demo book (transactions, categories, rules).
+ * Client sets do not overlap across operators.
  *
- * Usage: npx tsx scripts/seed-mcp-three-testers.ts
- * Writes scripts/.mcp-gate-tokens.json (local gate credentials).
+ * Usage: npm run test:seed:mcp-testers
+ * Writes scripts/.mcp-gate-tokens.json (gitignored) and prints bearer tokens once.
  */
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
@@ -15,25 +16,26 @@ import {
   generateOperatorToken,
   hashOperatorToken,
 } from "../lib/mcp/auth";
-
-const ANA_GATE_CLIENTS = [
-  { email: "ana_gate_client_1@codexone.test", displayName: "Ana Gate Client 1" },
-  { email: "ana_gate_client_2@codexone.test", displayName: "Ana Gate Client 2" },
-  { email: "ana_gate_client_3@codexone.test", displayName: "Ana Gate Client 3" },
-  { email: "ana_gate_client_4@codexone.test", displayName: "Ana Gate Client 4" },
-];
+import { seedAnaGateDemoBook } from "./lib/seed-ana-gate-demo-book";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
-export const MCP_TESTERS = [
+const MCP_PASSWORD = "mcp_gate_2026!";
+const BOOK_SIZE = 3;
+
+export const MCP_OPERATORS = [
   {
-    key: "leander",
-    email: "mcp_gate_leander@codexone.test",
-    displayName: "MCP Gate Leander",
-    tenantSlug: "mcp-gate-leander",
-    tenantName: "MCP Gate Leander",
-    clientIndex: 0,
+    key: "tim",
+    email: "mcp_gate_tim@codexone.test",
+    displayName: "MCP Gate Tim",
+    tenantSlug: "mcp-gate-tim",
+    tenantName: "MCP Gate Tim",
+    clients: [
+      { email: "mcp_tim_lakeside@codexone.test", displayName: "Tim Book — Lakeside" },
+      { email: "mcp_tim_summit@codexone.test", displayName: "Tim Book — Summit" },
+      { email: "mcp_tim_northstar@codexone.test", displayName: "Tim Book — Northstar" },
+    ],
   },
   {
     key: "ana",
@@ -41,19 +43,16 @@ export const MCP_TESTERS = [
     displayName: "MCP Gate Ana",
     tenantSlug: "mcp-gate-ana",
     tenantName: "MCP Gate Ana",
-    clientIndex: 1,
-  },
-  {
-    key: "tim",
-    email: "mcp_gate_tim@codexone.test",
-    displayName: "MCP Gate Tim",
-    tenantSlug: "mcp-gate-tim",
-    tenantName: "MCP Gate Tim",
-    clientIndex: 2,
+    clients: [
+      { email: "mcp_ana_harbor@codexone.test", displayName: "Ana Book — Harbor" },
+      { email: "mcp_ana_ridge@codexone.test", displayName: "Ana Book — Ridge" },
+      { email: "mcp_ana_valley@codexone.test", displayName: "Ana Book — Valley" },
+    ],
   },
 ] as const;
 
-const MCP_PASSWORD = "mcp_gate_2026!";
+/** @deprecated use MCP_OPERATORS */
+export const MCP_TESTERS = MCP_OPERATORS;
 
 function log(step: string, detail = "") {
   const ts = new Date().toISOString().slice(11, 19);
@@ -141,6 +140,19 @@ async function ensureTenant(
   return created.id;
 }
 
+async function revokeAllTokensForEmail(
+  admin: ReturnType<typeof createClient>,
+  email: string
+) {
+  const user = await findAuthUserByEmail(admin, email);
+  if (!user) return;
+  await admin
+    .from("operator_api_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("operator_user_id", user.id)
+    .is("revoked_at", null);
+}
+
 async function main() {
   loadEnvLocal(join(ROOT, ".env.local"));
 
@@ -163,33 +175,33 @@ async function main() {
     .maybeSingle();
   if (modErr || !treasuryModule) throw new Error("treasury module missing");
 
-  const clientIds: string[] = [];
-  for (const c of ANA_GATE_CLIENTS) {
-    const user = await findAuthUserByEmail(admin, c.email);
-    if (!user) {
-      console.error(`Missing client ${c.email} — run npm run test:seed:ana-gate`);
-      process.exit(1);
-    }
-    clientIds.push(user.id);
-  }
+  // Retire legacy single-client Leander tester
+  await revokeAllTokensForEmail(admin, "mcp_gate_leander@codexone.test");
 
   const out: Record<
     string,
-    { email: string; operatorId: string; tenantId: string; clientId: string; token: string }
+    {
+      email: string;
+      operatorId: string;
+      tenantId: string;
+      clientIds: string[];
+      clients: Array<{ email: string; id: string; displayName: string }>;
+      token: string;
+    }
   > = {};
 
-  for (const tester of MCP_TESTERS) {
-    log("Setup", tester.email);
-    const tenantId = await ensureTenant(
-      admin,
-      tester.tenantSlug,
-      tester.tenantName
-    );
+  for (const op of MCP_OPERATORS) {
+    if (op.clients.length !== BOOK_SIZE) {
+      throw new Error(`Expected ${BOOK_SIZE} clients for ${op.key}`);
+    }
+
+    log("Operator", op.email);
+    const tenantId = await ensureTenant(admin, op.tenantSlug, op.tenantName);
     const operator = await ensureAuthUser(
       admin,
-      tester.email,
+      op.email,
       MCP_PASSWORD,
-      tester.displayName
+      op.displayName
     );
 
     const { data: existingRole } = await admin
@@ -219,45 +231,72 @@ async function main() {
       { onConflict: "distributor_tenant_id,module_id" }
     );
 
-    const clientId = clientIds[tester.clientIndex]!;
-    const clientEmail = ANA_GATE_CLIENTS[tester.clientIndex]!.email;
+    const clientRows: Array<{ email: string; id: string; displayName: string }> =
+      [];
 
-    const { data: grantRow } = await admin
-      .from("client_module_access")
-      .select("id, status")
-      .eq("client_user_id", clientId)
-      .eq("distributor_tenant_id", tenantId)
-      .eq("module_id", treasuryModule.id)
-      .maybeSingle();
+    for (const clientDef of op.clients) {
+      log("Client", clientDef.email);
+      const client = await ensureAuthUser(
+        admin,
+        clientDef.email,
+        MCP_PASSWORD,
+        clientDef.displayName
+      );
 
-    if (grantRow?.status === "active") {
-      log("Grant", `active ${clientEmail} on ${tester.tenantSlug}`);
-    } else if (grantRow) {
-      await admin
+      const { data: grantRow } = await admin
         .from("client_module_access")
-        .update({ status: "active", granted_at: new Date().toISOString() })
-        .eq("id", grantRow.id);
-    } else {
-      await admin.from("client_module_access").insert({
-        client_user_id: clientId,
-        distributor_tenant_id: tenantId,
-        module_id: treasuryModule.id,
-        status: "active",
-        granted_by: operator.id,
+        .select("id, status")
+        .eq("client_user_id", client.id)
+        .eq("distributor_tenant_id", tenantId)
+        .eq("module_id", treasuryModule.id)
+        .maybeSingle();
+
+      if (grantRow?.status === "active") {
+        log("Grant", "active");
+      } else if (grantRow) {
+        await admin
+          .from("client_module_access")
+          .update({ status: "active", granted_at: new Date().toISOString() })
+          .eq("id", grantRow.id);
+      } else {
+        await admin.from("client_module_access").insert({
+          client_user_id: client.id,
+          distributor_tenant_id: tenantId,
+          module_id: treasuryModule.id,
+          status: "active",
+          granted_by: operator.id,
+        });
+      }
+
+      await admin.from("treasury_client_operator_profile").upsert(
+        {
+          distributor_tenant_id: tenantId,
+          client_user_id: client.id,
+          industry: null,
+          next_note: null,
+          watch_note: null,
+          attention_reason: null,
+        },
+        { onConflict: "distributor_tenant_id,client_user_id" }
+      );
+
+      const book = await seedAnaGateDemoBook(
+        admin,
+        client.id,
+        operator.id,
+        { log: (m) => log("Book", `${clientDef.displayName}: ${m}`) }
+      );
+      log(
+        "Book stats",
+        `${clientDef.displayName} — ${book.transactions} txs, ${book.accounts} accts`
+      );
+
+      clientRows.push({
+        email: clientDef.email,
+        id: client.id,
+        displayName: clientDef.displayName,
       });
     }
-
-    await admin.from("treasury_client_operator_profile").upsert(
-      {
-        distributor_tenant_id: tenantId,
-        client_user_id: clientId,
-        industry: null,
-        next_note: null,
-        watch_note: null,
-        attention_reason: null,
-      },
-      { onConflict: "distributor_tenant_id,client_user_id" }
-    );
 
     await admin
       .from("operator_api_tokens")
@@ -270,23 +309,35 @@ async function main() {
       operator_user_id: operator.id,
       tenant_id: tenantId,
       token_hash: hashOperatorToken(raw),
-      label: `mcp-gate-${tester.key}`,
+      label: `mcp-gate-${op.key}`,
     });
     if (tokErr) throw new Error(tokErr.message);
 
-    out[tester.key] = {
-      email: tester.email,
+    out[op.key] = {
+      email: op.email,
       operatorId: operator.id,
       tenantId,
-      clientId,
+      clientIds: clientRows.map((c) => c.id),
+      clients: clientRows,
       token: raw,
     };
-    log("Token", `minted ${tester.key}`);
   }
 
   const outPath = join(__dirname, ".mcp-gate-tokens.json");
   writeFileSync(outPath, JSON.stringify(out, null, 2));
   log("Wrote", outPath);
+
+  console.log("\n=== MCP operator tokens (shown once) ===");
+  for (const op of MCP_OPERATORS) {
+    const row = out[op.key]!;
+    console.log(`${op.displayName} (${row.email})`);
+    console.log(`  clients: ${row.clients.map((c) => c.displayName).join(", ")}`);
+    console.log(`  bearer:  ${row.token}`);
+    console.log(
+      `  connect: npx mcp-remote ${process.env.MCP_GATE_URL ?? "https://<app>/api/mcp"} --header "Authorization: Bearer ${row.token}"`
+    );
+    console.log("");
+  }
 }
 
 main().catch((e) => {
