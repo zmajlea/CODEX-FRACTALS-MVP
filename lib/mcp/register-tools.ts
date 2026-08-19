@@ -18,6 +18,7 @@ import {
   authContextFromInfo,
   mcpError,
   mcpText,
+  requireMcpScope,
   type McpToolContext,
 } from "@/lib/mcp/types";
 
@@ -85,6 +86,8 @@ export function registerMcpTools(server: McpServer) {
     async (_args, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -108,6 +111,8 @@ export function registerMcpTools(server: McpServer) {
     async (_args, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -135,6 +140,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -164,6 +171,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id, from, to, status }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -192,6 +201,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -216,6 +227,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -240,6 +253,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -265,6 +280,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -292,6 +309,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id, results }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:write");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),
@@ -337,6 +356,8 @@ export function registerMcpTools(server: McpServer) {
     async ({ client_id, kind, title, body, category }, sdkCtx) => {
       const auth = authContextFromInfo(sdkCtx.http?.authInfo);
       if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:write");
+      if (scopeErr) return scopeErr;
       const ctx: McpToolContext = {
         auth,
         admin: createSupabaseAdminClient(),

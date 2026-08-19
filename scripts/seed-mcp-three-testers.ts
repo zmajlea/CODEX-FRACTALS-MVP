@@ -298,6 +298,23 @@ async function main() {
       });
     }
 
+    const keepIds = new Set(clientRows.map((c) => c.id));
+    const { data: staleGrants } = await admin
+      .from("client_module_access")
+      .select("id, client_user_id")
+      .eq("distributor_tenant_id", tenantId)
+      .eq("module_id", treasuryModule.id)
+      .eq("status", "active");
+    for (const g of staleGrants ?? []) {
+      if (!keepIds.has(g.client_user_id)) {
+        await admin
+          .from("client_module_access")
+          .update({ status: "revoked" })
+          .eq("id", g.id);
+        log("Prune grant", g.client_user_id.slice(0, 8));
+      }
+    }
+
     await admin
       .from("operator_api_tokens")
       .update({ revoked_at: new Date().toISOString() })

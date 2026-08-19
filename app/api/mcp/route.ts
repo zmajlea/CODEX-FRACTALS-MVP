@@ -16,6 +16,7 @@ const handler = createMcpHandler(
 
 const authHandler = withMcpAuth(handler, verifyMcpToken, {
   required: true,
+  resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
 export { authHandler as GET, authHandler as POST };

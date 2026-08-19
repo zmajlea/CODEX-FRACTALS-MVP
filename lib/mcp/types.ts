@@ -1,6 +1,7 @@
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import type { McpOAuthScope } from "@/lib/mcp/oauth-config";
 
 export type McpAdminClient = SupabaseClient<Database>;
 
@@ -9,7 +10,8 @@ export type McpAuthContext = {
   tenantId: string;
   tokenId: string;
   scopes: string[];
-  source: "dev";
+  source: "dev" | "oauth";
+  expiresAt?: number;
 };
 
 export type McpToolContext = {
@@ -28,7 +30,8 @@ export function authContextFromInfo(
         tenantId?: string;
         tokenId?: string;
         scopes?: string[];
-        source?: "dev";
+        source?: "dev" | "oauth";
+        expiresAt?: number;
       }
     | undefined;
   if (
@@ -45,6 +48,7 @@ export function authContextFromInfo(
     tokenId: extra.tokenId,
     scopes: extra.scopes,
     source: extra.source ?? "dev",
+    expiresAt: extra.expiresAt,
   };
 }
 
@@ -59,4 +63,14 @@ export function mcpError(message: string) {
     content: [{ type: "text" as const, text: message }],
     isError: true as const,
   };
+}
+
+export function requireMcpScope(
+  auth: McpAuthContext,
+  scope: McpOAuthScope
+): ReturnType<typeof mcpError> | null {
+  if (!auth.scopes.includes(scope)) {
+    return mcpError(`Insufficient scope: ${scope} required.`);
+  }
+  return null;
 }
