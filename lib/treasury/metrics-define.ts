@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database.types";
-import { validateMetricDefinition } from "@/lib/mcp/metrics-schema";
+import {
+  kindFromDefinition,
+  validateMetricDefinition,
+} from "@/lib/mcp/metrics-schema";
 import {
   detectMetricCycle,
   resolveMetricRefs,
@@ -60,6 +63,8 @@ export async function createMetric(admin: Admin, input: CreateMetricInput) {
   );
   if (cycle) throw new Error(cycle);
 
+  const kind = kindFromDefinition(validated.definition);
+
   const { data, error } = await admin
     .from("treasury_metrics")
     .insert({
@@ -69,11 +74,12 @@ export async function createMetric(admin: Admin, input: CreateMetricInput) {
       name,
       description: input.description.trim(),
       definition: validated.definition as unknown as Json,
+      kind,
       source: input.source,
       status: "active",
       created_by: input.operatorUserId,
     })
-    .select("id, name, scope, status, source")
+    .select("id, name, scope, status, source, kind")
     .single();
 
   if (error) throw new Error(error.message);

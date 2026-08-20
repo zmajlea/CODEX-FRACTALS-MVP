@@ -13,7 +13,7 @@ type RouteContext = {
   params: Promise<{ clientId: string; metricId: string }>;
 };
 
-/** Spec B4 — recompute + persist; client-or-null ownership. */
+/** Spec B4/B5 — recompute + persist; client-or-null ownership. */
 export async function POST(_request: Request, context: RouteContext) {
   const { clientId, metricId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -37,7 +37,17 @@ export async function POST(_request: Request, context: RouteContext) {
       client_user_id: ledgerClientId,
       definition: metric.definition as Json,
     });
-    return NextResponse.json(out);
+    if (out.kind === "value") {
+      return NextResponse.json({
+        value: out.value,
+        computed_at: out.computed_at,
+      });
+    }
+    return NextResponse.json({
+      ...out.series,
+      value: out.value,
+      computed_at: out.computed_at,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

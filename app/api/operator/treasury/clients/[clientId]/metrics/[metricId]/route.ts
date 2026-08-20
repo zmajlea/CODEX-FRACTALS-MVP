@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { Json } from "@/lib/database.types";
-import { validateMetricDefinition } from "@/lib/mcp/metrics-schema";
+import {
+  kindFromDefinition,
+  validateMetricDefinition,
+} from "@/lib/mcp/metrics-schema";
 import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
@@ -16,7 +19,7 @@ type RouteContext = {
   params: Promise<{ clientId: string; metricId: string }>;
 };
 
-/** Spec B4 — edit name/description/definition (client-or-null ownership). */
+/** Spec B4/B5 — edit name/description/definition (client-or-null ownership). */
 export async function PATCH(request: Request, context: RouteContext) {
   const { clientId, metricId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -47,6 +50,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     name?: string;
     description?: string;
     definition?: Json;
+    kind?: string;
     version?: number;
     computed_value?: Json | null;
     computed_at?: string | null;
@@ -92,6 +96,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: cycle }, { status: 400 });
     }
     update.definition = validated.definition as unknown as Json;
+    update.kind = kindFromDefinition(validated.definition);
     update.version = (before.version ?? 1) + 1;
     update.computed_value = null;
     update.computed_at = null;
@@ -113,15 +118,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let computed: { value: number; computed_at: string } | null = null;
+  let computed: { value?: number; computed_at: string } | null = null;
   if (body.definition !== undefined && row.client_user_id) {
     try {
-      computed = await computeMetricValue(guard.admin, {
+      const out = await computeMetricValue(guard.admin, {
         id: row.id,
         tenant_id: row.tenant_id,
         client_user_id: row.client_user_id,
         definition: row.definition as Json,
       });
+      computed = { value: out.value, computed_at: out.computed_at };
       const { data: refreshed } = await guard.admin
         .from("treasury_metrics")
         .select("*")

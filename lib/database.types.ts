@@ -1851,6 +1851,7 @@ export type Database = {
           definition: Json
           description: string
           id: string
+          kind: string
           name: string
           scope: string
           source: string
@@ -1868,6 +1869,7 @@ export type Database = {
           definition: Json
           description?: string
           id?: string
+          kind?: string
           name: string
           scope: string
           source?: string
@@ -1885,6 +1887,7 @@ export type Database = {
           definition?: Json
           description?: string
           id?: string
+          kind?: string
           name?: string
           scope?: string
           source?: string

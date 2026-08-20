@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const { data, error } = await guard.admin
     .from("treasury_metrics")
     .select(
-      "id, name, description, scope, source, status, computed_value, computed_at, definition, version, created_at, updated_at, client_user_id"
+      "id, name, description, scope, source, status, kind, computed_value, computed_at, definition, version, created_at, updated_at, client_user_id"
     )
     .eq("tenant_id", guard.grant.tenantId)
     .eq("status", "active")
@@ -72,7 +72,7 @@ export async function POST(request: Request, context: RouteContext) {
       source: "platform",
     });
 
-    let computed: { value: number; computed_at: string } | null = null;
+    let computed: { value?: number; computed_at: string } | null = null;
     if (scope === "client") {
       const { data: row } = await guard.admin
         .from("treasury_metrics")
@@ -80,12 +80,16 @@ export async function POST(request: Request, context: RouteContext) {
         .eq("id", created.id)
         .single();
       if (row?.client_user_id) {
-        computed = await computeMetricValue(guard.admin, {
+        const out = await computeMetricValue(guard.admin, {
           id: row.id,
           tenant_id: row.tenant_id,
           client_user_id: row.client_user_id,
           definition: row.definition as Json,
         });
+        computed = {
+          value: out.value,
+          computed_at: out.computed_at,
+        };
       }
     }
 

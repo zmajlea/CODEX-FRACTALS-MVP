@@ -27,6 +27,7 @@
     "gate:mcp-b2": "npx tsx scripts/gate-mcp-b2.ts",
     "gate:mcp-b3": "npx tsx scripts/gate-mcp-b3.ts",
     "gate:metrics-ui": "npx tsx scripts/gate-metrics-ui.ts",
+    "gate:metrics-b5": "npx tsx scripts/gate-metrics-b5.ts",
     "test:seed:cash-model-demo": "npx tsx scripts/seed-cash-model-demo.ts",
     "test:wipe:bench-import": "node scripts/wipe-bench-import.mjs",
     "treasury:bench-import": "npx tsx scripts/bench-import.ts",

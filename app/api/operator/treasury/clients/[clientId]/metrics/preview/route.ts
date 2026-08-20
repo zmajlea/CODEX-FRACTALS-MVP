@@ -7,7 +7,7 @@ import { previewMetricValue } from "@/lib/treasury/metrics-eval";
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
-/** Spec B4 — preview a definition against this client's ledger (no write). */
+/** Spec B4/B5 — preview a definition against this client's ledger (no write). */
 export async function POST(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -35,5 +35,11 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ errors: out.errors }, { status: 400 });
   }
 
-  return NextResponse.json({ value: out.value });
+  if (out.kind === "value") {
+    return NextResponse.json({ value: out.value });
+  }
+  return NextResponse.json({
+    ...out.series,
+    value: out.value,
+  });
 }
