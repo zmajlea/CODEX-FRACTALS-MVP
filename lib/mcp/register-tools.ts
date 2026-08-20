@@ -13,7 +13,12 @@ import {
   mcpGetTransactions,
   mcpListClients,
 } from "@/lib/mcp/read-tools";
-import { mcpProposeRecommendation, mcpSubmitResults } from "@/lib/mcp/write-tools";
+import { mcpProposeRecommendation, mcpProposeRule, mcpSubmitResults, mcpDefineMetric } from "@/lib/mcp/write-tools";
+import {
+  mcpComputeMetric,
+  mcpGetMetric,
+  mcpListMetrics,
+} from "@/lib/mcp/metric-tools";
 import {
   authContextFromInfo,
   mcpError,
@@ -372,6 +377,176 @@ export function registerMcpTools(server: McpServer) {
           title,
           body,
           category,
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "propose_rule",
+    {
+      title: "Propose rule",
+      description:
+        "Propose a categorization rule (pending — not applied until operator confirms).",
+      inputSchema: clientIdSchema.extend({
+        name: z.string().min(1),
+        payee_contains: z.string().min(1),
+        category: z.string().min(1),
+        direction: z.enum(["in", "out"]).optional(),
+        min_amount: z.number().optional(),
+        max_amount: z.number().optional(),
+      }),
+    },
+    async (
+      { client_id, name, payee_contains, category, direction, min_amount, max_amount },
+      sdkCtx
+    ) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:write");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      const denied = await requireClient(ctx, client_id);
+      if ("isError" in denied) return denied;
+      return withTool(ctx, "propose_rule", client_id, () =>
+        mcpProposeRule(ctx.admin, ctx.auth, client_id, {
+          name,
+          payee_contains,
+          category,
+          direction,
+          min_amount,
+          max_amount,
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "list_metrics",
+    {
+      title: "List metrics",
+      description: "List client + global metrics for the operator tenant.",
+      inputSchema: z.object({
+        client_id: z.string().uuid().optional(),
+      }),
+    },
+    async ({ client_id }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      if (client_id) {
+        const denied = await requireClient(ctx, client_id);
+        if ("isError" in denied) return denied;
+      }
+      return withTool(ctx, "list_metrics", client_id ?? null, () =>
+        mcpListMetrics(ctx.admin, ctx.auth, client_id)
+      );
+    }
+  );
+
+  server.registerTool(
+    "get_metric",
+    {
+      title: "Get metric",
+      description: "Get a metric definition and cached value.",
+      inputSchema: z.object({ id: z.string().uuid() }),
+    },
+    async ({ id }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      return withTool(ctx, "get_metric", null, () =>
+        mcpGetMetric(ctx.admin, ctx.auth, id)
+      );
+    }
+  );
+
+  server.registerTool(
+    "compute_metric",
+    {
+      title: "Compute metric",
+      description: "Evaluate a metric against the ledger (read-only).",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        client_id: z.string().uuid().optional(),
+      }),
+    },
+    async ({ id, client_id }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      if (client_id) {
+        const denied = await requireClient(ctx, client_id);
+        if ("isError" in denied) return denied;
+      }
+      return withTool(ctx, "compute_metric", client_id ?? null, () =>
+        mcpComputeMetric(ctx.admin, ctx.auth, id, client_id)
+      );
+    }
+  );
+
+  server.registerTool(
+    "define_metric",
+    {
+      title: "Define metric",
+      description:
+        "Define a declarative metric (whitelisted grammar only — no SQL).",
+      inputSchema: z.object({
+        scope: z.enum(["general", "client"]),
+        name: z.string().min(1),
+        description: z.string().optional().default(""),
+        definition: z.record(z.string(), z.unknown()),
+        client_id: z.string().uuid().optional(),
+      }),
+    },
+    async ({ scope, name, description, definition, client_id }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:write");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      if (client_id) {
+        const denied = await requireClient(ctx, client_id);
+        if ("isError" in denied) return denied;
+      }
+      return withTool(ctx, "define_metric", client_id ?? null, () =>
+        mcpDefineMetric(ctx.admin, ctx.auth, {
+          scope,
+          name,
+          description: description ?? "",
+          definition,
+          clientId: client_id,
         })
       );
     }

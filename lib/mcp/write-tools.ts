@@ -107,6 +107,23 @@ export async function mcpSubmitResults(
   return { ok: true, studyId: data.id, report };
 }
 
+const REC_CATEGORIES = new Set(["liquidity", "cost", "financing", "risk"]);
+
+function mapRecommendationKind(kind?: string): "recommendation" | "question" {
+  const k = (kind ?? "recommendation").trim().toLowerCase();
+  if (k === "question") return "question";
+  // advice → recommendation (DB only allows recommendation|question)
+  return "recommendation";
+}
+
+function mapRecommendationCategory(category?: string): string {
+  const c = (category ?? "liquidity").trim().toLowerCase();
+  if (REC_CATEGORIES.has(c)) return c;
+  throw new Error(
+    `category must be one of: liquidity, cost, financing, risk (got "${category}")`
+  );
+}
+
 export async function mcpProposeRecommendation(
   admin: AdminClient,
   auth: McpAuthContext,
@@ -120,8 +137,9 @@ export async function mcpProposeRecommendation(
 ) {
   const title = body.title.trim();
   const why = body.body.trim();
-  const category = (body.category ?? "General").trim();
   if (!title || !why) throw new Error("title and body required");
+  const category = mapRecommendationCategory(body.category);
+  const kind = mapRecommendationKind(body.kind);
 
   const { data, error } = await admin
     .from("treasury_recommendations")
@@ -132,10 +150,130 @@ export async function mcpProposeRecommendation(
       title,
       category,
       why,
+      kind,
       status: "draft",
+      source: "mcp",
       anchor_type: "general",
     })
-    .select("id, title, status")
+    .select("id, title, status, kind, source")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function mcpProposeRule(
+  admin: AdminClient,
+  auth: McpAuthContext,
+  clientId: string,
+  body: {
+    name: string;
+    payee_contains: string;
+    category: string;
+    direction?: "in" | "out";
+    min_amount?: number;
+    max_amount?: number;
+  }
+) {
+  const name = body.name.trim();
+  const payee = body.payee_contains.trim();
+  const category = body.category.trim();
+  if (!name || !payee || !category) {
+    throw new Error("name, payee_contains, and category are required");
+  }
+
+  const { data, error } = await admin
+    .from("treasury_rules")
+    .insert({
+      client_user_id: clientId,
+      created_by: auth.operatorUserId,
+      name,
+      match_merchant: payee,
+      match_type: "contains",
+      assign_label: category,
+      direction: body.direction ?? null,
+      amount_min: body.min_amount ?? null,
+      amount_max: body.max_amount ?? null,
+      active: false,
+      status: "proposed",
+      source: "mcp",
+    })
+    .select("id, status, source")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return {
+    rule_id: data.id,
+    status: "proposed" as const,
+    message: "pending operator validation",
+  };
+}
+
+export async function mcpDefineMetric(
+  admin: AdminClient,
+  auth: McpAuthContext,
+  input: {
+    scope: "general" | "client";
+    name: string;
+    description: string;
+    definition: unknown;
+    clientId?: string;
+  }
+) {
+  const { validateMetricDefinition } = await import("@/lib/mcp/metrics-schema");
+  const {
+    detectMetricCycle,
+    resolveMetricRefs,
+  } = await import("@/lib/treasury/metrics-eval");
+
+  const name = input.name.trim();
+  if (!name) throw new Error("name required");
+  if (input.scope === "client" && !input.clientId) {
+    throw new Error("client_id required for scope=client");
+  }
+  if (input.scope === "general" && input.clientId) {
+    throw new Error("client_id must be omitted for scope=general");
+  }
+
+  const validated = validateMetricDefinition(input.definition);
+  if (!validated.ok) {
+    throw new Error(
+      `Invalid definition: ${validated.errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`
+    );
+  }
+
+  const clientId = input.clientId ?? null;
+  const unresolved = await resolveMetricRefs(
+    admin,
+    auth.tenantId,
+    clientId,
+    validated.definition
+  );
+  if (unresolved) throw new Error(unresolved);
+
+  const cycle = await detectMetricCycle(
+    admin,
+    auth.tenantId,
+    clientId,
+    name,
+    validated.definition
+  );
+  if (cycle) throw new Error(cycle);
+
+  const { data, error } = await admin
+    .from("treasury_metrics")
+    .insert({
+      tenant_id: auth.tenantId,
+      client_user_id: clientId,
+      scope: input.scope,
+      name,
+      description: input.description.trim(),
+      definition: validated.definition as unknown as Json,
+      source: "mcp",
+      status: "active",
+      created_by: auth.operatorUserId,
+    })
+    .select("id, name, scope, status, source")
     .single();
 
   if (error) throw new Error(error.message);

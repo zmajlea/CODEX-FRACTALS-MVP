@@ -25,6 +25,7 @@
     "test:seed:mcp-testers": "npx tsx scripts/seed-mcp-three-testers.ts",
     "gate:mcp-b1": "npx tsx scripts/gate-mcp-b1.ts",
     "gate:mcp-b2": "npx tsx scripts/gate-mcp-b2.ts",
+    "gate:mcp-b3": "npx tsx scripts/gate-mcp-b3.ts",
     "test:seed:cash-model-demo": "npx tsx scripts/seed-cash-model-demo.ts",
     "test:wipe:bench-import": "node scripts/wipe-bench-import.mjs",
     "treasury:bench-import": "npx tsx scripts/bench-import.ts",

@@ -218,6 +218,8 @@ export type TreasuryRuleRow = {
   cadence: string | null;
   assign_label: string;
   active: boolean;
+  status?: string;
+  source?: string | null;
   source_transaction_id: string | null;
   created_at: string;
   last_applied_at?: string | null;

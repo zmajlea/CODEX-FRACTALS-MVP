@@ -1729,6 +1729,7 @@ export type Database = {
           sealed_at: string | null
           sealed_by: string | null
           sent_at: string | null
+          source: string | null
           status: string
           title: string
           updated_at: string
@@ -1758,6 +1759,7 @@ export type Database = {
           sealed_at?: string | null
           sealed_by?: string | null
           sent_at?: string | null
+          source?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -1787,6 +1789,7 @@ export type Database = {
           sealed_at?: string | null
           sealed_by?: string | null
           sent_at?: string | null
+          source?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -1838,6 +1841,82 @@ export type Database = {
           },
         ]
       }
+      treasury_metrics: {
+        Row: {
+          client_user_id: string | null
+          computed_at: string | null
+          computed_value: Json | null
+          created_at: string
+          created_by: string | null
+          definition: Json
+          description: string
+          id: string
+          name: string
+          scope: string
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          client_user_id?: string | null
+          computed_at?: string | null
+          computed_value?: Json | null
+          created_at?: string
+          created_by?: string | null
+          definition: Json
+          description?: string
+          id?: string
+          name: string
+          scope: string
+          source?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          client_user_id?: string | null
+          computed_at?: string | null
+          computed_value?: Json | null
+          created_at?: string
+          created_by?: string | null
+          definition?: Json
+          description?: string
+          id?: string
+          name?: string
+          scope?: string
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_metrics_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_metrics_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_rules: {
         Row: {
           active: boolean
@@ -1856,7 +1935,9 @@ export type Database = {
           match_merchant: string
           match_type: string
           name: string
+          source: string | null
           source_transaction_id: string | null
+          status: string
           updated_at: string
         }
         Insert: {
@@ -1876,7 +1957,9 @@ export type Database = {
           match_merchant: string
           match_type?: string
           name: string
+          source?: string | null
           source_transaction_id?: string | null
+          status?: string
           updated_at?: string
         }
         Update: {
@@ -1896,7 +1979,9 @@ export type Database = {
           match_merchant?: string
           match_type?: string
           name?: string
+          source?: string | null
           source_transaction_id?: string | null
+          status?: string
           updated_at?: string
         }
         Relationships: [
