@@ -1841,6 +1841,66 @@ export type Database = {
           },
         ]
       }
+      treasury_analytics: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          items: Json
+          shared_at: string | null
+          shared_by: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          items?: Json
+          shared_at?: string | null
+          shared_by?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          items?: Json
+          shared_at?: string | null
+          shared_by?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_analytics_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_metrics: {
         Row: {
           client_user_id: string | null

@@ -8,8 +8,9 @@ import { TreasuryClientCashTrend } from "@/components/treasury/TreasuryClientCas
 import { TreasuryClientConnections } from "@/components/treasury/TreasuryClientConnections";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
 import { TreasuryClientTreasurerStrip } from "@/components/treasury/TreasuryClientTreasurerStrip";
+import { ClientAnalyticsBoards } from "@/components/treasury/ClientAnalyticsBoards";
 
-type View = "overview" | "recommendations" | "connections";
+type View = "overview" | "analytics" | "recommendations" | "connections";
 
 export function TreasuryDashboard() {
   const { grants, activeGrantId } = useClientGrants();
@@ -49,6 +50,7 @@ export function TreasuryDashboard() {
 
   const tabs: { id: View; label: string; badge?: number }[] = [
     { id: "overview", label: "Overview" },
+    { id: "analytics", label: "Analytics" },
     { id: "recommendations", label: "Recommendations", badge: recUnread },
     { id: "connections", label: "Connections" },
   ];
@@ -104,6 +106,16 @@ export function TreasuryDashboard() {
           onRecommendationsChange={(_recs, unread) => setRecUnread(unread)}
         />
         <TreasuryClientCashTrend />
+      </section>
+
+      <section
+        className={`tabpanel${view === "analytics" ? " on" : ""}`}
+        id="p-analytics"
+        role="tabpanel"
+        aria-labelledby="t-analytics"
+        hidden={view !== "analytics"}
+      >
+        <ClientAnalyticsBoards />
       </section>
 
       <section

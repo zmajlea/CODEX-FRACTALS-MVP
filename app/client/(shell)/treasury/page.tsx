@@ -12,6 +12,7 @@ export default async function ClientTreasuryPage() {
 
   let hasLinkedAccounts = false;
   let hasRecommendations = false;
+  let hasSharedAnalytics = false;
   if (user) {
     const { count: accountCount } = await supabase
       .from("treasury_accounts")
@@ -26,9 +27,15 @@ export default async function ClientTreasuryPage() {
       .eq("client_user_id", user.id)
       .neq("status", "draft");
     hasRecommendations = (recCount ?? 0) > 0;
+
+    // Spec B7 — session client + RLS (not admin) for shared analytics presence
+    const { count: boardCount } = await supabase
+      .from("treasury_analytics")
+      .select("id", { count: "exact", head: true });
+    hasSharedAnalytics = (boardCount ?? 0) > 0;
   }
 
-  if (!hasLinkedAccounts && !hasRecommendations) {
+  if (!hasLinkedAccounts && !hasRecommendations && !hasSharedAnalytics) {
     return <ClientTreasuryEmptyState />;
   }
 

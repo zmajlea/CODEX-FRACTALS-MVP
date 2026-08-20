@@ -6,6 +6,7 @@ import {
   type MetricChartPoint,
   type MetricChartRefLine,
 } from "@/components/operator/treasury/analytics/MetricChart";
+import { AnalyticsBoards } from "@/components/operator/treasury/analytics/AnalyticsBoards";
 
 type MetricSeriesEnvelope = {
   v?: number;
@@ -196,6 +197,10 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [boardsRev, setBoardsRev] = useState(0);
 
   const load = useCallback(async () => {
     const res = await fetch(
@@ -518,6 +523,22 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
           tabIndex={kind === "analytics" ? 0 : undefined}
         >
           <div className="flex flex-wrap items-baseline gap-2">
+            <label
+              className="flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(row.id)}
+                onChange={(e) => {
+                  setSelectedIds((ids) =>
+                    e.target.checked
+                      ? [...ids, row.id]
+                      : ids.filter((x) => x !== row.id)
+                  );
+                }}
+              />
+            </label>
             <p className="font-medium mb-0">{row.name}</p>
             <span className="chip text-xs">{row.scope}</span>
             <span className="chip text-xs">{sourceLabel}</span>
@@ -682,6 +703,17 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
           <button
             type="button"
             className="chip"
+            disabled={selectedIds.length === 0}
+            onClick={() => {
+              setSaveTitle("");
+              setSaveOpen(true);
+            }}
+          >
+            Save as Analytics ({selectedIds.length})
+          </button>
+          <button
+            type="button"
+            className="chip"
             disabled={busy === "recalc" || rows.length === 0}
             onClick={() => void runRecalculateAll()}
           >
@@ -694,6 +726,77 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
       </div>
 
       {error ? <p className="treasury-meta cm-err">{error}</p> : null}
+
+      {saveOpen ? (
+        <div
+          className="panel p-3 space-y-2"
+          style={{ border: "1px solid var(--line)" }}
+        >
+          <p className="sec-title mb-0">Save as Analytics</p>
+          <label className="block text-sm">
+            <span className="treasury-meta">Board title</span>
+            <input
+              className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+              value={saveTitle}
+              onChange={(e) => setSaveTitle(e.target.value)}
+              placeholder="e.g. FFM Monthly Cash"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="chip"
+              disabled={busy === "save-board" || !saveTitle.trim()}
+              onClick={() => {
+                void (async () => {
+                  setBusy("save-board");
+                  setError(null);
+                  try {
+                    const res = await fetch(
+                      `/api/operator/treasury/clients/${clientUserId}/analytics`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: saveTitle.trim(),
+                          metric_ids: selectedIds,
+                        }),
+                      }
+                    );
+                    if (!res.ok) {
+                      const j = (await res.json()) as { error?: string };
+                      throw new Error(j.error ?? "Save failed");
+                    }
+                    setSaveOpen(false);
+                    setSelectedIds([]);
+                    setSaveTitle("");
+                    setBoardsRev((n) => n + 1);
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Save failed");
+                  } finally {
+                    setBusy(null);
+                  }
+                })();
+              }}
+            >
+              Create board
+            </button>
+            <button
+              type="button"
+              className="chip"
+              onClick={() => setSaveOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <AnalyticsBoards
+        key={boardsRev}
+        clientUserId={clientUserId}
+        metrics={rows.map((r) => ({ id: r.id, name: r.name }))}
+      />
 
       {builderOpen ? (
         <div
