@@ -11,7 +11,7 @@ import { isKnownStudyType } from "@/components/operator/treasury/analytics/study
 import { TreasurySpendPlanPanel } from "@/components/operator/treasury/TreasurySpendPlanPanel";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { AssistantProposals } from "@/components/operator/treasury/analytics/AssistantProposals";
-import { MetricsList } from "@/components/operator/treasury/analytics/MetricsList";
+import { AnalyticsBoards } from "@/components/operator/treasury/analytics/AnalyticsBoards";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type { CashModelStudyRow } from "@/lib/treasury/studies";
 import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
@@ -72,7 +72,7 @@ export function SavedAnalytics({
   return (
     <div className="saved-analytics space-y-4">
       <AssistantProposals clientUserId={clientUserId} />
-      <MetricsList clientUserId={clientUserId} />
+      <AnalyticsBoards clientUserId={clientUserId} />
       <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
       <aside
         className="panel p-3"

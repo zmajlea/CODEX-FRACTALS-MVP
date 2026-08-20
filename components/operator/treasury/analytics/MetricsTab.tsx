@@ -6,7 +6,6 @@ import {
   type MetricChartPoint,
   type MetricChartRefLine,
 } from "@/components/operator/treasury/analytics/MetricChart";
-import { AnalyticsBoards } from "@/components/operator/treasury/analytics/AnalyticsBoards";
 
 type MetricSeriesEnvelope = {
   v?: number;
@@ -200,7 +199,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saveTitle, setSaveTitle] = useState("");
   const [saveOpen, setSaveOpen] = useState(false);
-  const [boardsRev, setBoardsRev] = useState(0);
+  const [savedBoardLink, setSavedBoardLink] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(
@@ -770,7 +769,9 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
                     setSaveOpen(false);
                     setSelectedIds([]);
                     setSaveTitle("");
-                    setBoardsRev((n) => n + 1);
+                    setSavedBoardLink(
+                      `/operator/treasury/clients/${clientUserId}?tab=analytics&view=saved`
+                    );
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "Save failed");
                   } finally {
@@ -792,11 +793,14 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
         </div>
       ) : null}
 
-      <AnalyticsBoards
-        key={boardsRev}
-        clientUserId={clientUserId}
-        metrics={rows.map((r) => ({ id: r.id, name: r.name }))}
-      />
+      {savedBoardLink ? (
+        <p className="treasury-meta text-sm" role="status">
+          Saved to Analytics —{" "}
+          <a className="underline" href={savedBoardLink}>
+            Open Saved Analytics →
+          </a>
+        </p>
+      ) : null}
 
       {builderOpen ? (
         <div

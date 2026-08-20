@@ -61,7 +61,8 @@ type MetricOption = { id: string; name: string };
 
 type Props = {
   clientUserId: string;
-  metrics: MetricOption[];
+  /** Optional — if omitted, boards self-load metrics for Edit (Spec B8). */
+  metrics?: MetricOption[];
   onBoardsChange?: () => void;
 };
 
@@ -70,13 +71,14 @@ function formatValue(v: number | undefined | null): string {
   return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-/** Spec B7 — operator boards list + open/edit/share/export. */
+/** Spec B7/B8 — operator boards list + open/edit/share/print export. */
 export function AnalyticsBoards({
   clientUserId,
-  metrics,
+  metrics: metricsProp,
   onBoardsChange,
 }: Props) {
   const [boards, setBoards] = useState<BoardListRow[]>([]);
+  const [metricsLocal, setMetricsLocal] = useState<MetricOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -84,6 +86,8 @@ export function AnalyticsBoards({
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editIds, setEditIds] = useState<string[]>([]);
+
+  const metrics = metricsProp ?? metricsLocal;
 
   const load = useCallback(async () => {
     const res = await fetch(
@@ -94,9 +98,24 @@ export function AnalyticsBoards({
     setBoards(json.boards ?? []);
   }, [clientUserId]);
 
+  const loadMetrics = useCallback(async () => {
+    if (metricsProp) return;
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/metrics`
+    );
+    if (!res.ok) return;
+    const json = (await res.json()) as {
+      metrics?: Array<{ id: string; name: string }>;
+    };
+    setMetricsLocal(
+      (json.metrics ?? []).map((m) => ({ id: m.id, name: m.name }))
+    );
+  }, [clientUserId, metricsProp]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadMetrics();
+  }, [load, loadMetrics]);
 
   async function openBoard(id: string) {
     setBusy(id);
@@ -189,29 +208,10 @@ export function AnalyticsBoards({
     }
   }
 
-  async function runExport(id: string) {
-    setBusy("export");
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/analytics/${id}/export`
-      );
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? "Export failed");
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "analytics.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setBusy(null);
-    }
+  /** Spec B8 Path C — open print-ready HTML; operator Save as PDF. */
+  function runExport(id: string) {
+    const url = `/api/operator/treasury/clients/${clientUserId}/analytics/${id}/export`;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function moveId(idx: number, dir: -1 | 1) {
@@ -282,8 +282,7 @@ export function AnalyticsBoards({
                   <button
                     type="button"
                     className="chip"
-                    disabled={busy === "export"}
-                    onClick={() => void runExport(b.id)}
+                    onClick={() => runExport(b.id)}
                   >
                     Export PDF
                   </button>
@@ -326,6 +325,13 @@ export function AnalyticsBoards({
                 onClick={() => setEditing((e) => !e)}
               >
                 {editing ? "Cancel edit" : "Edit"}
+              </button>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => runExport(openId)}
+              >
+                Export PDF
               </button>
               <button
                 type="button"

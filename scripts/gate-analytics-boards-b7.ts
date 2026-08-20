@@ -5,7 +5,6 @@
  *   npm run test:seed:mcp-testers
  *   Migration 20260820180000_treasury_analytics applied
  *   Dev server on MCP_GATE_URL host (default http://localhost:14000)
- *   playwright installed (chromium)
  *
  * Usage: npm run gate:analytics-boards-b7
  */
@@ -516,7 +515,7 @@ async function main() {
     );
   }
 
-  // 5. No raw ledger on client path; no treasury_transactions writes; PDF %PDF
+  // 5. No raw ledger on client path; no treasury_transactions writes; print HTML export
   {
     const clientPayload = await opFetch(
       sessionCookieHeader(clientASession),
@@ -554,20 +553,20 @@ async function main() {
       `${baseUrl()}/api/operator/treasury/clients/${timClient.id}/analytics/${boardId}/export`,
       { headers: { Cookie: timCookie } }
     );
-    const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
-    const pdfOk =
+    const html = await pdfRes.text();
+    const ct = pdfRes.headers.get("content-type") ?? "";
+    const printOk =
       pdfRes.status === 200 &&
-      pdfBuf.slice(0, 4).toString("utf8") === "%PDF" &&
-      (pdfRes.headers.get("content-type") ?? "").includes("pdf");
+      ct.includes("text/html") &&
+      html.includes("Summit Treasury") &&
+      html.includes("@media print") &&
+      html.includes("window.print");
 
     record(
       5,
-      "no ledger leak / no txn writes / PDF",
-      clientPayload.status === 200 &&
-        !hasLedgerLeak &&
-        !mutates &&
-        pdfOk,
-      `client=${clientPayload.status} leak=${hasLedgerLeak} mutates=${mutates} pdf=${pdfRes.status} magic=${pdfBuf.slice(0, 4).toString("utf8")}`
+      "no ledger leak / no txn writes / print HTML",
+      clientPayload.status === 200 && !hasLedgerLeak && !mutates && printOk,
+      `client=${clientPayload.status} leak=${hasLedgerLeak} mutates=${mutates} export=${pdfRes.status} ct=${ct}`
     );
   }
 

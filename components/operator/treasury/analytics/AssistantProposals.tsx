@@ -11,14 +11,6 @@ type RuleRow = {
   source: string | null;
 };
 
-type MetricRow = {
-  id: string;
-  name: string;
-  description: string;
-  source: string;
-  computed_value: { value?: number } | null;
-};
-
 type RecRow = {
   id: string;
   title: string;
@@ -43,13 +35,13 @@ type Props = {
   onOpenRecommendation?: (recId: string) => void;
 };
 
-/** Spec B3 Part D — unified pending proposals from the assistant. */
+/** Spec B3 Part D — unified pending proposals from the assistant.
+ * Spec B8: metrics excluded — they are active library items, not gated proposals. */
 export function AssistantProposals({
   clientUserId,
   onOpenRecommendation,
 }: Props) {
   const [rules, setRules] = useState<RuleRow[]>([]);
-  const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [recs, setRecs] = useState<RecRow[]>([]);
   const [studies, setStudies] = useState<StudyRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,12 +54,10 @@ export function AssistantProposals({
     if (!res.ok) return;
     const json = (await res.json()) as {
       rules?: RuleRow[];
-      metrics?: MetricRow[];
       recommendations?: RecRow[];
       studies?: StudyRow[];
     };
     setRules(json.rules ?? []);
-    setMetrics(json.metrics ?? []);
     setRecs(json.recommendations ?? []);
     setStudies(json.studies ?? []);
   }, [clientUserId]);
@@ -89,8 +79,7 @@ export function AssistantProposals({
     }
   }
 
-  const empty =
-    !rules.length && !metrics.length && !recs.length && !studies.length;
+  const empty = !rules.length && !recs.length && !studies.length;
   if (empty && !error) return null;
 
   return (
@@ -140,39 +129,6 @@ export function AssistantProposals({
           }
         />
       ))}
-
-      {metrics.map((row) => {
-        const value =
-          row.computed_value && typeof row.computed_value.value === "number"
-            ? row.computed_value.value.toLocaleString(undefined, {
-                maximumFractionDigits: 2,
-              })
-            : "—";
-        return (
-          <ProposalRow
-            key={`metric-${row.id}`}
-            title={`Metric · ${row.name}`}
-            summary={`${row.description || "Defined metric"} · value ${value}`}
-            source="mcp"
-            busy={busy === `metric-${row.id}`}
-            primaryLabel="Keep"
-            onPrimary={() => void load()}
-            secondaryLabel="Delete"
-            onSecondary={() =>
-              void act(`metric-${row.id}`, async () => {
-                const res = await fetch(
-                  `/api/operator/treasury/clients/${clientUserId}/metrics/${row.id}`,
-                  { method: "DELETE" }
-                );
-                if (!res.ok) {
-                  const j = (await res.json()) as { error?: string };
-                  throw new Error(j.error ?? "Delete failed");
-                }
-              })
-            }
-          />
-        );
-      })}
 
       {recs.map((row) => (
         <ProposalRow

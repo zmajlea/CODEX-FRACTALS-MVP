@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import {
   isGuardResponse,
   requireOperatorTreasuryGrant,
@@ -7,16 +6,16 @@ import {
   assembleAnalyticsBoard,
   normalizeBoardRow,
 } from "@/lib/treasury/analytics-assemble";
-import {
-  htmlToPdfBuffer,
-  renderAnalyticsBoardHtml,
-} from "@/lib/treasury/analytics-pdf";
+import { renderAnalyticsBoardHtml } from "@/lib/treasury/analytics-pdf";
 
 type RouteContext = {
   params: Promise<{ clientId: string; analyticsId: string }>;
 };
 
-/** Spec B7 — branded PDF from the same assemble path as GET board. */
+/**
+ * Spec B8 Path C — print-ready HTML (same assemble as GET board).
+ * Operator opens this tab and uses browser "Save as PDF". No serverless Chromium.
+ */
 export async function GET(_request: Request, context: RouteContext) {
   const { clientId, analyticsId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -32,26 +31,29 @@ export async function GET(_request: Request, context: RouteContext) {
     .maybeSingle();
 
   if (!data) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new Response(JSON.stringify({ error: "Not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
     const board = normalizeBoardRow(data as Record<string, unknown>);
     const assembled = await assembleAnalyticsBoard(guard.admin, board);
-    const html = renderAnalyticsBoardHtml(assembled);
-    const pdf = await htmlToPdfBuffer(html);
-    const filename = `${board.title.replace(/[^\w\-]+/g, "_").slice(0, 48) || "analytics"}.pdf`;
-    return new NextResponse(new Uint8Array(pdf), {
+    const html = renderAnalyticsBoardHtml(assembled, { autoPrint: true });
+    return new Response(html, {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
       },
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : String(e) },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({
+        error: e instanceof Error ? e.message : String(e),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

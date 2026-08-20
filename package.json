@@ -48,7 +48,8 @@
     "treasury:verify-import": "npx tsx scripts/verify-summit-import.ts",
     "treasury:verify-label-survival": "npx tsx scripts/verify-label-survival.ts",
     "treasury:verify-spend-plan": "npx tsx scripts/verify-spend-plan.ts",
-    "treasury:verify-tx-predicate": "npx tsx scripts/verify-tx-predicate.ts"
+    "treasury:verify-tx-predicate": "npx tsx scripts/verify-tx-predicate.ts",
+    "gate:b8": "npx tsx scripts/gate-metrics-analytics-placement-b8.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -64,7 +65,6 @@
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^4.10.38",
     "plaid": "^43.0.0",
-    "playwright": "^1.62.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-force-graph-2d": "^1.29.1",
