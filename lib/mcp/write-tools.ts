@@ -220,62 +220,15 @@ export async function mcpDefineMetric(
     clientId?: string;
   }
 ) {
-  const { validateMetricDefinition } = await import("@/lib/mcp/metrics-schema");
-  const {
-    detectMetricCycle,
-    resolveMetricRefs,
-  } = await import("@/lib/treasury/metrics-eval");
-
-  const name = input.name.trim();
-  if (!name) throw new Error("name required");
-  if (input.scope === "client" && !input.clientId) {
-    throw new Error("client_id required for scope=client");
-  }
-  if (input.scope === "general" && input.clientId) {
-    throw new Error("client_id must be omitted for scope=general");
-  }
-
-  const validated = validateMetricDefinition(input.definition);
-  if (!validated.ok) {
-    throw new Error(
-      `Invalid definition: ${validated.errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`
-    );
-  }
-
-  const clientId = input.clientId ?? null;
-  const unresolved = await resolveMetricRefs(
-    admin,
-    auth.tenantId,
-    clientId,
-    validated.definition
-  );
-  if (unresolved) throw new Error(unresolved);
-
-  const cycle = await detectMetricCycle(
-    admin,
-    auth.tenantId,
-    clientId,
-    name,
-    validated.definition
-  );
-  if (cycle) throw new Error(cycle);
-
-  const { data, error } = await admin
-    .from("treasury_metrics")
-    .insert({
-      tenant_id: auth.tenantId,
-      client_user_id: clientId,
-      scope: input.scope,
-      name,
-      description: input.description.trim(),
-      definition: validated.definition as unknown as Json,
-      source: "mcp",
-      status: "active",
-      created_by: auth.operatorUserId,
-    })
-    .select("id, name, scope, status, source")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+  const { createMetric } = await import("@/lib/treasury/metrics-define");
+  return createMetric(admin, {
+    tenantId: auth.tenantId,
+    operatorUserId: auth.operatorUserId,
+    scope: input.scope,
+    clientId: input.clientId ?? null,
+    name: input.name,
+    description: input.description,
+    definition: input.definition,
+    source: "mcp",
+  });
 }

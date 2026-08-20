@@ -256,3 +256,74 @@ export async function computeMetricValue(
   if (error) throw new Error(error.message);
   return { value, computed_at };
 }
+
+/**
+ * Spec B4 — validate + evaluate a definition against a client's ledger without persisting.
+ */
+export async function previewMetricValue(
+  admin: Admin,
+  tenantId: string,
+  clientId: string,
+  rawDefinition: unknown
+): Promise<
+  | { ok: true; value: number }
+  | { ok: false; errors: Array<{ path: string; message: string }> }
+> {
+  const { validateMetricDefinition } = await import("@/lib/mcp/metrics-schema");
+  const validated = validateMetricDefinition(rawDefinition);
+  if (!validated.ok) {
+    return { ok: false, errors: validated.errors };
+  }
+
+  const unresolved = await resolveMetricRefs(
+    admin,
+    tenantId,
+    clientId,
+    validated.definition
+  );
+  if (unresolved) {
+    return {
+      ok: false,
+      errors: [{ path: "definition", message: unresolved }],
+    };
+  }
+
+  try {
+    const value = await evalDefinition(
+      admin,
+      tenantId,
+      clientId,
+      validated.definition
+    );
+    return { ok: true, value };
+  } catch (e) {
+    return {
+      ok: false,
+      errors: [
+        {
+          path: "definition",
+          message: e instanceof Error ? e.message : String(e),
+        },
+      ],
+    };
+  }
+}
+
+/** Load a metric owned by this tenant and visible on this client URL (client-or-null). */
+export async function findMetricForClient(
+  admin: Admin,
+  tenantId: string,
+  clientId: string,
+  metricId: string
+) {
+  const { data, error } = await admin
+    .from("treasury_metrics")
+    .select("*")
+    .eq("id", metricId)
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .or(`client_user_id.eq.${clientId},client_user_id.is.null`)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}

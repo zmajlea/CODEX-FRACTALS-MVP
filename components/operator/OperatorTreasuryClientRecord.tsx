@@ -20,6 +20,7 @@ import {
   TreasuryAnalyticsPanel,
   type AnalyticsView,
 } from "@/components/operator/treasury/TreasuryAnalyticsPanel";
+import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
@@ -39,6 +40,7 @@ type Tab =
   | "profile"
   | "overview"
   | "analytics"
+  | "metrics"
   | "transactions"
   | "rules"
   | "recommendations"
@@ -48,6 +50,7 @@ const VALID_TABS: Tab[] = [
   "profile",
   "overview",
   "analytics",
+  "metrics",
   "transactions",
   "rules",
   "recommendations",
@@ -349,6 +352,13 @@ export function OperatorTreasuryClientRecord({
             onClick: () => switchTab("analytics"),
           },
           {
+            id: "metrics",
+            icon: "money",
+            label: "Metrics",
+            active: tab === "metrics",
+            onClick: () => setTab("metrics"),
+          },
+          {
             id: "recommendations",
             icon: "pen",
             label: "Recommendations",
@@ -646,6 +656,13 @@ export function OperatorTreasuryClientRecord({
             onSelectPeriod={handleSelectPeriod}
             onPick={sharedPick}
             onViewChange={syncAnalyticsView}
+          />
+        ) : null}
+
+        {tab === "metrics" ? (
+          <MetricsTab
+            clientUserId={clientUserId}
+            dataThrough={dataThrough}
           />
         ) : null}
 

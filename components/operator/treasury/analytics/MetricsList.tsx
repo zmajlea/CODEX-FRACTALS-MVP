@@ -64,7 +64,13 @@ export function MetricsList({ clientUserId }: Props) {
     >
       <p className="sec-title mb-0">Metrics</p>
       <p className="treasury-meta text-sm">
-        Derived variables for this client (platform + assistant).
+        Derived variables for this client.{" "}
+        <a
+          href={`/operator/treasury/clients/${clientUserId}?tab=metrics`}
+          className="underline"
+        >
+          Open Metrics tab
+        </a>
       </p>
       {error ? <p className="treasury-meta cm-err">{error}</p> : null}
       <ul className="space-y-2">
