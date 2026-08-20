@@ -16,7 +16,8 @@ import type { Json } from "@/lib/database.types";
 type RouteContext = { params: Promise<{ clientId: string }> };
 
 type PostBody = {
-  accountId?: string;
+  /** Spec B6 — optional; omit for client-wide primary. */
+  accountId?: string | null;
 };
 
 /** Trailing-6 complete months' average monthly outflow (abs outflows). */
@@ -37,7 +38,7 @@ function trailingAvgMonthlyOutflow(
   return window.reduce((a, b) => a + b, 0) / window.length;
 }
 
-/** Spec 65 — idempotent primary cash_model row per client+account (navigation-safe). */
+/** Spec 65/B6 — idempotent primary cash_model (account optional). */
 export async function POST(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -50,10 +51,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const accountId = body.accountId?.trim();
-  if (!accountId) {
-    return NextResponse.json({ error: "accountId required" }, { status: 400 });
-  }
+  const accountId = body.accountId?.trim() || null;
 
   let threshold = 500_000;
   try {
@@ -68,6 +66,7 @@ export async function POST(request: Request, context: RouteContext) {
   const scenarios = defaultCashModelScenarios(threshold);
   const derived_snapshot = emptyCashModelDerivedSnapshot();
 
+  // RPC maps null → scope accountId "__all__" (not a treasury_accounts uuid).
   const { data: studyId, error: rpcErr } = await guard.admin.rpc(
     "treasury_ensure_primary_cash_model",
     {
@@ -76,7 +75,10 @@ export async function POST(request: Request, context: RouteContext) {
       p_tenant: guard.grant.tenantId,
       p_actor: guard.user.id,
       p_name: "Cash model",
-      p_scope: { accountId, label: null } as unknown as Json,
+      p_scope: {
+        accountId: accountId ?? "__all__",
+        label: null,
+      } as unknown as Json,
       p_params: params as unknown as Json,
       p_scenarios: scenarios as unknown as Json,
       p_derived_snapshot: derived_snapshot as unknown as Json,

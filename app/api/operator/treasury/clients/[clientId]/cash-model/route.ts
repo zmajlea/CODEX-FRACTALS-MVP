@@ -16,17 +16,14 @@ import {
 
 type RouteContext = { params: Promise<{ clientId: string }> };
 
-/** Load category series + opening balance once per account (client-side recompute). */
+/** Load category series + opening balance (account optional — Spec B6). */
 export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
   const url = new URL(request.url);
-  const accountId = url.searchParams.get("account_id")?.trim();
-  if (!accountId) {
-    return NextResponse.json({ error: "account_id required" }, { status: 400 });
-  }
+  const accountId = url.searchParams.get("account_id")?.trim() || null;
 
   try {
     const inputs = await loadCashModelInputs(
@@ -50,7 +47,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (isGuardResponse(guard)) return guard;
 
   let body: {
-    accountId?: string;
+    accountId?: string | null;
     params?: unknown;
     scenarios?: unknown;
     asOf?: string;
@@ -61,10 +58,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const accountId = body.accountId?.trim();
-  if (!accountId) {
-    return NextResponse.json({ error: "accountId required" }, { status: 400 });
-  }
+  const accountId = body.accountId?.trim() || null;
 
   const params = isCashModelParams(body.params)
     ? body.params

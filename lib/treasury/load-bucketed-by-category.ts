@@ -126,7 +126,8 @@ export async function loadBucketedByCategoryFlat(
   admin: AdminClient,
   clientUserId: string,
   opts: {
-    accountId: string;
+    /** Spec B6 — omit/null = all client accounts. */
+    accountId?: string | null;
     from: string;
     to: string;
     direction?: "in" | "out" | null;
@@ -137,7 +138,6 @@ export async function loadBucketedByCategoryFlat(
       .from("treasury_transactions")
       .select("id, label, direction, amount, posted_date")
       .eq("client_user_id", clientUserId)
-      .eq("account_id", opts.accountId)
       .eq("is_removed", false)
       .eq("pending", false)
       .gte("posted_date", opts.from)
@@ -146,6 +146,9 @@ export async function loadBucketedByCategoryFlat(
       .order("posted_date", { ascending: true })
       .order("id", { ascending: true })
       .range(rangeFrom, rangeTo);
+    if (opts.accountId) {
+      q = q.eq("account_id", opts.accountId);
+    }
     if (opts.direction === "in" || opts.direction === "out") {
       q = q.eq("direction", opts.direction);
     }

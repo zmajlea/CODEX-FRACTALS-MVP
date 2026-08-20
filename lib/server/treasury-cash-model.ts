@@ -18,7 +18,8 @@ import type { Database } from "@/lib/database.types";
 type AdminClient = SupabaseClient<Database>;
 
 export type CashModelRequest = {
-  accountId: string;
+  /** Spec B6 — omit/null = all client accounts. */
+  accountId?: string | null;
   params: CashModelParams;
   scenarios: CashModelScenario[];
   asOf?: string;
@@ -29,23 +30,25 @@ export type CashModelResponse = CashModelComposedResponse;
 export async function loadCashModelInputs(
   admin: AdminClient,
   clientUserId: string,
-  accountId: string,
+  accountId?: string | null,
   asOf?: string
 ): Promise<CashModelLoadedInputs> {
   const asOfDate = (asOf ?? todayIso()).slice(0, 10);
-  // subtractMonths returns YYYY-MM-DD — do not append another "-01"
   const from = subtractMonths(asOfDate, 36);
+  const acct = accountId?.trim() || null;
 
   const categorySeries = await loadMonthlyByCategory(admin, clientUserId, {
-    accountId,
+    accountId: acct,
     from,
     to: asOfDate,
   });
 
-  const bufferMeta = await loadAccountBuffer(admin, clientUserId, accountId);
+  const bufferMeta = acct
+    ? await loadAccountBuffer(admin, clientUserId, acct)
+    : { value: null as number | null, source: null };
 
   return {
-    accountId,
+    accountId: acct ?? "__all__",
     asOf: asOfDate,
     openingBalance: bufferMeta.value ?? 0,
     openingBalanceRaw: bufferMeta.value,
@@ -58,6 +61,11 @@ export async function computeTreasuryCashModel(
   clientUserId: string,
   req: CashModelRequest
 ): Promise<CashModelResponse> {
-  const inputs = await loadCashModelInputs(admin, clientUserId, req.accountId, req.asOf);
+  const inputs = await loadCashModelInputs(
+    admin,
+    clientUserId,
+    req.accountId,
+    req.asOf
+  );
   return composeCashModelResponse(inputs, req.params, req.scenarios);
 }

@@ -70,10 +70,23 @@ export async function mcpListClients(
         if (!u) return max;
         return !max || u > max ? u : max;
       }, null);
+      // Fallback data_through from latest posted_date when no account rows
+      let dataThrough = lastSync;
+      if (!dataThrough) {
+        const { data: lastTx } = await admin
+          .from("treasury_transactions")
+          .select("posted_date")
+          .eq("client_user_id", clientId)
+          .eq("is_removed", false)
+          .order("posted_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        dataThrough = lastTx?.posted_date ?? null;
+      }
       return {
         id: clientId,
         name: nameById.get(clientId) ?? "Client",
-        data_through: lastSync,
+        data_through: dataThrough,
         to_review: count ?? 0,
         coverage: null as number | null,
       };
@@ -83,18 +96,19 @@ export async function mcpListClients(
   return rows.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Prefer ledger account_id text; may be null for CSV-only books without account rows. */
 async function primaryAccountId(
   admin: AdminClient,
   clientId: string
 ): Promise<string | null> {
   const { data } = await admin
     .from("treasury_accounts")
-    .select("id")
+    .select("account_id")
     .eq("client_user_id", clientId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  return data?.id ?? null;
+  return data?.account_id ?? null;
 }
 
 export async function mcpGetClient(
@@ -103,22 +117,11 @@ export async function mcpGetClient(
   clientId: string
 ) {
   const accountId = await primaryAccountId(admin, clientId);
-  if (!accountId) {
-    return {
-      client_id: clientId,
-      accounts: [],
-      categories: [],
-      rules_summary: [],
-      recommendations: [],
-      data_through: null,
-      opening_balance: null,
-    };
-  }
 
   const [accountsRes, labelsRes, rulesRes, recsRes, inputs] = await Promise.all([
     admin
       .from("treasury_accounts")
-      .select("id, name, mask, current_balance, iso_currency_code, updated_at")
+      .select("id, name, mask, current_balance, iso_currency_code, updated_at, account_id")
       .eq("client_user_id", clientId),
     admin
       .from("treasury_transactions")
@@ -153,10 +156,24 @@ export async function mcpGetClient(
     return !max || u > max ? u : max;
   }, null);
 
+  let dataThrough = lastSync;
+  if (!dataThrough) {
+    const { data: lastTx } = await admin
+      .from("treasury_transactions")
+      .select("posted_date")
+      .eq("client_user_id", clientId)
+      .eq("is_removed", false)
+      .order("posted_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    dataThrough = lastTx?.posted_date ?? null;
+  }
+
   return {
     client_id: clientId,
     accounts: (accountsRes.data ?? []).map((a) => ({
       id: a.id,
+      account_id: a.account_id,
       name: a.name,
       mask: a.mask,
       balance: a.current_balance,
@@ -173,7 +190,7 @@ export async function mcpGetClient(
     recommendations: (recsRes.data ?? []).map((r) =>
       normalizeRecommendationRow(r as Record<string, unknown>)
     ),
-    data_through: lastSync,
+    data_through: dataThrough,
     opening_balance: inputs.openingBalance,
     primary_account_id: accountId,
   };
@@ -186,10 +203,10 @@ export async function mcpGetTransactions(
 ) {
   const { data: accounts } = await admin
     .from("treasury_accounts")
-    .select("id, mask")
+    .select("account_id, mask")
     .eq("client_user_id", clientId);
   const maskByAccount = new Map(
-    (accounts ?? []).map((a) => [a.id, a.mask] as const)
+    (accounts ?? []).map((a) => [a.account_id, a.mask] as const)
   );
 
   let q = admin
@@ -232,8 +249,8 @@ export async function mcpGetMonthlyByCategory(
   clientId: string,
   accountId?: string
 ) {
-  const acct = accountId ?? (await primaryAccountId(admin, clientId));
-  if (!acct) return [];
+  // Spec B6 — no account required; null = all client accounts
+  const acct = accountId?.trim() || null;
   const rows = await loadMonthlyByCategoryFlat(admin, clientId, {
     accountId: acct,
     from: "2000-01-01",
@@ -277,8 +294,7 @@ export async function mcpGetCashModelBaseline(
   clientId: string,
   accountId?: string
 ) {
-  const acct = accountId ?? (await primaryAccountId(admin, clientId));
-  if (!acct) return null;
+  const acct = accountId?.trim() || null;
   const result = await computeTreasuryCashModel(admin, clientId, {
     accountId: acct,
     params: defaultCashModelParams(),

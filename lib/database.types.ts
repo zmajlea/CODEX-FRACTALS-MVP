@@ -2776,7 +2776,7 @@ export type Database = {
       }
       treasury_ensure_primary_cash_model: {
         Args: {
-          p_account: string
+          p_account?: string | null
           p_actor: string
           p_client: string
           p_derived_snapshot?: Json
@@ -2806,7 +2806,7 @@ export type Database = {
       }
       treasury_monthly_by_category: {
         Args: {
-          p_account_id: string
+          p_account_id?: string | null
           p_client: string
           p_direction?: string | null
           p_from: string

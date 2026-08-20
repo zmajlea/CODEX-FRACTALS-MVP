@@ -50,15 +50,12 @@ export type MetricSeries = {
   chart_hint: MetricChartHint;
 };
 
-async function primaryAccountId(admin: Admin, clientId: string) {
-  const { data } = await admin
-    .from("treasury_accounts")
-    .select("id")
-    .eq("client_user_id", clientId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
+/** Optional account filter from metric source (B6). */
+function accountFilterFromSource(source: MetricSource): string | null {
+  if (source.type === "account" && source.key?.trim()) {
+    return source.key.trim();
+  }
+  return null;
 }
 
 /** Legacy value-metric window filter — byte-identical to B3/B4. */
@@ -138,7 +135,7 @@ function matchSource(
     if (!key) return false;
     if (label !== key && !label.includes(key)) return false;
   }
-  // account: all labels (account already scoped)
+  // account: account_id filter applied in the loader; here only direction
   const dir = source.direction ?? "any";
   if (dir !== "any" && row.direction !== dir) return false;
   return true;
@@ -149,10 +146,8 @@ async function seriesFromLedgerMonthly(
   clientId: string,
   source: MetricSource
 ): Promise<SeriesPoint[]> {
-  const accountId = await primaryAccountId(admin, clientId);
-  if (!accountId) return [];
   const rows = await loadMonthlyByCategoryFlat(admin, clientId, {
-    accountId,
+    accountId: accountFilterFromSource(source),
     from: "2000-01-01",
     to: "2099-12-31",
   });
@@ -437,22 +432,18 @@ export async function buildSeries(
     return finalizeSeries(definition, subdivision, bounds, points, chartHint, admin, tenantId, clientId, depth);
   }
 
-  const accountId = await primaryAccountId(admin, clientId);
   const raw = new Map<string, number[]>();
-
-  if (accountId) {
-    const rows = await loadBucketedByCategoryFlat(admin, clientId, {
-      accountId,
-      from: bounds.start,
-      to: bounds.end,
-    });
-    for (const row of rows) {
-      if (!matchSource(row, definition.source)) continue;
-      const key = bucketStartForDate(row.posted_date, subdivision);
-      const list = raw.get(key) ?? [];
-      list.push(row.total);
-      raw.set(key, list);
-    }
+  const rows = await loadBucketedByCategoryFlat(admin, clientId, {
+    accountId: accountFilterFromSource(definition.source),
+    from: bounds.start,
+    to: bounds.end,
+  });
+  for (const row of rows) {
+    if (!matchSource(row, definition.source)) continue;
+    const key = bucketStartForDate(row.posted_date, subdivision);
+    const list = raw.get(key) ?? [];
+    list.push(row.total);
+    raw.set(key, list);
   }
 
   const points = fillBuckets(raw, subdivision, bounds, bucketOp);

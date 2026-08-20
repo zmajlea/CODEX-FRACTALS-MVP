@@ -31,20 +31,23 @@ function nestCategoryRows(rows: MonthlyCategoryRow[]): MonthlyByCategorySeries {
   return out;
 }
 
-/** Spec 65 — one RPC scan; no fetch-all. Split txs contribute slices only (never label+split). */
+type LoadOpts = {
+  /** Spec B6 — omit/null = all client accounts. */
+  accountId?: string | null;
+  from: string;
+  to: string;
+  direction?: "in" | "out" | null;
+};
+
+/** Spec 65/B6 — one RPC scan; p_account_id null = client-wide. */
 export async function loadMonthlyByCategory(
   admin: AdminClient,
   clientUserId: string,
-  opts: {
-    accountId: string;
-    from: string;
-    to: string;
-    direction?: "in" | "out" | null;
-  }
+  opts: LoadOpts
 ): Promise<MonthlyByCategorySeries> {
   const { data, error } = await admin.rpc("treasury_monthly_by_category", {
     p_client: clientUserId,
-    p_account_id: opts.accountId,
+    p_account_id: opts.accountId ?? null,
     p_from: opts.from,
     p_to: opts.to,
     p_direction: opts.direction ?? null,
@@ -68,16 +71,11 @@ export async function loadMonthlyByCategory(
 export async function loadMonthlyByCategoryFlat(
   admin: AdminClient,
   clientUserId: string,
-  opts: {
-    accountId: string;
-    from: string;
-    to: string;
-    direction?: "in" | "out" | null;
-  }
+  opts: LoadOpts
 ): Promise<MonthlyCategoryRow[]> {
   const { data, error } = await admin.rpc("treasury_monthly_by_category", {
     p_client: clientUserId,
-    p_account_id: opts.accountId,
+    p_account_id: opts.accountId ?? null,
     p_from: opts.from,
     p_to: opts.to,
     p_direction: opts.direction ?? null,
