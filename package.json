@@ -26,6 +26,8 @@
     "gate:mcp-b1": "npx tsx scripts/gate-mcp-b1.ts",
     "gate:mcp-b2": "npx tsx scripts/gate-mcp-b2.ts",
     "gate:mcp-b3": "npx tsx scripts/gate-mcp-b3.ts",
+    "gate:mcp-chatgpt": "npx tsx scripts/gate-mcp-chatgpt-b9.ts",
+    "mint:oauth-client": "npx tsx scripts/mint-oauth-client.ts",
     "gate:metrics-ui": "npx tsx scripts/gate-metrics-ui.ts",
     "gate:metrics-b5": "npx tsx scripts/gate-metrics-b5.ts",
     "gate:analytics-client-scope": "npx tsx scripts/gate-analytics-client-scope.ts",

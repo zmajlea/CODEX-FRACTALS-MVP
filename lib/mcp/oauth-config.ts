@@ -66,6 +66,14 @@ export function isRedirectUriAllowed(uri: string): boolean {
     if (uri === CLAUDE_MCP_REDIRECT) return true;
     if (u.protocol === "http:" && u.hostname === "localhost") return true;
     if (u.protocol === "http:" && u.hostname === "127.0.0.1") return true;
+    // Spec B9 — ChatGPT connector callback (exact host; path tail varies per connector)
+    if (
+      u.protocol === "https:" &&
+      u.hostname === "chatgpt.com" &&
+      u.pathname.startsWith("/connector/oauth/")
+    ) {
+      return true;
+    }
     return false;
   } catch {
     return false;

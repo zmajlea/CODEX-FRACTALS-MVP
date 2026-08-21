@@ -4,6 +4,7 @@ import {
   clientIp,
   oauthErrorResponse,
 } from "@/lib/mcp/oauth-http";
+import { assertClientAuth } from "@/lib/mcp/oauth-clients";
 import {
   exchangeAuthorizationCode,
   exchangeRefreshToken,
@@ -47,9 +48,17 @@ export async function POST(req: Request) {
     const redirectUri = body.redirect_uri;
     const clientId = body.client_id;
     const codeVerifier = body.code_verifier;
+    const clientSecret = body.client_secret;
     if (!code || !redirectUri || !clientId || !codeVerifier) {
       return oauthErrorResponse("invalid_request", "Missing parameters");
     }
+
+    // Spec B9 — confidential clients: client_secret_post; public (Claude): none
+    const auth = await assertClientAuth(admin, clientId, clientSecret);
+    if (!auth.ok) {
+      return oauthErrorResponse(auth.error, "Client authentication failed", 401);
+    }
+
     const out = await exchangeAuthorizationCode(admin, {
       code,
       clientId,

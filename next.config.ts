@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
         source: "/.well-known/oauth-authorization-server",
         destination: "/api/oauth/well-known/oauth-authorization-server",
       },
+      // Spec B9 — operators often paste /mcp; canonical handler is /api/mcp
+      {
+        source: "/mcp",
+        destination: "/api/mcp",
+      },
+      {
+        source: "/mcp/:path*",
+        destination: "/api/mcp/:path*",
+      },
     ];
   },
 };

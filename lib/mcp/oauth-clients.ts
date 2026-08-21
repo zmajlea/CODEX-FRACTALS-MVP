@@ -79,6 +79,39 @@ export async function getOAuthClient(admin: Admin, clientId: string) {
   return data;
 }
 
+/**
+ * Spec B9 — confidential clients must present client_secret (client_secret_post).
+ * Public clients (token_endpoint_auth_method=none) need no secret.
+ */
+export async function assertClientAuth(
+  admin: Admin,
+  clientId: string,
+  clientSecret: string | undefined
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const client = await getOAuthClient(admin, clientId);
+  if (!client) {
+    return { ok: false, error: "invalid_client" };
+  }
+
+  const method = client.token_endpoint_auth_method ?? "none";
+  const needsSecret =
+    method === "client_secret_post" || method === "client_secret_basic";
+
+  if (!needsSecret) {
+    return { ok: true };
+  }
+
+  if (!clientSecret || !client.client_secret_hash) {
+    return { ok: false, error: "invalid_client" };
+  }
+
+  if (hashOAuthSecret(clientSecret) !== client.client_secret_hash) {
+    return { ok: false, error: "invalid_client" };
+  }
+
+  return { ok: true };
+}
+
 export function clientAllowsRedirect(
   client: { redirect_uris: string[] },
   redirectUri: string
