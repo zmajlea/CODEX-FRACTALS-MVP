@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database.types";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -28,16 +29,21 @@ export async function writeOperatorTreasuryReadAudit(
   });
 }
 
+/**
+ * Fire-and-forget audit. Prefer passing admin when already held; otherwise
+ * uses service role so client recommendation routes need not import admin
+ * (Spec B10 invariant #1 static gate).
+ */
 export async function writeTreasuryAudit(
-  admin: AdminClient,
+  admin: AdminClient | null,
   input: {
     actorUserId: string;
     eventType: string;
     payload: Record<string, unknown>;
   }
 ): Promise<void> {
-  // Spec 67 C — fire-and-forget; never block the response on audit I/O
-  void admin
+  const client = admin ?? createSupabaseAdminClient();
+  void client
     .from("user_audit_events")
     .insert({
       user_id: input.actorUserId,

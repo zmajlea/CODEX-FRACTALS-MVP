@@ -6,7 +6,6 @@ import { createClient } from "@/utils/supabase/client";
 import { BcnContinuityShell } from "@/components/bcn/BcnContinuityShell";
 import type { BcnRailGroup } from "@/components/bcn/BcnRail";
 import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
-import { InviteClientModal } from "@/components/platform/InviteClientModal";
 import { TreasuryPortfolioClientCard } from "@/components/operator/treasury/TreasuryPortfolioClientCard";
 import { treasuryPortfolioRailGroups } from "@/components/operator/treasury/treasuryPortfolioRail";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
@@ -18,6 +17,7 @@ export type OperatorTreasuryClientRow = {
   client_email: string;
   client_name: string;
   status: string;
+  invite_status?: string | null;
   institution_count: number;
   account_count: number;
   total_cash: number;
@@ -28,12 +28,6 @@ export type OperatorTreasuryClientRow = {
   next_note?: string | null;
   watch_note?: string | null;
   attention_reason?: string | null;
-};
-
-type ActiveModule = {
-  slug: string;
-  name: string;
-  status: string;
 };
 
 type PortfolioView = "cards" | "list";
@@ -59,16 +53,20 @@ export function OperatorTreasuryPortfolio({
   tenantId,
   tenantName,
   domainSlug,
-  credits,
+  credits: _credits,
   initialClients,
-  treasurySeatCost = 1,
+  treasurySeatCost: _treasurySeatCost = 1,
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [clients, setClients] = useState(initialClients);
-  const [modules, setModules] = useState<ActiveModule[]>([]);
   const [who, setWho] = useState<string | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [newClientOpen, setNewClientOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newFirm, setNewFirm] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   const [view, setView] = useState<PortfolioView>("cards");
@@ -107,12 +105,6 @@ export function OperatorTreasuryPortfolio({
 
   useEffect(() => {
     void (async () => {
-      const { data: moduleData } = await supabase.rpc("list_operator_modules", {
-        p_tenant_id: tenantId,
-      });
-      if (Array.isArray(moduleData)) {
-        setModules(moduleData as ActiveModule[]);
-      }
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -125,17 +117,12 @@ export function OperatorTreasuryPortfolio({
         setWho(display);
       }
     })();
-  }, [supabase, tenantId]);
+  }, [supabase]);
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     router.push(PORTAL_LOGIN);
   }, [router, supabase]);
-
-  const treasuryModules = useMemo(
-    () => modules.filter((m) => m.slug === "treasury"),
-    [modules]
-  );
 
   const railGroups: BcnRailGroup[] = useMemo(
     () => treasuryPortfolioRailGroups({ inboxUnread, active: "portfolio" }),
@@ -151,11 +138,35 @@ export function OperatorTreasuryPortfolio({
     [clients]
   );
 
-  // R1 — adding clients is off during testing (docs tell Tim; UI must match).
-  const inviteDisabled = true;
-  const inviteOffTitle = "Adding clients is off during R1 testing";
+  const activeCount = clients.filter((c) => c.status === "active").length;
 
-  const activeCount = clients.length;
+  async function submitNewClient() {
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const res = await fetch("/api/operator/treasury/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          email: newEmail.trim(),
+          firmLabel: newFirm.trim() || undefined,
+          sendInvite: true,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Create failed");
+      setNewClientOpen(false);
+      setNewName("");
+      setNewEmail("");
+      setNewFirm("");
+      await load();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "Create failed");
+    } finally {
+      setCreateBusy(false);
+    }
+  }
 
   return (
     <>
@@ -185,12 +196,9 @@ export function OperatorTreasuryPortfolio({
               <button
                 type="button"
                 className="btn"
-                disabled={inviteDisabled}
-                aria-disabled={inviteDisabled}
-                title={inviteDisabled ? inviteOffTitle : undefined}
                 onClick={() => {
-                  if (inviteDisabled) return;
-                  setInviteOpen(true);
+                  setCreateError(null);
+                  setNewClientOpen(true);
                 }}
               >
                 <svg
@@ -312,17 +320,19 @@ export function OperatorTreasuryPortfolio({
             style={view === "list" ? { gridTemplateColumns: "1fr" } : undefined}
           >
             {clients.map((row) => (
-              <TreasuryPortfolioClientCard key={row.grant_id} row={row} demo={demo} />
+              <TreasuryPortfolioClientCard
+                key={row.grant_id}
+                row={row}
+                demo={demo}
+                onChanged={() => void load()}
+              />
             ))}
             <button
               type="button"
               className="addcard"
-              disabled={inviteDisabled}
-              aria-disabled={inviteDisabled}
-              title={inviteDisabled ? inviteOffTitle : undefined}
               onClick={() => {
-                if (inviteDisabled) return;
-                setInviteOpen(true);
+                setCreateError(null);
+                setNewClientOpen(true);
               }}
             >
               <span className="ac-plus">
@@ -339,7 +349,7 @@ export function OperatorTreasuryPortfolio({
                 </svg>
               </span>
               <span className="ac-t">New client record</span>
-              <span className="ac-s">Create a record and assign it to you</span>
+              <span className="ac-s">Create a record and invite them</span>
             </button>
           </div>
 
@@ -353,18 +363,75 @@ export function OperatorTreasuryPortfolio({
         </section>
       </BcnContinuityShell>
 
-      <InviteClientModal
-        open={inviteOpen}
-        tenantId={tenantId}
-        firmName={tenantName}
-        credits={credits}
-        modules={treasuryModules.length > 0 ? treasuryModules : modules}
-        onClose={() => setInviteOpen(false)}
-        onProvisioned={() => {
-          setInviteOpen(false);
-          void load();
-        }}
-      />
+      {newClientOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(16,42,71,0.35)" }}
+          role="dialog"
+          aria-modal
+          aria-label="New client"
+        >
+          <div
+            className="panel p-4 space-y-3 w-full max-w-md"
+            style={{ background: "#fff", border: "1px solid var(--line)" }}
+          >
+            <p className="sec-title mb-0">New client</p>
+            <p className="treasury-meta text-sm">
+              Creates their account, grants Treasury access, and sends an
+              activation invite.
+            </p>
+            {createError ? (
+              <p className="treasury-meta cm-err" role="alert">
+                {createError}
+              </p>
+            ) : null}
+            <label className="block text-sm">
+              <span className="treasury-meta">Name</span>
+              <input
+                className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="treasury-meta">Email</span>
+              <input
+                type="email"
+                className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="treasury-meta">Firm label (optional)</span>
+              <input
+                className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                value={newFirm}
+                onChange={(e) => setNewFirm(e.target.value)}
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="chip"
+                disabled={
+                  createBusy || !newName.trim() || !newEmail.trim()
+                }
+                onClick={() => void submitNewClient()}
+              >
+                {createBusy ? "Creating…" : "Create and invite"}
+              </button>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => setNewClientOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

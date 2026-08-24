@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { createClient } from "@/utils/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { TreasuryDashboard } from "@/components/treasury/TreasuryDashboard";
 import { ClientTreasuryEmptyState } from "@/components/treasury/ClientTreasuryEmptyState";
 
@@ -14,21 +13,17 @@ export default async function ClientTreasuryPage() {
   let hasRecommendations = false;
   let hasSharedAnalytics = false;
   if (user) {
+    // Spec B10 — all presence checks via session client (RLS boundary).
     const { count: accountCount } = await supabase
       .from("treasury_accounts")
-      .select("id", { count: "exact", head: true })
-      .eq("client_user_id", user.id);
+      .select("id", { count: "exact", head: true });
     hasLinkedAccounts = (accountCount ?? 0) > 0;
 
-    const admin = createSupabaseAdminClient();
-    const { count: recCount } = await admin
+    const { count: recCount } = await supabase
       .from("treasury_recommendations")
-      .select("id", { count: "exact", head: true })
-      .eq("client_user_id", user.id)
-      .neq("status", "draft");
+      .select("id", { count: "exact", head: true });
     hasRecommendations = (recCount ?? 0) > 0;
 
-    // Spec B7 — session client + RLS (not admin) for shared analytics presence
     const { count: boardCount } = await supabase
       .from("treasury_analytics")
       .select("id", { count: "exact", head: true });

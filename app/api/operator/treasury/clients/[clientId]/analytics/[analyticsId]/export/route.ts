@@ -41,6 +41,22 @@ export async function GET(_request: Request, context: RouteContext) {
     const board = normalizeBoardRow(data as Record<string, unknown>);
     const assembled = await assembleAnalyticsBoard(guard.admin, board);
     const html = renderAnalyticsBoardHtml(assembled, { autoPrint: true });
+
+    // Spec B10 Part E — register document so client portal can list it.
+    const title =
+      typeof board.title === "string" && board.title.trim()
+        ? board.title.trim()
+        : "Analytics board";
+    await guard.admin.from("treasury_client_documents").insert({
+      tenant_id: guard.grant.tenantId,
+      client_user_id: clientId,
+      title,
+      kind: "analytics_pdf",
+      analytics_id: analyticsId,
+      print_path: `/api/treasury/analytics/${analyticsId}/export`,
+      created_by: guard.user.id,
+    });
+
     return new Response(html, {
       status: 200,
       headers: {

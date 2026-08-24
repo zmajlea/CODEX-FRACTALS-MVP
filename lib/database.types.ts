@@ -264,6 +264,56 @@ export type Database = {
           },
         ]
       }
+      distributor_client_invites: {
+        Row: {
+          id: string
+          tenant_id: string
+          client_user_id: string
+          email: string
+          token_hash: string
+          status: string
+          expires_at: string
+          consumed_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          client_user_id: string
+          email: string
+          token_hash: string
+          status?: string
+          expires_at: string
+          consumed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          client_user_id?: string
+          email?: string
+          token_hash?: string
+          status?: string
+          expires_at?: string
+          consumed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributor_client_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_transactions: {
         Row: {
           action: string
@@ -1704,6 +1754,83 @@ export type Database = {
           },
         ]
       }
+      treasury_client_documents: {
+        Row: {
+          id: string
+          tenant_id: string
+          client_user_id: string
+          title: string
+          kind: string
+          analytics_id: string | null
+          print_path: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          client_user_id: string
+          title: string
+          kind?: string
+          analytics_id?: string | null
+          print_path?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          client_user_id?: string
+          title?: string
+          kind?: string
+          analytics_id?: string | null
+          print_path?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      treasury_thread_attachments: {
+        Row: {
+          id: string
+          recommendation_id: string
+          client_user_id: string
+          storage_path: string
+          filename: string
+          content_type: string | null
+          byte_size: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          recommendation_id: string
+          client_user_id: string
+          storage_path: string
+          filename: string
+          content_type?: string | null
+          byte_size?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          recommendation_id?: string
+          client_user_id?: string
+          storage_path?: string
+          filename?: string
+          content_type?: string | null
+          byte_size?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_thread_attachments_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_recommendations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_recommendations: {
         Row: {
           anchor_ref: Json | null
@@ -2683,6 +2810,7 @@ export type Database = {
       }
       get_ff_login_route: { Args: never; Returns: Json }
       get_staff_invite_preview: { Args: { p_token: string }; Returns: Json }
+      has_active_treasury_grant: { Args: never; Returns: boolean }
       internal_vault_create_secret: {
         Args: { p_description?: string; p_name: string; p_secret: string }
         Returns: string
@@ -2733,6 +2861,10 @@ export type Database = {
             }
             Returns: Json
           }
+      reactivate_operator_client_access: {
+        Args: { p_grant_id: string }
+        Returns: Json
+      }
       regenerate_client_invite: { Args: { p_invite_id: string }; Returns: Json }
       resolve_billing_rule_id: {
         Args: { p_distributor_tenant_id?: string; p_module_id: string }
