@@ -6,6 +6,7 @@ import { ClientModuleRailSwitcher } from "@/components/platform/ClientModuleRail
 import { RailBrandFoot } from "@/components/bcn/RailBrandFoot";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BcnThemeStyleInjector } from "@/components/bcn/BcnThemeStyleInjector";
+import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
 
 type Grant = {
   id: string;
@@ -36,6 +37,8 @@ export function ClientShellFrame({
   activeGrantId,
 }: Props) {
   const pathname = usePathname();
+  const theme = useBcnThemeOptional();
+  const displayName = theme?.wordmark?.trim() || tenantName;
   const bcnOwnsChrome = pathname?.startsWith("/client/bcn");
   const treasuryR1 = pathname?.startsWith("/client/treasury");
 
@@ -60,7 +63,7 @@ export function ClientShellFrame({
       <style>{styleBlock}</style>
       <BcnThemeStyleInjector />
       <header className="topbar appbar">
-        <span className="wm-name">{tenantName}</span>
+        <span className="wm-name">{displayName}</span>
         <span className="grow" />
         <SignOutButton className="btn sm ghost" />
       </header>

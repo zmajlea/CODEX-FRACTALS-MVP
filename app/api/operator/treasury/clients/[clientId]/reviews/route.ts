@@ -86,7 +86,20 @@ export async function POST(request: Request, context: RouteContext) {
     .maybeSingle();
 
   if (existing) {
-    return NextResponse.json({ error: "Issue already exists for this period/label" }, { status: 409 });
+    const { data: existingRow } = await guard.admin
+      .from("treasury_reviews")
+      .select("*")
+      .eq("id", existing.id)
+      .single();
+    return NextResponse.json(
+      {
+        error: "Issue already exists for this period/label",
+        existing: existingRow
+          ? normalizeReviewRow(existingRow as Record<string, unknown>)
+          : { id: existing.id },
+      },
+      { status: 409 }
+    );
   }
 
   const { data: created, error } = await guard.admin

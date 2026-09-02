@@ -92,6 +92,40 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.title !== undefined) update.title = body.title.trim();
   if (body.period_month !== undefined) update.period_month = body.period_month.trim();
 
+  if (Object.keys(update).length === 0) {
+    const { data: current } = await guard.admin
+      .from("treasury_reviews")
+      .select("*")
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .maybeSingle();
+    if (!current) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({
+      review: normalizeReviewRow(current as Record<string, unknown>),
+    });
+  }
+
+  const { data: draftRow } = await guard.admin
+    .from("treasury_reviews")
+    .select("id, status")
+    .eq("id", reviewId)
+    .eq("tenant_id", guard.grant.tenantId)
+    .eq("client_user_id", clientId)
+    .maybeSingle();
+
+  if (!draftRow) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (draftRow.status !== "draft") {
+    return NextResponse.json(
+      { error: "Only draft issues can be edited" },
+      { status: 404 }
+    );
+  }
+
   const { data, error } = await guard.admin
     .from("treasury_reviews")
     .update(update)
@@ -102,8 +136,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     .select("*")
     .single();
 
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Update failed" }, { status: 409 });
+  if (error) {
+    const msg = error.message ?? "Update failed";
+    const isUnique =
+      msg.includes("treasury_reviews_tenant_id_client_user_id_period_month_label") ||
+      msg.includes("duplicate key") ||
+      error.code === "23505";
+    return NextResponse.json(
+      { error: isUnique ? "Issue already exists for this period/label" : msg },
+      { status: isUnique ? 409 : 500 }
+    );
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 
   return NextResponse.json({ review: normalizeReviewRow(data as Record<string, unknown>) });

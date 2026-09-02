@@ -72,7 +72,7 @@ async function acceptClientInviteIfPresent(
 
 function portalRouteForTier(tier: CommercialTier): string | null {
   if (tier === "global_admin") return "/admin";
-  if (tier === "operator") return "/operator";
+  if (tier === "operator") return "/operator/treasury";
   return null;
 }
 

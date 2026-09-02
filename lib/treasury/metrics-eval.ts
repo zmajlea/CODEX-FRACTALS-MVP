@@ -78,6 +78,14 @@ function filterWindow(points: SeriesPoint[], window: MetricWindow): SeriesPoint[
     return sorted.filter((p) => p.month.startsWith(`${y}-`) && p.month <= end);
   }
 
+  if (window.kind === "trailing") {
+    const months = window.months ?? 3;
+    const start = new Date(Date.UTC(y, m - (months - 1), 1));
+    const startYm = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
+    const endYm = `${y}-${String(m + 1).padStart(2, "0")}`;
+    return sorted.filter((p) => p.month >= startYm && p.month <= endYm);
+  }
+
   const months = window.months ?? 3;
   return sorted.slice(-months);
 }

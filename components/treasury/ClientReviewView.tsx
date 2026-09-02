@@ -5,6 +5,7 @@ import type { ReviewSnapshot } from "@/lib/treasury/review-assemble";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import type { MetricSeries } from "@/lib/treasury/metrics-eval";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
+import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
 
 type ReviewListItem = {
   id: string;
@@ -15,6 +16,7 @@ type ReviewListItem = {
 };
 
 type Props = {
+  /** @deprecated use theme wordmark — kept for callers without BcnThemeProvider */
   tenantName?: string | null;
 };
 
@@ -27,6 +29,8 @@ function fmtMoney(v: number): string {
 }
 
 export function ClientReviewView({ tenantName }: Props) {
+  const theme = useBcnThemeOptional();
+  const brandLabel = theme?.wordmark?.trim() || tenantName || null;
   const [reviews, setReviews] = useState<ReviewListItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<ReviewSnapshot | null>(null);
@@ -130,7 +134,7 @@ export function ClientReviewView({ tenantName }: Props) {
       </div>
 
       <header className="panel p-4 mb-4">
-        <p className="eyebrow">{tenantName ? `${tenantName} · ` : ""}Treasury Review</p>
+        <p className="eyebrow">{brandLabel ? `${brandLabel} · ` : ""}Treasury Review</p>
         <h1 className="title text-xl">{snapshot.meta.title}</h1>
         <p className="treasury-meta text-sm">
           Reviewed as of {snapshot.meta.reviewed_as_of} · Version {snapshot.meta.version}

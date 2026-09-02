@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
-import type { MetricSeries } from "@/lib/treasury/metrics-eval";
 
 type ReviewItem = {
   id: string;
@@ -25,6 +24,21 @@ type BlockItem = {
   proposal_state: string;
   metric_name?: string | null;
   suggested_caption?: string;
+  placed_snapshot?: {
+    kind?: string;
+    value?: number | null;
+    series?: {
+      points?: {
+        bucket_start: string;
+        bucket_label: string;
+        value: number;
+        partial?: true;
+        breaches?: string[];
+      }[];
+      reference_lines?: { id: string; label: string; value: number; kind: string }[];
+      chart_hint?: string;
+    };
+  } | null;
 };
 
 type Preflight = {
@@ -61,10 +75,13 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [status, setStatus] = useState("draft");
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
-  const [shelfOpen, setShelfOpen] = useState(true);
+  const [shelfOpen, setShelfOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
 
   const base = `/api/operator/treasury/clients/${clientUserId}`;
 
@@ -101,21 +118,37 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     setMetrics(json.metrics ?? []);
   }, [base]);
 
-  const refresh = useCallback(async () => {
-    setError(null);
-    try {
-      const list = await loadReviews();
-      const draft = list.find((r) => r.status === "draft") ?? list[0];
-      if (draft) await loadReview(draft.id);
-      await loadMetrics();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Load failed");
-    }
-  }, [loadReviews, loadReview, loadMetrics]);
+  const refresh = useCallback(
+    async (preferId?: string | null) => {
+      setError(null);
+      try {
+        const list = await loadReviews();
+        const targetId = preferId ?? activeIdRef.current;
+        const picked =
+          (targetId ? list.find((r) => r.id === targetId) : null) ??
+          list.find((r) => r.status === "draft") ??
+          list[0];
+        if (picked) await loadReview(picked.id);
+        else {
+          setActiveId(null);
+          setBlocks([]);
+          setPreflight(null);
+        }
+        await loadMetrics();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Load failed");
+      }
+    },
+    [loadReviews, loadReview, loadMetrics]
+  );
+
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    activeIdRef.current = null;
+    void refreshRef.current();
+  }, [clientUserId]);
 
   async function createDraft() {
     setBusy(true);
@@ -126,10 +159,21 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const json = (await res.json()) as { review?: ReviewItem; error?: string };
+      const json = (await res.json()) as {
+        review?: ReviewItem;
+        existing?: ReviewItem;
+        error?: string;
+      };
+      if (res.status === 409 && json.existing?.id) {
+        await loadReview(json.existing.id);
+        setError(
+          json.error ??
+            "An issue for this period already exists — opened the existing issue."
+        );
+        return;
+      }
       if (!res.ok) throw new Error(json.error ?? "Create failed");
-      await refresh();
-      if (json.review) await loadReview(json.review.id);
+      await refresh(json.review?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Create failed");
     } finally {
@@ -137,9 +181,23 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     }
   }
 
+  async function saveTitle() {
+    if (!activeId || status !== "draft") return;
+    const res = await fetch(`${base}/reviews/${activeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      throw new Error(json.error ?? `Title save failed (${res.status})`);
+    }
+  }
+
   async function addMetricBlock(metric: MetricRow, role: "figure" | "exhibit") {
-    if (!activeId) return;
-    setBusy(true);
+    if (!activeId || addingMetricId) return;
+    setAddingMetricId(metric.id);
+    setError(null);
     try {
       const res = await fetch(`${base}/reviews/${activeId}/blocks`, {
         method: "POST",
@@ -154,7 +212,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Add failed");
     } finally {
-      setBusy(false);
+      setAddingMetricId(null);
     }
   }
 
@@ -206,9 +264,13 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       const json = (await res.json()) as { error?: string; preflight?: Preflight };
       if (!res.ok) {
         if (json.preflight) setPreflight(json.preflight);
-        throw new Error(json.error ?? "Publish blocked");
+        throw new Error(
+          json.error
+            ? `${json.error} (${res.status})`
+            : `Publish failed (${res.status})`
+        );
       }
-      await refresh();
+      await refresh(activeId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Publish failed");
     } finally {
@@ -222,117 +284,277 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     preflight.stale_count > 0 ||
     preflight.envelope_violations.length > 0;
 
+  const gateLevel =
+    status !== "draft"
+      ? "ready"
+      : blocks.length === 0
+        ? "quiet"
+        : publishBlocked
+          ? "blocked"
+          : "ready";
+
+  const activeReview = reviews.find((r) => r.id === activeId);
+  const nextVersion = (activeReview?.current_version ?? 0) + 1;
+
+  const openShelfFor = (role: "figure" | "exhibit") => {
+    setShelfOpen(true);
+    setError(
+      role === "figure"
+        ? "Pick a value metric from the Shelf → Figure."
+        : "Pick an analytics metric from the Shelf → Exhibit."
+    );
+  };
+
   return (
-    <div className="review-composer-layout" style={{ display: "grid", gridTemplateColumns: shelfOpen ? "200px 1fr 240px" : "200px 1fr", gap: 12 }}>
-      <aside className="panel p-3">
-        <p className="sec-title text-sm mb-2">Issues</p>
-        <div className="space-y-1 mb-3">
-          {reviews.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className={`chip w-full text-left${activeId === r.id ? " on" : ""}`}
-              onClick={() => void loadReview(r.id)}
-            >
-              {r.title || r.period_month}
-              <span className="block text-xs opacity-70">
-                {r.status.toUpperCase()}
-                {r.current_version ? ` v${r.current_version}` : ""}
-              </span>
-            </button>
-          ))}
-        </div>
-        <button type="button" className="chip w-full" disabled={busy} onClick={() => void createDraft()}>
-          New draft issue
+    <div
+      className="rcx-stage"
+      data-shelf={shelfOpen ? "open" : "collapsed"}
+      data-builder={builderOpen ? "open" : "closed"}
+    >
+      <style>{RCX_CSS}</style>
+
+      {/* ── Issues rail ─────────────────────────────── */}
+      <aside className="rcx-rail">
+        <div className="rcx-kick">Issues</div>
+        {reviews.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            className={`rcx-issue${activeId === r.id ? " on" : ""}`}
+            onClick={() => void loadReview(r.id)}
+          >
+            <div className="t">{r.title || r.period_month}</div>
+            <div className="m">
+              {r.status}
+              {r.current_version ? ` · v${r.current_version}` : ""}
+              {r.reply_count ? ` · ${r.reply_count} replies` : ""}
+            </div>
+          </button>
+        ))}
+        <button
+          type="button"
+          className="rcx-btn ghost sm rcx-new"
+          disabled={busy}
+          onClick={() => void createDraft()}
+        >
+          + New draft issue
         </button>
       </aside>
 
-      <div>
-        <div
-          className="panel p-3 mb-3 sticky top-0 z-10"
-          style={{ border: publishBlocked ? "1px solid var(--line)" : "1px solid #2ecc71" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="sec-title mb-0">Publish gate</p>
-              <p className="treasury-meta text-xs">
-                {preflight
-                  ? `Proposed ${preflight.proposed_count} · Stale ${preflight.stale_count} · Envelope ${preflight.envelope_violations.length}`
-                  : activeId
-                    ? "Loading preflight…"
-                    : "No draft issue — create or select one below"}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn"
-              disabled={busy || status !== "draft" || publishBlocked}
-              onClick={() => void publish()}
-            >
-              Publish
-            </button>
-          </div>
-          {preflight?.envelope_violations.length ? (
-            <ul className="text-xs mt-2" style={{ color: "var(--su-neg)" }}>
-              {preflight.envelope_violations.map((v, i) => (
-                <li key={i}>{v.field}: {v.message}</li>
-              ))}
-            </ul>
-          ) : null}
+      {/* ── Document (centre) ───────────────────────── */}
+      <section className="rcx-doc">
+        <div className="rcx-gate" data-level={gateLevel}>
+          <span className="gt">{title || "Draft issue"}</span>
+          <span className={`gc${gateLevel === "blocked" ? " warn" : ""}`}>
+            {preflight
+              ? `Proposed ${preflight.proposed_count} · Stale ${preflight.stale_count} · Envelope ${preflight.envelope_violations.length}`
+              : activeId
+                ? "Loading preflight…"
+                : "No draft issue"}
+          </span>
+          <span className="spacer" />
+          <span className="hint">
+            {gateLevel === "quiet"
+              ? "Nothing to publish yet"
+              : publishBlocked
+                ? "Clean the preflight to publish"
+                : status === "draft"
+                  ? `Preflight clean · freezes ${blocks.length} blocks`
+                  : "Published"}
+          </span>
+          <button
+            type="button"
+            className={`rcx-btn sm${gateLevel === "ready" && status === "draft" ? "" : " ghost"}`}
+            disabled={busy || status !== "draft" || publishBlocked}
+            onClick={() => void publish()}
+          >
+            {status === "draft" ? `Publish v${nextVersion}` : "Published"}
+          </button>
         </div>
 
+        {preflight?.envelope_violations.length ? (
+          <ul className="rcx-viol">
+            {preflight.envelope_violations.map((v, i) => (
+              <li key={i}>
+                {v.field}: {v.message}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         {error ? (
-          <p className="panel-note mb-3" style={{ color: "var(--su-neg)" }} role="alert">
+          <p className="rcx-err" role="alert">
             {error}
           </p>
         ) : null}
 
         {!activeId ? (
-          <p className="treasury-meta">Create or select a draft issue.</p>
+          <div className="rcx-paper">
+            <p className="rcx-muted">Create or select a draft issue to begin.</p>
+          </div>
         ) : (
-          <>
-            <div className="panel p-4 mb-3">
+          <div className="rcx-paper">
+            <div className="rcx-cover">
               <input
-                className="rec-input w-full font-head text-lg mb-2"
+                className="ct"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onBlur={() => {
-                  if (status !== "draft") return;
-                  void fetch(`${base}/reviews/${activeId}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ title }),
-                  });
+                  void saveTitle().catch((e) =>
+                    setError(e instanceof Error ? e.message : "Title save failed")
+                  );
                 }}
               />
-              <p className="treasury-meta text-xs">{status === "draft" ? "DRAFT" : status.toUpperCase()}</p>
+              <div className="cs">
+                {status === "draft" ? "Draft" : status.toUpperCase()}
+                {activeReview?.current_version
+                  ? ` · v${activeReview.current_version}`
+                  : ""}
+              </div>
             </div>
 
-            <div className="space-y-3">
-              {blocks.map((block) => (
-                <article key={block.id} className="panel p-4">
-                  <div className="flex flex-wrap gap-2 mb-2 text-xs">
-                    <span className="chip">{block.role}</span>
-                    <span className="chip">{stateChip(block)}</span>
+            {status === "draft" && blocks.length === 0 ? (
+              <div className="rcx-empty">
+                <div className="et">Nothing placed yet</div>
+                <div className="eh">Start your {title || "review"}</div>
+                <div className="ep">
+                  Add a Figure, an Exhibit, or a Note. Everything you place stays on
+                  this side until you publish.
+                </div>
+                <div className="rcx-ecards">
+                  <button
+                    type="button"
+                    className="rcx-ecard"
+                    onClick={() => openShelfFor("figure")}
+                  >
+                    Add a Figure
+                  </button>
+                  <button
+                    type="button"
+                    className="rcx-ecard"
+                    onClick={() => openShelfFor("exhibit")}
+                  >
+                    Add an Exhibit
+                  </button>
+                  <button
+                    type="button"
+                    className="rcx-ecard"
+                    onClick={() => void addNote()}
+                  >
+                    Write a Note
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {blocks.map((block) => {
+              const isProposed = block.proposal_state === "proposed";
+              const hasMetric =
+                block.role === "figure" || block.role === "exhibit";
+              return (
+                <article
+                  key={block.id}
+                  className="rcx-block"
+                  data-gate={isProposed ? "proposed" : undefined}
+                >
+                  <div className="rcx-bchrome">
+                    <span className="rcx-chip rcx-role">{block.role}</span>
+                    <span className="rcx-chip" data-state={stateChip(block)}>
+                      {stateChip(block)}
+                    </span>
                     {block.metric_name ? (
-                      <span className="treasury-meta">{block.metric_name}</span>
-                    ) : null}
+                      <span className="rcx-src">{block.metric_name}</span>
+                    ) : (
+                      <span className="rcx-src" />
+                    )}
+                    <div className="rcx-tools">
+                      {isProposed ? (
+                        <button
+                          type="button"
+                          className="rcx-tool primary"
+                          onClick={() =>
+                            void patchBlock(block.id, {
+                              action: "confirm_proposal",
+                            }).catch((e) => setError(String(e.message)))
+                          }
+                        >
+                          Confirm proposal
+                        </button>
+                      ) : null}
+                      {hasMetric ? (
+                        <button
+                          type="button"
+                          className="rcx-tool"
+                          onClick={() =>
+                            void patchBlock(block.id, {
+                              action: "recalculate",
+                            }).catch((e) => setError(String(e.message)))
+                          }
+                        >
+                          Recalculate
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="rcx-tool danger"
+                        onClick={() => {
+                          if (!confirm("Remove block?")) return;
+                          void fetch(
+                            `${base}/reviews/${activeId}/blocks/${block.id}`,
+                            { method: "DELETE" }
+                          ).then(() => loadReview(activeId!));
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
+
                   {block.role === "note" ? (
-                    <p className="text-sm whitespace-pre-wrap mb-2">{block.body}</p>
+                    <p className="rcx-note">{block.body}</p>
                   ) : null}
-                  {(block.role === "figure" || block.role === "exhibit") && (
-                    <label className="block mb-2">
-                      <span className="text-xs treasury-meta">Caption</span>
+
+                  {block.role === "exhibit" &&
+                  block.placed_snapshot?.series?.points?.length ? (
+                    <div className="rcx-chart">
+                      <MetricChart
+                        points={block.placed_snapshot.series.points}
+                        referenceLines={
+                          block.placed_snapshot.series.reference_lines ?? []
+                        }
+                        chartHint={
+                          block.placed_snapshot.series.chart_hint === "line"
+                            ? "line"
+                            : "column"
+                        }
+                        height={210}
+                      />
+                    </div>
+                  ) : null}
+                  {block.role === "figure" &&
+                  typeof block.placed_snapshot?.value === "number" ? (
+                    <div className="rcx-figval">
+                      {block.placed_snapshot.value.toLocaleString(undefined, {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      })}
+                    </div>
+                  ) : null}
+                  {hasMetric ? (
+                    <div className="rcx-caprow">
+                      <span className="rcx-caplbl">Caption</span>
                       <textarea
-                        className="rec-input w-full"
+                        className="rcx-cap"
                         rows={2}
                         value={block.caption}
                         placeholder={block.suggested_caption ?? ""}
                         onChange={(e) =>
                           setBlocks((prev) =>
                             prev.map((b) =>
-                              b.id === block.id ? { ...b, caption: e.target.value } : b
+                              b.id === block.id
+                                ? { ...b, caption: e.target.value }
+                                : b
                             )
                           )
                         }
@@ -342,99 +564,245 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           }).catch((e) => setError(String(e.message)))
                         }
                       />
-                    </label>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {block.proposal_state === "proposed" ? (
-                      <button
-                        type="button"
-                        className="chip"
-                        onClick={() =>
-                          void patchBlock(block.id, { action: "confirm_proposal" })
-                        }
-                      >
-                        Confirm proposal
-                      </button>
-                    ) : null}
-                    {(block.role === "figure" || block.role === "exhibit") && (
-                      <button
-                        type="button"
-                        className="chip"
-                        onClick={() =>
-                          void patchBlock(block.id, { action: "recalculate" })
-                        }
-                      >
-                        Recalculate
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="chip"
-                      onClick={() => {
-                        if (!confirm("Remove block?")) return;
-                        void fetch(`${base}/reviews/${activeId}/blocks/${block.id}`, {
-                          method: "DELETE",
-                        }).then(() => loadReview(activeId!));
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
+                    </div>
+                  ) : null}
                 </article>
-              ))}
-            </div>
+              );
+            })}
 
-            <div className="flex gap-2 mt-3">
-              <button type="button" className="chip" onClick={() => void addNote()}>
-                Add note
-              </button>
-            </div>
-          </>
+            {status === "draft" ? (
+              <div className="rcx-addbar">
+                <span className="al">Add</span>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  onClick={() => openShelfFor("figure")}
+                >
+                  + Figure
+                </button>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  onClick={() => openShelfFor("exhibit")}
+                >
+                  + Exhibit
+                </button>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  onClick={() => void addNote()}
+                >
+                  + Note
+                </button>
+              </div>
+            ) : null}
+          </div>
         )}
-      </div>
+      </section>
 
+      {/* ── Shelf (right drawer) ────────────────────── */}
+      <button
+        type="button"
+        className="rcx-shelf-mini"
+        onClick={() => setShelfOpen(true)}
+      >
+        The Shelf · {metrics.length}
+      </button>
       {shelfOpen ? (
-        <aside className="panel p-3">
-          <div className="flex justify-between items-center mb-2">
-            <p className="sec-title text-sm mb-0">Shelf</p>
-            <button type="button" className="chip text-xs" onClick={() => setBuilderOpen((v) => !v)}>
-              {builderOpen ? "Hide builder" : "Metric builder"}
+        <>
+          <div className="rcx-shelf-scrim" onClick={() => setShelfOpen(false)} />
+          <aside className="rcx-shelf">
+          <div className="sh">
+            <span className="st">The Shelf</span>
+            <button
+              type="button"
+              className="rcx-tool"
+              aria-label="Collapse shelf"
+              onClick={() => setShelfOpen(false)}
+            >
+              ›
             </button>
           </div>
-          {builderOpen ? (
-            <div className="mb-3 max-h-96 overflow-auto">
-              <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
-            </div>
-          ) : null}
-          <p className="text-xs treasury-meta mb-2">Metric library</p>
-          <div className="space-y-2 max-h-80 overflow-auto">
+          <div className="rcx-kick" style={{ margin: "8px 0 2px", fontSize: 10 }}>
+            Metric library · {metrics.length}
+          </div>
+          <div className="rcx-slist">
             {metrics.map((m) => (
-              <div key={m.id} className="border border-[var(--line)] p-2 rounded">
-                <p className="text-sm font-medium">{m.name}</p>
-                <p className="text-xs treasury-meta">{m.kind}</p>
-                <div className="flex gap-1 mt-1">
+              <div key={m.id} className="rcx-sitem">
+                <div className="sn">{m.name}</div>
+                <div className="sk">
+                  {m.kind === "value" ? "Value" : "Analytics"}
+                </div>
+                <div className="sb">
                   <button
                     type="button"
-                    className="chip text-xs"
-                    disabled={busy || status !== "draft"}
+                    className="rcx-tool"
+                    disabled={status !== "draft" || !!addingMetricId}
                     onClick={() => void addMetricBlock(m, "figure")}
                   >
                     Figure
                   </button>
-                  <button
-                    type="button"
-                    className="chip text-xs"
-                    disabled={busy || status !== "draft"}
-                    onClick={() => void addMetricBlock(m, "exhibit")}
-                  >
-                    Exhibit
-                  </button>
+                  {m.kind !== "value" ? (
+                    <button
+                      type="button"
+                      className="rcx-tool"
+                      disabled={status !== "draft" || !!addingMetricId}
+                      onClick={() => void addMetricBlock(m, "exhibit")}
+                    >
+                      Exhibit
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}
+            {metrics.length === 0 ? (
+              <p className="rcx-muted" style={{ fontSize: 12 }}>
+                No metrics yet. Build one below.
+              </p>
+            ) : null}
           </div>
-        </aside>
+          <div className="rcx-sfoot">
+            <button
+              type="button"
+              className="rcx-btn sm"
+              style={{ width: "100%" }}
+              onClick={() => setBuilderOpen(true)}
+            >
+              + New metric
+            </button>
+            <p className="rcx-muted" style={{ fontSize: 11, marginTop: 6 }}>
+              Opens the builder full-width. Never client-visible.
+            </p>
+          </div>
+          </aside>
+        </>
+      ) : null}
+
+      {/* ── Metric builder (slide-over) ─────────────── */}
+      {builderOpen ? (
+        <>
+          <div className="rcx-scrim" onClick={() => setBuilderOpen(false)} />
+          <aside
+            className="rcx-builder"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Metric builder"
+          >
+            <div className="bh">
+              <div>
+                <div className="bk">The Shelf · Metric builder</div>
+                <div className="bt">New metric</div>
+              </div>
+              <button
+                type="button"
+                className="bx"
+                aria-label="Close builder"
+                onClick={() => setBuilderOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="rcx-bbody">
+              <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
+            </div>
+          </aside>
+        </>
       ) : null}
     </div>
   );
 }
+
+const RCX_CSS = `
+.rcx-stage{display:grid;gap:20px;margin:0;padding:2px 2px 48px;align-items:start;grid-template-columns:196px minmax(0,1fr) 46px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--ink)}
+@media(max-width:820px){.rcx-stage{grid-template-columns:1fr}}
+.rcx-muted{color:var(--mute);font-size:13px}
+.rcx-kick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-bottom:10px}
+/* rail */
+.rcx-rail{position:sticky;top:8px}
+.rcx-issue{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:9px;padding:9px 11px;margin-bottom:4px;background:transparent;cursor:pointer;font:inherit;color:var(--ink)}
+.rcx-issue:hover{background:color-mix(in srgb,var(--canvas-2) 55%,transparent)}
+.rcx-issue.on{background:var(--rail,#fff);border-color:var(--paper-edge);box-shadow:var(--paper-shadow)}
+.rcx-issue .t{font-size:13px;font-weight:600;line-height:1.25}
+.rcx-issue .m{font-size:11px;color:var(--mute);margin-top:3px;text-transform:capitalize;letter-spacing:.02em}
+.rcx-new{margin-top:8px}
+/* gate */
+.rcx-gate{position:sticky;top:8px;z-index:5;min-height:40px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;border-radius:9px;padding:8px 14px;margin-bottom:14px;font-size:13px;border:1px solid transparent;transition:background .15s,border-color .15s}
+.rcx-gate[data-level="quiet"]{background:transparent;opacity:.8}
+.rcx-gate[data-level="blocked"]{background:var(--rail,#fff);border-color:var(--paper-edge);box-shadow:var(--paper-shadow)}
+.rcx-gate[data-level="ready"]{background:color-mix(in srgb,var(--su-accept,#174a7a) 8%,var(--rail,#fff));border-color:color-mix(in srgb,var(--su-accept,#174a7a) 38%,var(--line))}
+.rcx-gate .gt{font-weight:600}
+.rcx-gate .gc{font-size:12px;color:var(--mute)}
+.rcx-gate .gc.warn{color:var(--su-warn-ink)}
+.rcx-gate .spacer{flex:1 1 auto}
+.rcx-gate .hint{font-size:11.5px;color:var(--mute)}
+.rcx-gate[data-level="ready"] .hint{color:var(--su-accept)}
+.rcx-viol{list-style:none;margin:0 0 12px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--su-warn,#c8881f) 8%,#fff);border:1px solid color-mix(in srgb,var(--su-warn,#c8881f) 30%,var(--line));font-size:12px;color:var(--su-warn-ink)}
+.rcx-err{background:color-mix(in srgb,var(--su-neg,#b23a2e) 7%,#fff);border:1px solid color-mix(in srgb,var(--su-neg,#b23a2e) 28%,var(--line));color:var(--su-neg);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:14px}
+/* paper */
+.rcx-doc{min-width:0}
+.rcx-paper{max-width:960px;margin:0 auto;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:12px;box-shadow:var(--paper-shadow);padding:28px 36px}
+.rcx-cover .ct{font-size:26px;font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:0}
+.rcx-cover .cs{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-top:5px}
+.rcx-block{border-top:1px dashed var(--canvas-2);padding:18px 0 2px;margin-top:20px}
+.rcx-block[data-gate="proposed"] .rcx-cap{background:color-mix(in srgb,var(--su-await,#3e6e8e) 7%,#fff);border-color:color-mix(in srgb,var(--su-await,#3e6e8e) 30%,var(--line))}
+.rcx-bchrome{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:10px}
+.rcx-src{font-size:12px;color:var(--mute);flex:1 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-tools{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px}
+.rcx-caprow{margin-top:2px}
+.rcx-caplbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700;display:block;margin-bottom:5px}
+.rcx-cap{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:13.5px;line-height:1.5;color:var(--ink);background:color-mix(in srgb,var(--canvas,#eef3f9) 40%,#fff);resize:vertical;min-height:54px}
+.rcx-cap:focus{outline:none;border-color:var(--brand);background:#fff}
+.rcx-note{font-size:14px;line-height:1.55;white-space:pre-wrap;color:var(--slate)}
+.rcx-chart{margin:6px 0 12px;max-width:660px}
+.rcx-chart svg{max-width:100%;height:auto}
+.rcx-figval{font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin:2px 0 8px}
+/* chips + buttons */
+.rcx-chip{display:inline-flex;align-items:center;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:3px 9px;background:var(--canvas-2);color:var(--slate);border:none}
+.rcx-role{background:var(--brand);color:#fff}
+.rcx-chip[data-state="READY"]{background:color-mix(in srgb,var(--su-accept,#174a7a) 12%,transparent);color:var(--su-accept)}
+.rcx-chip[data-state^="PROPOSED"]{background:color-mix(in srgb,var(--su-await,#3e6e8e) 15%,transparent);color:var(--su-await)}
+.rcx-chip[data-state^="CONFIRMED"]{background:color-mix(in srgb,var(--su-accept,#174a7a) 12%,transparent);color:var(--su-accept)}
+.rcx-tool{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--slate);border-radius:7px;padding:5px 11px;cursor:pointer;line-height:1.3}
+.rcx-tool:hover:not(:disabled){border-color:var(--brand-2);color:var(--brand)}
+.rcx-tool:disabled{opacity:.45;cursor:not-allowed}
+.rcx-tool.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.rcx-tool.primary:hover{filter:brightness(1.06);color:#fff}
+.rcx-tool.danger:hover{border-color:var(--su-neg);color:var(--su-neg)}
+.rcx-btn{font:inherit;font-size:13px;font-weight:700;border-radius:8px;padding:8px 15px;cursor:pointer;border:1px solid var(--brand);background:var(--brand);color:#fff}
+.rcx-btn.ghost{background:#fff;color:var(--brand)}
+.rcx-btn.sm{padding:6px 12px;font-size:12.5px}
+.rcx-btn:disabled{opacity:.5;cursor:not-allowed}
+/* empty */
+.rcx-empty{border:1px dashed var(--canvas-2);border-radius:11px;background:color-mix(in srgb,var(--canvas,#eef3f9) 50%,transparent);padding:30px 24px;text-align:center;margin-top:20px}
+.rcx-empty .et{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
+.rcx-empty .eh{font-size:20px;font-weight:700;margin:7px 0 7px;color:var(--ink)}
+.rcx-empty .ep{font-size:13px;color:var(--slate);max-width:440px;margin:0 auto 18px;line-height:1.5}
+.rcx-ecards{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.rcx-ecard{border:1px solid var(--paper-edge);background:#fff;border-radius:9px;padding:12px 20px;font-weight:600;font-size:13px;color:var(--brand);cursor:pointer}
+.rcx-ecard:hover{border-color:var(--brand);box-shadow:var(--paper-shadow)}
+.rcx-addbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px dashed var(--canvas-2);margin-top:22px;padding-top:16px}
+.rcx-addbar .al{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-right:2px}
+/* shelf */
+.rcx-shelf-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 28%,transparent);z-index:60;animation:rcxfade .18s ease}
+.rcx-shelf{position:fixed;top:0;right:0;bottom:0;width:min(348px,92vw);z-index:61;background:var(--rail,#fff);border-left:1px solid var(--paper-edge);box-shadow:-18px 0 54px rgba(16,42,71,.18);padding:16px 16px;display:flex;flex-direction:column;overflow:auto;animation:rcxslide .2s ease}
+.rcx-shelf .sh{display:flex;align-items:center;justify-content:space-between}
+.rcx-shelf .st{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
+.rcx-slist{overflow:auto;margin:6px -2px;padding:2px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto}
+.rcx-sitem{border:1px solid var(--paper-edge);border-radius:9px;padding:9px 10px;background:#fff}
+.rcx-sitem .sn{font-size:13px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-sitem .sk{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-top:2px}
+.rcx-sitem .sb{display:flex;gap:6px;margin-top:9px}
+.rcx-sfoot{margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
+.rcx-shelf-mini{writing-mode:vertical-rl;transform:rotate(180deg);cursor:pointer;background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:10px;box-shadow:var(--paper-shadow);padding:16px 10px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--slate);height:220px;align-self:start}
+/* builder slide-over */
+.rcx-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 35%,transparent);z-index:60;animation:rcxfade .18s ease}
+.rcx-builder{position:fixed;top:0;right:0;bottom:0;width:min(860px,94vw);background:var(--paper,#fff);box-shadow:-18px 0 54px rgba(16,42,71,.20);z-index:61;display:flex;flex-direction:column;overflow:hidden;animation:rcxslide .22s ease}
+.rcx-builder .bh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--paper,#fff);flex:0 0 auto}
+.rcx-builder .bh .bt{font-size:17px;font-weight:700;color:var(--ink)}
+.rcx-builder .bh .bk{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700}
+.rcx-builder .bx{font-size:22px;line-height:1;border:none;background:transparent;cursor:pointer;color:var(--mute);padding:2px 8px}
+.rcx-builder .bx:hover{color:var(--ink)}
+.rcx-bbody{padding:18px 22px;overflow:auto;flex:1 1 auto}
+@keyframes rcxslide{from{transform:translateX(40px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes rcxfade{from{opacity:0}to{opacity:1}}
+`;

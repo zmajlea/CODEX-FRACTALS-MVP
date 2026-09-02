@@ -29,14 +29,14 @@ function authRouteHome(
 ): string | null {
   if (pathname === "/login" || pathname === "/signup") {
     if (loginRoute.role === "global_admin") return "/admin";
-    if (loginRoute.role === "operator") return "/operator";
+    if (loginRoute.role === "operator") return "/operator/treasury";
     if (loginRoute.role === "client") return loginRoute.route;
     return null;
   }
 
   if (pathname.startsWith("/portal/login")) {
     if (loginRoute.role === "global_admin") return "/admin";
-    if (loginRoute.role === "operator") return "/operator";
+    if (loginRoute.role === "operator") return "/operator/treasury";
     return null;
   }
 

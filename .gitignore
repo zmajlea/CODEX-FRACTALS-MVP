@@ -65,6 +65,7 @@ Desktop.ini
 *.key
 credentials.json
 service-account*.json
+docs/test-credentials.md
 
 # Misc
 .turbo
