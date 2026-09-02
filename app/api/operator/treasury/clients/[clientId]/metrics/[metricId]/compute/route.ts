@@ -43,6 +43,13 @@ export async function POST(_request: Request, context: RouteContext) {
         computed_at: out.computed_at,
       });
     }
+    if (out.kind === "comparison") {
+      return NextResponse.json({
+        ...out.comparison,
+        value: out.value,
+        computed_at: out.computed_at,
+      });
+    }
     return NextResponse.json({
       ...out.series,
       value: out.value,

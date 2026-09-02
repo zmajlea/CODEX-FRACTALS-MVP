@@ -4,13 +4,14 @@ const OPS = ["avg", "sum", "stddev", "min", "max", "yoy", "pct_of", "count"] as 
 const SOURCE_TYPES = ["bucket", "category", "account", "metric"] as const;
 const DIRECTIONS = ["in", "out", "any"] as const;
 const WINDOW_KINDS = ["trailing", "calendar_year", "ytd", "all"] as const;
-const OF_KINDS = ["monthly_totals", "series_totals"] as const;
+const OF_KINDS = ["monthly_totals", "series_totals", "series_compare"] as const;
 const SUBDIVISIONS = ["day", "week", "month", "quarter", "year"] as const;
 const BUCKET_OPS = ["sum", "count", "avg", "min", "max"] as const;
 const REF_KINDS = ["avg", "min", "max", "target", "threshold"] as const;
 const REF_STATS = ["avg", "min", "max", "median"] as const;
 const BREACH_MODES = ["none", "flag"] as const;
 const CHART_HINTS = ["column", "line"] as const;
+const COMPARISON_CHART_HINTS = ["grouped_column", "multi_line"] as const;
 
 /** Reject definitions whose expected bucket count exceeds this. */
 export const METRIC_POINT_CAP = 400;
@@ -45,6 +46,36 @@ const windowSchema = z.object({
   months: z.number().int().positive().optional(),
 });
 
+const compareSchema = z
+  .object({
+    by: z.enum(["year", "category"]),
+    last_n_years: z.number().int().min(2).max(5).optional(),
+    years: z.array(z.number().int().min(2000).max(2100)).min(1).optional(),
+    keys: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((c, ctx) => {
+    if (c.by === "year") {
+      const hasN = c.last_n_years != null;
+      const hasYears = (c.years?.length ?? 0) > 0;
+      if (hasN === hasYears) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["last_n_years"],
+          message: "compare requires exactly one of last_n_years or years",
+        });
+      }
+    }
+    if (c.by === "category") {
+      if (!c.keys?.length || c.keys.length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["keys"],
+          message: "compare.keys requires at least two categories",
+        });
+      }
+    }
+  });
+
 const referenceLineSchema = z
   .object({
     id: z.string().min(1),
@@ -68,11 +99,13 @@ const referenceLineSchema = z
 
 export type MetricSource = z.infer<typeof metricSourceSchema>;
 export type MetricWindow = z.infer<typeof windowSchema>;
+export type MetricCompare = z.infer<typeof compareSchema>;
 export type MetricSubdivision = (typeof SUBDIVISIONS)[number];
 export type MetricBucketOp = (typeof BUCKET_OPS)[number];
 export type MetricReferenceLine = z.infer<typeof referenceLineSchema>;
 export type MetricChartHint = (typeof CHART_HINTS)[number];
-export type MetricKind = "value" | "analytics";
+export type MetricComparisonChartHint = (typeof COMPARISON_CHART_HINTS)[number];
+export type MetricKind = "value" | "analytics" | "comparison";
 
 export type MetricDefinition = {
   of: (typeof OF_KINDS)[number];
@@ -83,12 +116,15 @@ export type MetricDefinition = {
   subdivision?: MetricSubdivision;
   bucket_op?: MetricBucketOp;
   reference_lines?: MetricReferenceLine[];
-  chart_hint?: MetricChartHint;
+  chart_hint?: MetricChartHint | MetricComparisonChartHint;
+  compare?: MetricCompare;
 };
 
 export function kindFromDefinition(def: {
+  of?: string;
   subdivision?: string | null;
 }): MetricKind {
+  if (def.of === "series_compare") return "comparison";
   return def.subdivision ? "analytics" : "value";
 }
 
@@ -121,6 +157,22 @@ export function estimateBucketCount(
   }
 }
 
+/** Comparison metrics: year mode uses fixed calendar axis (12 or 4 buckets). */
+export function estimateComparisonBucketCount(
+  definition: Pick<MetricDefinition, "compare" | "subdivision" | "window">
+): number {
+  if (definition.compare?.by === "year") {
+    const nYears =
+      definition.compare.last_n_years ??
+      definition.compare.years?.length ??
+      3;
+    const perAxis = definition.subdivision === "quarter" ? 4 : 12;
+    return nYears * perAxis;
+  }
+  if (!definition.subdivision) return METRIC_POINT_CAP + 1;
+  return estimateBucketCount(definition.subdivision, definition.window);
+}
+
 const metricDefinitionSchema: z.ZodType<MetricDefinition> = z.lazy(() =>
   z
     .object({
@@ -132,7 +184,10 @@ const metricDefinitionSchema: z.ZodType<MetricDefinition> = z.lazy(() =>
       subdivision: z.enum(SUBDIVISIONS).optional(),
       bucket_op: z.enum(BUCKET_OPS).optional(),
       reference_lines: z.array(referenceLineSchema).optional(),
-      chart_hint: z.enum(CHART_HINTS).optional(),
+      chart_hint: z
+        .union([z.enum(CHART_HINTS), z.enum(COMPARISON_CHART_HINTS)])
+        .optional(),
+      compare: compareSchema.optional(),
     })
     .superRefine((d, ctx) => {
       const kind = kindFromDefinition(d);
@@ -181,6 +236,68 @@ const metricDefinitionSchema: z.ZodType<MetricDefinition> = z.lazy(() =>
             message: "chart_hint not allowed on value metrics",
           });
         }
+        if (d.compare) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["compare"],
+            message: "compare not allowed on value metrics",
+          });
+        }
+      } else if (kind === "comparison") {
+        if (!d.compare) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["compare"],
+            message: "compare required for series_compare metrics",
+          });
+        }
+        if (!d.subdivision) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["subdivision"],
+            message: "subdivision required for comparison metrics",
+          });
+        } else if (d.compare?.by === "year") {
+          if (d.subdivision !== "month" && d.subdivision !== "quarter") {
+            ctx.addIssue({
+              code: "custom",
+              path: ["subdivision"],
+              message: "year compare requires subdivision month or quarter",
+            });
+          }
+        }
+        if (d.op) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["op"],
+            message: "op not allowed on comparison metrics",
+          });
+        }
+        if (d.of2) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["of2"],
+            message: "of2 not allowed on comparison metrics",
+          });
+        }
+        const estimate = estimateComparisonBucketCount(d);
+        if (estimate > METRIC_POINT_CAP) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["compare"],
+            message: `point cap exceeded (~${estimate} buckets > ${METRIC_POINT_CAP})`,
+          });
+        }
+        if (
+          d.chart_hint &&
+          !(COMPARISON_CHART_HINTS as readonly string[]).includes(d.chart_hint)
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["chart_hint"],
+            message: "comparison chart_hint must be grouped_column or multi_line",
+          });
+        }
       } else {
         if (!d.subdivision) {
           ctx.addIssue({
@@ -197,6 +314,13 @@ const metricDefinitionSchema: z.ZodType<MetricDefinition> = z.lazy(() =>
               message: `point cap exceeded (~${estimate} buckets > ${METRIC_POINT_CAP}); narrow the window or coarsen subdivision`,
             });
           }
+        }
+        if (d.compare) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["compare"],
+            message: "compare only allowed on series_compare metrics",
+          });
         }
       }
 
@@ -261,5 +385,6 @@ export const METRIC_SOURCE_TYPES = SOURCE_TYPES;
 export const METRIC_SUBDIVISIONS = SUBDIVISIONS;
 export const METRIC_BUCKET_OPS = BUCKET_OPS;
 export const METRIC_CHART_HINTS = CHART_HINTS;
+export const METRIC_COMPARISON_CHART_HINTS = COMPARISON_CHART_HINTS;
 export const METRIC_REF_KINDS = REF_KINDS;
 export const METRIC_REF_STATS = REF_STATS;

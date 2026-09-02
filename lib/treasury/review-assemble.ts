@@ -11,7 +11,7 @@ import {
   findMetricForClient,
   type ComputeMetricResult,
 } from "@/lib/treasury/metrics-eval";
-import { autoCaption, autoCaptionValue } from "@/lib/treasury/auto-caption";
+import { autoCaption, autoCaptionComparison, autoCaptionValue } from "@/lib/treasury/auto-caption";
 import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
 
 type Admin = SupabaseClient<Database>;
@@ -110,6 +110,14 @@ function toPlacedSnapshot(out: ComputeMetricResult): Json {
   if (out.kind === "value") {
     return { kind: "value", value: out.value, computed_at: out.computed_at };
   }
+  if (out.kind === "comparison") {
+    return {
+      kind: "comparison",
+      value: out.value,
+      comparison: out.comparison as unknown as Json,
+      computed_at: out.computed_at,
+    };
+  }
   return {
     kind: "analytics",
     value: out.value,
@@ -126,6 +134,12 @@ function snapshotValueDiff(
   const p = placed as Record<string, unknown>;
   if (current.kind === "value") {
     return p.kind !== "value" || p.value !== current.value;
+  }
+  if (current.kind === "comparison") {
+    if (p.kind !== "comparison") return true;
+    const pc = p.comparison as { summary?: { value?: number } } | undefined;
+    const cs = current.comparison?.summary?.value ?? current.value;
+    return pc?.summary?.value !== cs && p.value !== current.value;
   }
   if (p.kind !== "analytics") return true;
   const ps = p.series as { summary?: { value?: number } } | undefined;
@@ -347,6 +361,9 @@ export async function suggestedCaptionForBlock(
   const out = await computeBlockMetric(admin, tenantId, clientUserId, block);
   if (!out) return "";
   if (out.kind === "analytics" && out.series) return autoCaption(out.series);
+  if (out.kind === "comparison" && out.comparison) {
+    return autoCaptionComparison(out.comparison);
+  }
   if (out.kind === "value") return autoCaptionValue(out.value, "usd");
   return "";
 }

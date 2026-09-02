@@ -320,7 +320,12 @@ export const DESCRIBE_WORKFLOW = `Summit Treasury MCP round-trip:
 4. submit_results — lands as pending; confirm in the operator app.
 5. propose_recommendation — draft only, never auto-sent.
 6. Review document loop (Spec B12): get_review → read envelope aggregates for the draft issue → propose_narrative → lands PROPOSED on draft blocks → operator confirms + publishes.
-7. preview_metric — try a grammar definition without persisting (read-only eval).`;
+7. preview_metric — try a grammar definition without persisting (read-only eval).
+   Comparison charts (Spec B14): use of:"series_compare" with subdivision + compare block.
+   Year-over-year: { of:"series_compare", source:{type:"category",key:"Software",direction:"out"},
+     subdivision:"month", bucket_op:"sum", window:{kind:"all"},
+     compare:{by:"year",last_n_years:3}, reference_lines:[{id:"avg",label:"3-yr avg",kind:"avg",stat:"avg"}] }
+   → MetricComparison v:3 (grouped_column / multi_line). Category compare: compare:{by:"category",keys:["Payroll","Software"]}.`;
 
 export async function mcpGetReview(
   admin: AdminClient,
