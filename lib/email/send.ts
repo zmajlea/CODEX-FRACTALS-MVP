@@ -6,7 +6,7 @@ type SendEmailInput = {
 
 export async function sendTransactionalEmail(
   input: SendEmailInput
-): Promise<{ ok: boolean; devLogged?: boolean }> {
+): Promise<{ ok: boolean; devLogged?: boolean; emailSkipped?: boolean }> {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
@@ -14,7 +14,7 @@ export async function sendTransactionalEmail(
       to: input.to,
       subject: input.subject,
     });
-    return { ok: true, devLogged: true };
+    return { ok: false, devLogged: true, emailSkipped: true };
   }
 
   const from =

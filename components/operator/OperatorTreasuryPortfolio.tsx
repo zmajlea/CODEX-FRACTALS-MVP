@@ -67,6 +67,13 @@ export function OperatorTreasuryPortfolio({
   const [newFirm, setNewFirm] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createSuccess, setCreateSuccess] = useState<{
+    clientName: string;
+    inviteUrl: string;
+    inviteSent: boolean;
+    emailSkipped: boolean;
+  } | null>(null);
+  const [inviteCopyOk, setInviteCopyOk] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   const [view, setView] = useState<PortfolioView>("cards");
@@ -143,6 +150,8 @@ export function OperatorTreasuryPortfolio({
   async function submitNewClient() {
     setCreateBusy(true);
     setCreateError(null);
+    setCreateSuccess(null);
+    setInviteCopyOk(false);
     try {
       const res = await fetch("/api/operator/treasury/clients", {
         method: "POST",
@@ -154,9 +163,23 @@ export function OperatorTreasuryPortfolio({
           sendInvite: true,
         }),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as {
+        error?: string;
+        inviteUrl?: string;
+        inviteSent?: boolean;
+        emailSkipped?: boolean;
+      };
       if (!res.ok) throw new Error(json.error ?? "Create failed");
-      setNewClientOpen(false);
+      if (json.inviteUrl) {
+        setCreateSuccess({
+          clientName: newName.trim(),
+          inviteUrl: json.inviteUrl,
+          inviteSent: json.inviteSent ?? false,
+          emailSkipped: json.emailSkipped ?? false,
+        });
+      } else {
+        setNewClientOpen(false);
+      }
       setNewName("");
       setNewEmail("");
       setNewFirm("");
@@ -166,6 +189,13 @@ export function OperatorTreasuryPortfolio({
     } finally {
       setCreateBusy(false);
     }
+  }
+
+  function closeNewClientDialog() {
+    setNewClientOpen(false);
+    setCreateSuccess(null);
+    setCreateError(null);
+    setInviteCopyOk(false);
   }
 
   return (
@@ -198,6 +228,8 @@ export function OperatorTreasuryPortfolio({
                 className="btn"
                 onClick={() => {
                   setCreateError(null);
+                  setCreateSuccess(null);
+                  setInviteCopyOk(false);
                   setNewClientOpen(true);
                 }}
               >
@@ -332,6 +364,8 @@ export function OperatorTreasuryPortfolio({
               className="addcard"
               onClick={() => {
                 setCreateError(null);
+                setCreateSuccess(null);
+                setInviteCopyOk(false);
                 setNewClientOpen(true);
               }}
             >
@@ -375,7 +409,36 @@ export function OperatorTreasuryPortfolio({
             className="panel p-4 space-y-3 w-full max-w-md"
             style={{ background: "#fff", border: "1px solid var(--line)" }}
           >
-            <p className="sec-title mb-0">New client</p>
+            <p className="sec-title mb-0">
+              {createSuccess ? "Client created" : "New client"}
+            </p>
+            {createSuccess ? (
+              <>
+                <p className="treasury-meta text-sm">
+                  <strong>{createSuccess.clientName}</strong> is in your portfolio.
+                  {createSuccess.inviteSent
+                    ? " An activation invite was emailed."
+                    : " Email is not configured — copy the invite link and send it yourself."}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="chip"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(createSuccess.inviteUrl)
+                        .then(() => setInviteCopyOk(true));
+                    }}
+                  >
+                    {inviteCopyOk ? "Copied" : "Copy invite link"}
+                  </button>
+                  <button type="button" className="chip" onClick={closeNewClientDialog}>
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
             <p className="treasury-meta text-sm">
               Creates their account, grants Treasury access, and sends an
               activation invite.
@@ -424,11 +487,13 @@ export function OperatorTreasuryPortfolio({
               <button
                 type="button"
                 className="chip"
-                onClick={() => setNewClientOpen(false)}
+                onClick={closeNewClientDialog}
               >
                 Cancel
               </button>
             </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}

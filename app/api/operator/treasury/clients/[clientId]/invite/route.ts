@@ -115,6 +115,8 @@ export async function POST(request: Request, context: RouteContext) {
   return NextResponse.json({
     ok: true,
     inviteId: invite.id,
-    inviteSent: sent.ok,
+    inviteUrl,
+    inviteSent: sent.ok && !sent.emailSkipped,
+    emailSkipped: sent.emailSkipped ?? false,
   });
 }

@@ -65,14 +65,15 @@ export async function POST(request: Request) {
       firmLabel: body.firmLabel?.trim(),
     });
 
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+      new URL(request.url).origin;
+    const inviteUrl = `${origin}/portal/activate?token=${encodeURIComponent(result.inviteToken)}`;
+
     const sendInvite = body.sendInvite !== false;
     let inviteSent = false;
+    let emailSkipped = false;
     if (sendInvite) {
-      const origin =
-        process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-        new URL(request.url).origin;
-      const inviteUrl = `${origin}/portal/activate?token=${encodeURIComponent(result.inviteToken)}`;
-
       const { data: tenant } = await admin
         .from("tenants")
         .select("name, logo_url, brand_color_hex")
@@ -100,7 +101,8 @@ export async function POST(request: Request) {
         subject: `${firmName} invited you to Summit Treasury`,
         html,
       });
-      inviteSent = sent.ok;
+      inviteSent = sent.ok && !sent.emailSkipped;
+      emailSkipped = sent.emailSkipped ?? false;
     }
 
     return NextResponse.json(
@@ -109,7 +111,9 @@ export async function POST(request: Request) {
         grantId: result.grantId,
         created: result.created,
         inviteId: result.inviteId,
+        inviteUrl,
         inviteSent,
+        emailSkipped,
       },
       { status: result.created ? 201 : 200 }
     );

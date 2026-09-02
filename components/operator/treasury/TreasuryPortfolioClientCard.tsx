@@ -65,18 +65,23 @@ export function TreasuryPortfolioClientCard({
   const industry = row.industry?.trim();
   const nextNote = row.next_note?.trim();
   const watchNote = row.watch_note?.trim();
-  const openable = isDemoPortfolioInstrument(demo, row.client_email);
+  const isDemoInstrument = isDemoPortfolioInstrument(demo, row.client_email);
   const href = `/operator/treasury/clients/${row.client_user_id}`;
   const className = `clcard${attn ? " attn" : ""}`;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<{
+    url: string;
+    inviteSent: boolean;
+    emailSkipped: boolean;
+  } | null>(null);
+  const [copyOk, setCopyOk] = useState(false);
 
   const [runwayStatus, setRunwayStatus] = useState<CashModelRunwayStatus | null>(
     null
   );
 
   useEffect(() => {
-    if (!openable) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -94,7 +99,7 @@ export function TreasuryPortfolioClientCard({
     return () => {
       cancelled = true;
     };
-  }, [openable, row.client_user_id]);
+  }, [row.client_user_id]);
 
   async function runAccess(action: "suspend" | "reactivate" | "revoke") {
     setBusy(true);
@@ -130,8 +135,21 @@ export function TreasuryPortfolioClientCard({
           body: JSON.stringify({ action: "send" }),
         }
       );
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as {
+        error?: string;
+        inviteUrl?: string;
+        inviteSent?: boolean;
+        emailSkipped?: boolean;
+      };
       if (!res.ok) throw new Error(json.error ?? "Invite failed");
+      if (json.inviteUrl) {
+        setInviteNotice({
+          url: json.inviteUrl,
+          inviteSent: json.inviteSent ?? false,
+          emailSkipped: json.emailSkipped ?? false,
+        });
+        setCopyOk(false);
+      }
       onChanged?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Invite failed");
@@ -148,6 +166,11 @@ export function TreasuryPortfolioClientCard({
           {industry ? <div className="cl-ind">{industry}</div> : null}
         </div>
         <span className="lens-pills">
+          {isDemoInstrument ? (
+            <span className="lens-pill" title="Demo sample record">
+              Sample
+            </span>
+          ) : null}
           <span className="lens-pill" title="Access status">
             {statusLabel(row)}
           </span>
@@ -199,6 +222,45 @@ export function TreasuryPortfolioClientCard({
         <p className="treasury-meta cm-err text-xs" role="alert">
           {actionError}
         </p>
+      ) : null}
+      {inviteNotice ? (
+        <div
+          className="cl-rows"
+          onClick={(e) => e.preventDefault()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <p className="treasury-meta text-xs">
+            {inviteNotice.inviteSent
+              ? "Invite emailed."
+              : "Email not configured — copy the link and send it yourself."}
+          </p>
+          <div className="cl-r" style={{ flexWrap: "wrap", gap: 6 }}>
+            <button
+              type="button"
+              className="chip"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void navigator.clipboard.writeText(inviteNotice.url).then(() => {
+                  setCopyOk(true);
+                });
+              }}
+            >
+              {copyOk ? "Copied" : "Copy invite link"}
+            </button>
+            <button
+              type="button"
+              className="chip"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setInviteNotice(null);
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       ) : null}
       <div
         className="cl-rows"
@@ -282,20 +344,14 @@ export function TreasuryPortfolioClientCard({
         ) : (
           <span className="cl-refresh">{importFoot(row)}</span>
         )}
-        <span className="cl-open">
-          {openable ? "Open record ›" : "Record built on FFM"}
-        </span>
+        <span className="cl-open">Open record ›</span>
       </div>
     </>
   );
 
-  if (openable) {
-    return (
-      <Link href={href} className={className}>
-        {body}
-      </Link>
-    );
-  }
-
-  return <div className={className}>{body}</div>;
+  return (
+    <Link href={href} className={className}>
+      {body}
+    </Link>
+  );
 }

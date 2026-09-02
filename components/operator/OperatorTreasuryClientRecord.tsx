@@ -624,6 +624,25 @@ export function OperatorTreasuryClientRecord({
               </span>
             ) : null}
 
+            {!loading && accountCount === 0 ? (
+              <div
+                className="panel p-4 mb-4"
+                style={{ border: "1px solid var(--line)" }}
+              >
+                <p className="sec-title text-sm mb-1">No data yet</p>
+                <p className="treasury-meta text-sm mb-3">
+                  Import a CSV to begin working this client&apos;s treasury record.
+                </p>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => switchTab("connections")}
+                >
+                  Go to Connections
+                </button>
+              </div>
+            ) : null}
+
             <TreasuryOverviewTiles
               clientUserId={clientUserId}
               clientName={clientName}
