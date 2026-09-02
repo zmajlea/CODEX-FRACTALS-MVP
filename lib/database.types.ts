@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       alerts: {
@@ -264,56 +239,6 @@ export type Database = {
           },
         ]
       }
-      distributor_client_invites: {
-        Row: {
-          id: string
-          tenant_id: string
-          client_user_id: string
-          email: string
-          token_hash: string
-          status: string
-          expires_at: string
-          consumed_at: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          tenant_id: string
-          client_user_id: string
-          email: string
-          token_hash: string
-          status?: string
-          expires_at: string
-          consumed_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          tenant_id?: string
-          client_user_id?: string
-          email?: string
-          token_hash?: string
-          status?: string
-          expires_at?: string
-          consumed_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "distributor_client_invites_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       credit_transactions: {
         Row: {
           action: string
@@ -368,6 +293,56 @@ export type Database = {
           },
           {
             foreignKeyName: "credit_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distributor_client_invites: {
+        Row: {
+          client_user_id: string
+          consumed_at: string | null
+          created_at: string
+          created_by: string | null
+          email: string
+          expires_at: string
+          id: string
+          status: string
+          tenant_id: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          consumed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          status?: string
+          tenant_id: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          status?: string
+          tenant_id?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributor_client_invites_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -698,39 +673,6 @@ export type Database = {
           },
         ]
       }
-      modules: {
-        Row: {
-          created_at: string
-          default_billing_mode: string
-          id: string
-          name: string
-          route_base: string
-          slug: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          default_billing_mode?: string
-          id?: string
-          name: string
-          route_base: string
-          slug: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          default_billing_mode?: string
-          id?: string
-          name?: string
-          route_base?: string
-          slug?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       mcp_audit_log: {
         Row: {
           client_id: string | null
@@ -767,13 +709,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "mcp_audit_log_operator_user_id_fkey"
-            columns: ["operator_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "mcp_audit_log_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -781,6 +716,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      modules: {
+        Row: {
+          created_at: string
+          default_billing_mode: string
+          id: string
+          name: string
+          route_base: string
+          slug: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_billing_mode?: string
+          id?: string
+          name: string
+          route_base: string
+          slug: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_billing_mode?: string
+          id?: string
+          name?: string
+          route_base?: string
+          slug?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       oauth_auth_codes: {
         Row: {
@@ -832,13 +800,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "oauth_clients"
             referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "oauth_auth_codes_operator_user_id_fkey"
-            columns: ["operator_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "oauth_auth_codes_tenant_id_fkey"
@@ -949,13 +910,6 @@ export type Database = {
             referencedColumns: ["client_id"]
           },
           {
-            foreignKeyName: "oauth_refresh_tokens_operator_user_id_fkey"
-            columns: ["operator_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "oauth_refresh_tokens_rotated_from_fkey"
             columns: ["rotated_from"]
             isOneToOne: false
@@ -1006,13 +960,6 @@ export type Database = {
           token_hash?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "operator_api_tokens_operator_user_id_fkey"
-            columns: ["operator_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "operator_api_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1716,6 +1663,110 @@ export type Database = {
           },
         ]
       }
+      treasury_analytics: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          items: Json
+          shared_at: string | null
+          shared_by: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          items?: Json
+          shared_at?: string | null
+          shared_by?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          items?: Json
+          shared_at?: string | null
+          shared_by?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_client_documents: {
+        Row: {
+          analytics_id: string | null
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          print_path: string | null
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          analytics_id?: string | null
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          print_path?: string | null
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          analytics_id?: string | null
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          print_path?: string | null
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_client_documents_analytics_id_fkey"
+            columns: ["analytics_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_analytics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_client_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_client_operator_profile: {
         Row: {
           attention_reason: string | null
@@ -1754,79 +1805,67 @@ export type Database = {
           },
         ]
       }
-      treasury_client_documents: {
+      treasury_metrics: {
         Row: {
-          id: string
-          tenant_id: string
-          client_user_id: string
-          title: string
-          kind: string
-          analytics_id: string | null
-          print_path: string | null
+          client_user_id: string | null
+          computed_at: string | null
+          computed_value: Json | null
+          created_at: string
           created_by: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          tenant_id: string
-          client_user_id: string
-          title: string
-          kind?: string
-          analytics_id?: string | null
-          print_path?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          tenant_id?: string
-          client_user_id?: string
-          title?: string
-          kind?: string
-          analytics_id?: string | null
-          print_path?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      treasury_thread_attachments: {
-        Row: {
+          definition: Json
+          description: string
           id: string
-          recommendation_id: string
-          client_user_id: string
-          storage_path: string
-          filename: string
-          content_type: string | null
-          byte_size: number | null
-          created_at: string
+          kind: string
+          name: string
+          scope: string
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          version: number
         }
         Insert: {
-          id?: string
-          recommendation_id: string
-          client_user_id: string
-          storage_path: string
-          filename: string
-          content_type?: string | null
-          byte_size?: number | null
+          client_user_id?: string | null
+          computed_at?: string | null
+          computed_value?: Json | null
           created_at?: string
+          created_by?: string | null
+          definition: Json
+          description?: string
+          id?: string
+          kind?: string
+          name: string
+          scope: string
+          source?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          version?: number
         }
         Update: {
-          id?: string
-          recommendation_id?: string
-          client_user_id?: string
-          storage_path?: string
-          filename?: string
-          content_type?: string | null
-          byte_size?: number | null
+          client_user_id?: string | null
+          computed_at?: string | null
+          computed_value?: Json | null
           created_at?: string
+          created_by?: string | null
+          definition?: Json
+          description?: string
+          id?: string
+          kind?: string
+          name?: string
+          scope?: string
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          version?: number
         }
         Relationships: [
           {
-            foreignKeyName: "treasury_thread_attachments_recommendation_id_fkey"
-            columns: ["recommendation_id"]
+            foreignKeyName: "treasury_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: "treasury_recommendations"
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1928,42 +1967,6 @@ export type Database = {
             columns: ["operator_tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treasury_rule_rejections: {
-        Row: {
-          rejected_at: string
-          rejected_by: string | null
-          rule_id: string
-          transaction_id: string
-        }
-        Insert: {
-          rejected_at?: string
-          rejected_by?: string | null
-          rule_id: string
-          transaction_id: string
-        }
-        Update: {
-          rejected_at?: string
-          rejected_by?: string | null
-          rule_id?: string
-          transaction_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treasury_rule_rejections_rule_id_fkey"
-            columns: ["rule_id"]
-            isOneToOne: false
-            referencedRelation: "treasury_rules"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treasury_rule_rejections_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: false
-            referencedRelation: "treasury_transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -2127,13 +2130,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "treasury_reviews_client_user_id_fkey"
-            columns: ["client_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "treasury_reviews_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -2142,141 +2138,38 @@ export type Database = {
           },
         ]
       }
-      treasury_analytics: {
+      treasury_rule_rejections: {
         Row: {
-          client_user_id: string
-          created_at: string
-          created_by: string | null
-          description: string
-          id: string
-          items: Json
-          shared_at: string | null
-          shared_by: string | null
-          status: string
-          tenant_id: string
-          title: string
-          updated_at: string
+          rejected_at: string
+          rejected_by: string | null
+          rule_id: string
+          transaction_id: string
         }
         Insert: {
-          client_user_id: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          id?: string
-          items?: Json
-          shared_at?: string | null
-          shared_by?: string | null
-          status?: string
-          tenant_id: string
-          title: string
-          updated_at?: string
+          rejected_at?: string
+          rejected_by?: string | null
+          rule_id: string
+          transaction_id: string
         }
         Update: {
-          client_user_id?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          id?: string
-          items?: Json
-          shared_at?: string | null
-          shared_by?: string | null
-          status?: string
-          tenant_id?: string
-          title?: string
-          updated_at?: string
+          rejected_at?: string
+          rejected_by?: string | null
+          rule_id?: string
+          transaction_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "treasury_analytics_client_user_id_fkey"
-            columns: ["client_user_id"]
+            foreignKeyName: "treasury_rule_rejections_rule_id_fkey"
+            columns: ["rule_id"]
             isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "treasury_rules"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "treasury_analytics_tenant_id_fkey"
-            columns: ["tenant_id"]
+            foreignKeyName: "treasury_rule_rejections_transaction_id_fkey"
+            columns: ["transaction_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treasury_metrics: {
-        Row: {
-          client_user_id: string | null
-          computed_at: string | null
-          computed_value: Json | null
-          created_at: string
-          created_by: string | null
-          definition: Json
-          description: string
-          id: string
-          kind: string
-          name: string
-          scope: string
-          source: string
-          status: string
-          tenant_id: string
-          updated_at: string
-          version: number
-        }
-        Insert: {
-          client_user_id?: string | null
-          computed_at?: string | null
-          computed_value?: Json | null
-          created_at?: string
-          created_by?: string | null
-          definition: Json
-          description?: string
-          id?: string
-          kind?: string
-          name: string
-          scope: string
-          source?: string
-          status?: string
-          tenant_id: string
-          updated_at?: string
-          version?: number
-        }
-        Update: {
-          client_user_id?: string | null
-          computed_at?: string | null
-          computed_value?: Json | null
-          created_at?: string
-          created_by?: string | null
-          definition?: Json
-          description?: string
-          id?: string
-          kind?: string
-          name?: string
-          scope?: string
-          source?: string
-          status?: string
-          tenant_id?: string
-          updated_at?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treasury_metrics_client_user_id_fkey"
-            columns: ["client_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treasury_metrics_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treasury_metrics_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "treasury_transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -2420,6 +2313,82 @@ export type Database = {
           },
         ]
       }
+      treasury_thread_attachments: {
+        Row: {
+          byte_size: number | null
+          client_user_id: string
+          content_type: string | null
+          created_at: string
+          filename: string
+          id: string
+          recommendation_id: string
+          storage_path: string
+        }
+        Insert: {
+          byte_size?: number | null
+          client_user_id: string
+          content_type?: string | null
+          created_at?: string
+          filename: string
+          id?: string
+          recommendation_id: string
+          storage_path: string
+        }
+        Update: {
+          byte_size?: number | null
+          client_user_id?: string
+          content_type?: string | null
+          created_at?: string
+          filename?: string
+          id?: string
+          recommendation_id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_thread_attachments_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_recommendations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_transaction_splits: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          label: string
+          transaction_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          label: string
+          transaction_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          label?: string
+          transaction_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_transaction_splits_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_transaction_suggestions: {
         Row: {
           client_user_id: string
@@ -2455,41 +2424,6 @@ export type Database = {
           },
           {
             foreignKeyName: "treasury_transaction_suggestions_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: false
-            referencedRelation: "treasury_transactions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treasury_transaction_splits: {
-        Row: {
-          amount: number
-          created_at: string
-          id: string
-          label: string
-          transaction_id: string
-          updated_at: string
-        }
-        Insert: {
-          amount: number
-          created_at?: string
-          id?: string
-          label: string
-          transaction_id: string
-          updated_at?: string
-        }
-        Update: {
-          amount?: number
-          created_at?: string
-          id?: string
-          label?: string
-          transaction_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treasury_transaction_splits_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "treasury_transactions"
@@ -3095,54 +3029,18 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: undefined
       }
-      treasury_rule_match_count: {
+      treasury_confirm_rule_suggestions: {
         Args: {
-          p_amount_max?: number | null
-          p_amount_min?: number | null
+          p_actor: string
           p_client: string
-          p_date_from?: string | null
-          p_date_to?: string | null
-          p_direction?: string | null
-          p_exclude_rejected_for_rule?: string | null
-          p_label_null_only?: boolean
-          p_match_type?: string
-          p_payee_query: string
-        }
-        Returns: number
-      }
-      treasury_rule_match_page: {
-        Args: {
-          p_amount_max?: number | null
-          p_amount_min?: number | null
-          p_client: string
-          p_date_from?: string | null
-          p_date_to?: string | null
-          p_direction?: string | null
-          p_exclude_rejected_for_rule?: string | null
-          p_label_null_only?: boolean
-          p_limit?: number
-          p_match_type?: string
-          p_offset?: number
-          p_payee_query: string
-        }
-        Returns: Database["public"]["Tables"]["treasury_transactions"]["Row"][]
-      }
-      treasury_rule_payee_stats: {
-        Args: {
-          p_amount_max?: number | null
-          p_amount_min?: number | null
-          p_client: string
-          p_date_from?: string | null
-          p_date_to?: string | null
-          p_direction?: string | null
-          p_match_type?: string
-          p_payee_query: string
+          p_rule: string
+          p_transaction_ids?: string[]
         }
         Returns: Json
       }
       treasury_ensure_primary_cash_model: {
         Args: {
-          p_account?: string | null
+          p_account: string
           p_actor: string
           p_client: string
           p_derived_snapshot?: Json
@@ -3154,27 +3052,12 @@ export type Database = {
         }
         Returns: string
       }
-      treasury_confirm_rule_suggestions: {
-        Args: {
-          p_actor: string
-          p_client: string
-          p_rule: string
-          p_transaction_ids?: string[] | null
-        }
-        Returns: Json
-      }
-      treasury_replace_transaction_splits: {
-        Args: {
-          p_slices?: Json
-          p_transaction_id: string
-        }
-        Returns: undefined
-      }
+      treasury_escape_ilike: { Args: { p_q: string }; Returns: string }
       treasury_monthly_by_category: {
         Args: {
-          p_account_id?: string | null
+          p_account_id: string
           p_client: string
-          p_direction?: string | null
+          p_direction?: string
           p_from: string
           p_to: string
         }
@@ -3185,39 +3068,195 @@ export type Database = {
           p_account_id: string
           p_client: string
           p_from: string
-          p_label?: string | null
+          p_label?: string
           p_to: string
         }
         Returns: Json
       }
       treasury_query_summary: {
         Args: {
-          p_account_id?: string | null
+          p_account_id?: string
           p_bucket: string
           p_client: string
-          p_from?: string | null
-          p_to?: string | null
+          p_from?: string
+          p_to?: string
         }
         Returns: Json
       }
-      treasury_rule_queue_counts: {
-        Args: { p_client: string }
-        Returns: Json
+      treasury_replace_transaction_splits: {
+        Args: { p_slices?: Json; p_transaction_id: string }
+        Returns: undefined
       }
-      treasury_tx_chip_counts: {
+      treasury_rule_match_count:
+        | {
+            Args: {
+              p_amount_max?: number
+              p_amount_min?: number
+              p_client: string
+              p_direction?: string
+              p_exclude_rejected_for_rule?: string
+              p_label_null_only?: boolean
+              p_match_type?: string
+              p_payee_query: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_amount_max?: number
+              p_amount_min?: number
+              p_client: string
+              p_date_from?: string
+              p_date_to?: string
+              p_direction?: string
+              p_exclude_rejected_for_rule?: string
+              p_label_null_only?: boolean
+              p_match_type?: string
+              p_payee_query: string
+            }
+            Returns: number
+          }
+      treasury_rule_match_page:
+        | {
+            Args: {
+              p_amount_max?: number
+              p_amount_min?: number
+              p_client: string
+              p_direction?: string
+              p_exclude_rejected_for_rule?: string
+              p_label_null_only?: boolean
+              p_limit?: number
+              p_match_type?: string
+              p_offset?: number
+              p_payee_query: string
+            }
+            Returns: {
+              account_id: string
+              amount: number
+              authorized_date: string | null
+              client_user_id: string
+              created_at: string
+              description: string | null
+              direction: string | null
+              external_id: string
+              has_pending_suggestion: boolean
+              id: string
+              is_removed: boolean
+              iso_currency_code: string | null
+              label: string | null
+              label_source: string | null
+              labeled_at: string | null
+              labeled_by: string | null
+              merchant_name: string | null
+              normalized_merchant: string | null
+              pending: boolean
+              pending_external_id: string | null
+              plaid_category: string | null
+              plaid_item_id: string | null
+              posted_date: string | null
+              raw_name: string | null
+              source: string
+              suggested_by_rule_id: string | null
+              suggested_label: string | null
+              suggestion_explanation: string | null
+              suggestion_status: string | null
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "treasury_transactions"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
+        | {
+            Args: {
+              p_amount_max?: number
+              p_amount_min?: number
+              p_client: string
+              p_date_from?: string
+              p_date_to?: string
+              p_direction?: string
+              p_exclude_rejected_for_rule?: string
+              p_label_null_only?: boolean
+              p_limit?: number
+              p_match_type?: string
+              p_offset?: number
+              p_payee_query: string
+            }
+            Returns: {
+              account_id: string
+              amount: number
+              authorized_date: string | null
+              client_user_id: string
+              created_at: string
+              description: string | null
+              direction: string | null
+              external_id: string
+              has_pending_suggestion: boolean
+              id: string
+              is_removed: boolean
+              iso_currency_code: string | null
+              label: string | null
+              label_source: string | null
+              labeled_at: string | null
+              labeled_by: string | null
+              merchant_name: string | null
+              normalized_merchant: string | null
+              pending: boolean
+              pending_external_id: string | null
+              plaid_category: string | null
+              plaid_item_id: string | null
+              posted_date: string | null
+              raw_name: string | null
+              source: string
+              suggested_by_rule_id: string | null
+              suggested_label: string | null
+              suggestion_explanation: string | null
+              suggestion_status: string | null
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "treasury_transactions"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
+      treasury_rule_payee_hit: {
         Args: {
-          p_account_ids?: string[] | null
-          p_amount_exact?: number | null
-          p_amount_max?: number | null
-          p_amount_min?: number | null
-          p_client: string
-          p_direction?: string | null
-          p_from?: string | null
-          p_q?: string | null
-          p_to?: string | null
+          p_description: string
+          p_match_type: string
+          p_merchant: string
+          p_normalized: string
+          p_payee: string
+          p_raw: string
         }
-        Returns: Json
+        Returns: boolean
       }
+      treasury_rule_payee_stats:
+        | {
+            Args: {
+              p_client: string
+              p_direction?: string
+              p_match_type?: string
+              p_payee_query: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_amount_max?: number
+              p_amount_min?: number
+              p_client: string
+              p_date_from?: string
+              p_date_to?: string
+              p_direction?: string
+              p_match_type?: string
+              p_payee_query: string
+            }
+            Returns: Json
+          }
       treasury_rule_queue_combo_confirm: {
         Args: {
           p_actor: string
@@ -3237,8 +3276,23 @@ export type Database = {
         }
         Returns: Json
       }
+      treasury_rule_queue_counts: { Args: { p_client: string }; Returns: Json }
       treasury_rule_queue_facets: {
         Args: { p_client: string; p_rule: string }
+        Returns: Json
+      }
+      treasury_tx_chip_counts: {
+        Args: {
+          p_account_ids?: string[]
+          p_amount_exact?: number
+          p_amount_max?: number
+          p_amount_min?: number
+          p_client: string
+          p_direction?: string
+          p_from?: string
+          p_q?: string
+          p_to?: string
+        }
         Returns: Json
       }
     }
@@ -3287,12 +3341,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3316,11 +3370,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3341,11 +3395,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3366,11 +3420,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3383,11 +3437,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3397,9 +3451,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       ff_commercial_role: ["global_admin", "operator", "client"],
@@ -3437,5 +3488,5 @@ export const Constants = {
     },
   },
 } as const
-
-export type TemporalObjectKind = Database["public"]["Enums"]["temporal_object_kind"];
+A new version of Supabase CLI is available: v2.116.0 (currently installed v2.102.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

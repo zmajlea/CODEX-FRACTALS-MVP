@@ -149,7 +149,7 @@ create table if not exists public.treasury_review_blocks (
   id uuid primary key default gen_random_uuid(),
   review_id uuid not null references public.treasury_reviews (id) on delete cascade,
   position int not null,
-  role text not null check (role in ('figure', 'exhibit', 'note', 'narrative')),
+  role text not null,
   metric_id uuid references public.treasury_metrics (id) on delete set null,
   recommendation_id uuid references public.treasury_recommendations (id) on delete cascade,
   pinned_window jsonb,
