@@ -13,7 +13,7 @@
     "db:query": "supabase db query --linked",
     "db:verify": "node scripts/verify-schema.mjs",
     "test:platform": "node scripts/seed-platform-rls.mjs",
-    "db:types": "supabase gen types typescript --project-id tswdwmtrirdhtwqmsasz | Out-File -Encoding utf8 lib/database.types.ts",
+    "db:types": "node scripts/regen-database-types.mjs",
     "test:seed": "node scripts/seed-journey-test.mjs",
     "test:seed:operator": "node scripts/seed-operator-test.mjs",
     "test:seed:bench-import": "node scripts/seed-bench-import.mjs",

@@ -1,22 +1,51 @@
 /**
  * Spec B12 gate — review document model + publish gate + RLS.
  *
+ * Prereqs:
+ *   npm run test:seed:mcp-testers
+ *   Migration 20260825120000_review_document_b12 applied
+ *
  * Usage: npm run gate:review
  */
-import { existsSync, readFileSync } from "fs";
-import { dirname, join } from "path";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
-import type { Database } from "../lib/database.types";
-import { scanEnvelope } from "../lib/treasury/envelope-scan";
+import type { Database, Json } from "../lib/database.types";
+import { scanEnvelope, scanEnvelopeFields } from "../lib/treasury/envelope-scan";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
+const TOKENS_PATH = join(__dirname, ".mcp-gate-tokens.json");
 const MIGRATION = join(
   ROOT,
   "supabase/migrations/20260825120000_review_document_b12.sql"
 );
+const MCP_PASSWORD = "mcp_gate_2026!";
+
+type OperatorToken = {
+  email: string;
+  operatorId: string;
+  tenantId: string;
+  clientIds: string[];
+  clients: Array<{ email: string; id: string; displayName: string }>;
+  token: string;
+};
+
+type BlockRow = {
+  id: string;
+  position: number;
+  role: string;
+  caption: string;
+  body: string;
+  proposal_state: string;
+};
+
+type GatePreflight = {
+  proposed_count: number;
+  envelope_violations: ReturnType<typeof scanEnvelopeFields>;
+};
 
 function loadEnvLocal() {
   try {
@@ -50,6 +79,35 @@ function record(id: number, name: string, ok: boolean, detail: string) {
   if (!ok) throw new Error(`Check ${id} failed: ${detail}`);
 }
 
+function loadTokens(): { tim: OperatorToken; ana: OperatorToken } {
+  if (!existsSync(TOKENS_PATH)) {
+    throw new Error(
+      "Missing scripts/.mcp-gate-tokens.json — run npm run test:seed:mcp-testers"
+    );
+  }
+  const raw = JSON.parse(readFileSync(TOKENS_PATH, "utf8")) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  function norm(r: Record<string, unknown>): OperatorToken {
+    const legacy = r.clientId as string | undefined;
+    const clientIds =
+      (r.clientIds as string[] | undefined) ?? (legacy ? [legacy] : []);
+    const clients =
+      (r.clients as OperatorToken["clients"] | undefined) ??
+      clientIds.map((id) => ({ email: "", id, displayName: id }));
+    return {
+      email: String(r.email),
+      operatorId: String(r.operatorId),
+      tenantId: String(r.tenantId),
+      clientIds,
+      clients,
+      token: String(r.token),
+    };
+  }
+  return { tim: norm(raw.tim!), ana: norm(raw.ana!) };
+}
+
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -60,82 +118,595 @@ function adminClient() {
   });
 }
 
-async function main() {
-  loadEnvLocal();
-  log("static checks…");
+function sessionClient(accessToken: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) throw new Error("Missing Supabase anon env");
+  return createClient<Database>(url, anon, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws as unknown as typeof WebSocket },
+  });
+}
 
-  const sql = readFileSync(MIGRATION, "utf8");
-  record(1, "migration creates treasury_reviews", sql.includes("treasury_reviews"), "table present");
-  record(2, "migration creates treasury_review_versions", sql.includes("treasury_review_versions"), "table present");
-  record(3, "migration creates treasury_review_blocks", sql.includes("treasury_review_blocks"), "table present");
-  record(4, "note role in blocks", sql.includes("'note'"), "note role check");
-  record(5, "versions immutability trigger", sql.includes("treasury_review_versions_immutable"), "trigger present");
-  record(6, "client SELECT on versions", sql.includes("treasury_review_versions_client_select"), "policy present");
-  record(7, "envelope-scan module", existsSync(join(ROOT, "lib/treasury/envelope-scan.ts")), "file exists");
-  record(8, "auto-caption module", existsSync(join(ROOT, "lib/treasury/auto-caption.ts")), "file exists");
-  record(9, "publish route", existsSync(join(ROOT, "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/publish/route.ts")), "route exists");
-  record(10, "client review route session-only", existsSync(join(ROOT, "app/api/treasury/reviews/[reviewId]/route.ts")), "route exists");
-
-  const deny = scanEnvelope("Contact tim@internal about R1 Gate ledger row");
-  record(11, "envelope scanner rejects denylist", deny.length > 0, `violations=${deny.length}`);
-
-  const clean = scanEnvelope("Collections held steady this month.");
-  record(12, "envelope scanner allows clean prose", clean.length === 0, "ok");
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    log("SKIP live checks — missing Supabase env");
-    log("ALL STATIC CHECKS PASSED");
-    return;
+async function passwordLogin(email: string): Promise<string> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) throw new Error("Missing Supabase anon env");
+  const sb = createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws as unknown as typeof WebSocket },
+  });
+  const { data, error } = await sb.auth.signInWithPassword({
+    email,
+    password: MCP_PASSWORD,
+  });
+  if (error || !data.session) {
+    throw new Error(`login ${email}: ${error?.message ?? "no session"}`);
   }
+  return data.session.access_token;
+}
 
-  const admin = adminClient();
-  const { data: grant } = await admin
-    .from("client_module_access")
-    .select("client_user_id, tenant_id")
-    .eq("status", "active")
-    .limit(1)
+function walkFiles(dir: string, acc: string[] = []): string[] {
+  if (!existsSync(dir)) return acc;
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) walkFiles(p, acc);
+    else if (/\.(ts|tsx|js|jsx)$/.test(name)) acc.push(p);
+  }
+  return acc;
+}
+
+function assertNoAdminImport(roots: string[], label: string) {
+  const hits: string[] = [];
+  for (const root of roots) {
+    for (const file of walkFiles(join(ROOT, root))) {
+      const text = readFileSync(file, "utf8");
+      if (
+        text.includes("createSupabaseAdminClient") ||
+        /from\s+["']@\/lib\/supabase\/admin["']/.test(text)
+      ) {
+        hits.push(relative(ROOT, file).replace(/\\/g, "/"));
+      }
+    }
+  }
+  if (hits.length > 0) {
+    throw new Error(`${label}: admin client in ${hits.join(", ")}`);
+  }
+}
+
+async function loadBlocks(
+  admin: ReturnType<typeof adminClient>,
+  reviewId: string
+): Promise<BlockRow[]> {
+  const { data, error } = await admin
+    .from("treasury_review_blocks")
+    .select("id, position, role, caption, body, proposal_state")
+    .eq("review_id", reviewId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BlockRow[];
+}
+
+async function gatePreflight(
+  admin: ReturnType<typeof adminClient>,
+  reviewId: string
+): Promise<GatePreflight> {
+  const blocks = await loadBlocks(admin, reviewId);
+  const proposed_count = blocks.filter((b) => b.proposal_state === "proposed").length;
+  const scanFields: Array<{ id: string; text: string }> = [];
+  for (const block of blocks) {
+    if (block.caption.trim()) {
+      scanFields.push({ id: `block:${block.id}:caption`, text: block.caption });
+    }
+    if (block.role === "note" && block.body.trim()) {
+      scanFields.push({ id: `block:${block.id}:body`, text: block.body });
+    }
+  }
+  return {
+    proposed_count,
+    envelope_violations: scanEnvelopeFields(scanFields),
+  };
+}
+
+function preflightBlocked(p: GatePreflight): boolean {
+  return p.proposed_count > 0 || p.envelope_violations.length > 0;
+}
+
+function minimalSnapshot(
+  title: string,
+  periodMonth: string,
+  version: number,
+  changeNote: string,
+  blocks: BlockRow[]
+) {
+  return {
+    meta: {
+      title,
+      period_month: periodMonth,
+      reviewed_as_of: new Date().toISOString().slice(0, 10),
+      version,
+      change_note: changeNote,
+    },
+    cover_figures: [],
+    live_strip: { enabled: false },
+    blocks: blocks.map((b) => ({
+      role: b.role,
+      position: b.position,
+      caption: b.caption,
+      body: b.body,
+    })),
+    disclosures: { advisory: "", accuracy: "", review: "" },
+  };
+}
+
+/** Mirror publish route preflight gate + version insert (gate-safe, no server-only imports). */
+async function publishReview(
+  admin: ReturnType<typeof adminClient>,
+  reviewId: string,
+  operatorId: string,
+  changeNote = ""
+) {
+  const { data: reviewRow, error: revErr } = await admin
+    .from("treasury_reviews")
+    .select("id, title, period_month, current_version, status")
+    .eq("id", reviewId)
+    .eq("status", "draft")
     .maybeSingle();
 
-  if (!grant?.client_user_id) {
-    log("SKIP live checks — no active grant in DB");
-    log("ALL STATIC CHECKS PASSED");
-    return;
+  if (revErr || !reviewRow) throw new Error("Draft review not found");
+
+  const preflight = await gatePreflight(admin, reviewId);
+  if (preflightBlocked(preflight)) {
+    return { ok: false as const, status: 422, preflight };
   }
 
-  const clientId = grant.client_user_id;
-  const tenantId = grant.tenant_id;
+  const blocks = await loadBlocks(admin, reviewId);
+  const newVersion = (reviewRow.current_version ?? 0) + 1;
+
+  if ((reviewRow.current_version ?? 0) > 0) {
+    await admin
+      .from("treasury_review_versions")
+      .update({ superseded_at: new Date().toISOString() })
+      .eq("review_id", reviewId)
+      .eq("version", reviewRow.current_version!)
+      .is("superseded_at", null);
+  }
+
+  const snapshot = minimalSnapshot(
+    reviewRow.title,
+    String(reviewRow.period_month).slice(0, 10),
+    newVersion,
+    changeNote,
+    blocks
+  );
+
+  const { data: versionRow, error: verErr } = await admin
+    .from("treasury_review_versions")
+    .insert({
+      review_id: reviewId,
+      version: newVersion,
+      reviewed_as_of: snapshot.meta.reviewed_as_of,
+      published_by: operatorId,
+      change_note: changeNote || snapshot.meta.change_note,
+      snapshot: snapshot as unknown as Json,
+    })
+    .select("id, version")
+    .single();
+
+  if (verErr || !versionRow) throw new Error(verErr?.message ?? "version insert");
+
+  await admin
+    .from("treasury_reviews")
+    .update({
+      status: "published",
+      current_version: newVersion,
+      title: snapshot.meta.title,
+    })
+    .eq("id", reviewId);
+
+  return { ok: true as const, status: 200, version: newVersion, versionId: versionRow.id };
+}
+
+/** Minimal mirror of mcpProposeNarrative note path (draft-only + envelope scan). */
+async function gateProposeNote(
+  admin: ReturnType<typeof adminClient>,
+  tenantId: string,
+  clientId: string,
+  reviewId: string,
+  position: number,
+  text: string
+) {
+  const violations = scanEnvelope(text);
+  if (violations.length) {
+    throw new Error(`Envelope violation: ${violations[0]!.message}`);
+  }
+
+  const { data: review } = await admin
+    .from("treasury_reviews")
+    .select("id")
+    .eq("id", reviewId)
+    .eq("tenant_id", tenantId)
+    .eq("client_user_id", clientId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (!review) throw new Error("Draft review not found");
+
+  const { data: block, error } = await admin
+    .from("treasury_review_blocks")
+    .update({
+      body: text,
+      proposal_state: "proposed",
+      provenance: { author: "assistant", source: "mcp" },
+    })
+    .eq("review_id", reviewId)
+    .eq("position", position)
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return block.id;
+}
+
+async function main() {
+  loadEnvLocal();
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing Supabase env in .env.local");
+  }
+
+  const sql = readFileSync(MIGRATION, "utf8");
+  if (!sql.includes("treasury_review_blocks_role_check")) {
+    throw new Error("B12 migration file missing or incomplete");
+  }
+  assertNoAdminImport(
+    ["app/api/treasury/reviews", "app/client"],
+    "client review path"
+  );
+
+  const { tim } = loadTokens();
+  const clientA = tim.clients[0]!;
+  const clientB = tim.clients[1]!;
+  const admin = adminClient();
+  const stamp = Date.now();
+  const label = `gate-b12-${stamp}`;
   const period = "2026-09-01";
 
-  const { data: review, error: createErr } = await admin
+  const clientAToken = await passwordLogin(clientA.email);
+  const clientBToken = await passwordLogin(clientB.email);
+  const clientASb = sessionClient(clientAToken);
+  const clientBSb = sessionClient(clientBToken);
+
+  log("LIVE checks…");
+
+  // 1 — B12 tables exist on remote
+  {
+    let ok = true;
+    const missing: string[] = [];
+    for (const t of [
+      "treasury_reviews",
+      "treasury_review_versions",
+      "treasury_review_blocks",
+    ]) {
+      const { error } = await admin.from(t).select("id").limit(1);
+      if (error) {
+        ok = false;
+        missing.push(t);
+      }
+    }
+    record(1, "B12 tables on remote", ok, missing.length ? missing.join(", ") : "all present");
+  }
+
+  const { data: reviewRow, error: createErr } = await admin
     .from("treasury_reviews")
     .insert({
-      tenant_id: tenantId,
-      client_user_id: clientId,
+      tenant_id: tim.tenantId,
+      client_user_id: clientA.id,
       period_month: period,
-      label: `gate-b12-${Date.now()}`,
+      label,
       title: "Gate B12 Review",
       status: "draft",
+      created_by: tim.operatorId,
     })
     .select("id")
     .single();
 
-  if (createErr || !review) {
-    record(13, "create draft review", false, createErr?.message ?? "failed");
-  } else {
-    record(13, "create draft review", true, `id=${review.id}`);
+  if (createErr || !reviewRow) {
+    record(2, "seed draft review", false, createErr?.message ?? "insert failed");
+  }
+  const reviewId = reviewRow!.id;
 
-    const { count: clientDraftLeak } = await admin
-      .from("treasury_review_blocks")
-      .select("id", { count: "exact", head: true })
-      .eq("review_id", review.id);
+  try {
+    // 2 — client cannot read draft review container
+    {
+      const { data, error } = await clientASb
+        .from("treasury_reviews")
+        .select("id")
+        .eq("id", reviewId);
+      record(
+        2,
+        "client cannot read draft review",
+        !error && (data ?? []).length === 0,
+        error?.message ?? `rows=${(data ?? []).length}`
+      );
+    }
 
-    record(14, "draft blocks exist operator-only", (clientDraftLeak ?? 0) === 0, "no blocks yet ok");
+    // 3 — client cannot read draft blocks
+    {
+      await admin.from("treasury_review_blocks").insert({
+        review_id: reviewId,
+        position: 1,
+        role: "note",
+        caption: "",
+        body: "Gate note block",
+        proposal_state: "confirmed",
+      });
 
-    await admin.from("treasury_reviews").delete().eq("id", review.id);
-    record(15, "cleanup draft review", true, "deleted");
+      const { data, error } = await clientASb
+        .from("treasury_review_blocks")
+        .select("id")
+        .eq("review_id", reviewId);
+      record(
+        3,
+        "client cannot read draft blocks",
+        !error && (data ?? []).length === 0,
+        error?.message ?? `rows=${(data ?? []).length}`
+      );
+    }
+
+    // 4 — preflight blocks on proposed block
+    {
+      await admin
+        .from("treasury_review_blocks")
+        .update({ proposal_state: "proposed" })
+        .eq("review_id", reviewId);
+      const preflight = await gatePreflight(admin, reviewId);
+      record(
+        4,
+        "preflight blocks on PROPOSED",
+        preflightBlocked(preflight) && preflight.proposed_count > 0,
+        `proposed=${preflight.proposed_count}`
+      );
+      await admin
+        .from("treasury_review_blocks")
+        .update({ proposal_state: "confirmed" })
+        .eq("review_id", reviewId);
+    }
+
+    // 5 — preflight blocks on envelope violation
+    {
+      await admin
+        .from("treasury_review_blocks")
+        .update({ caption: "Discuss R1 Gate ledger row with tim@" })
+        .eq("review_id", reviewId)
+        .eq("position", 1);
+      const preflight = await gatePreflight(admin, reviewId);
+      record(
+        5,
+        "preflight blocks envelope violation",
+        preflightBlocked(preflight) && preflight.envelope_violations.length > 0,
+        `violations=${preflight.envelope_violations.length}`
+      );
+      await admin
+        .from("treasury_review_blocks")
+        .update({ caption: "Collections held steady." })
+        .eq("review_id", reviewId)
+        .eq("position", 1);
+    }
+
+    // 6 — preflight clears when clean
+    {
+      const preflight = await gatePreflight(admin, reviewId);
+      record(
+        6,
+        "preflight clears when clean",
+        !preflightBlocked(preflight),
+        `proposed=${preflight.proposed_count} env=${preflight.envelope_violations.length}`
+      );
+    }
+
+    // 7 — publish creates version (422 vs 200)
+    {
+      const pub = await publishReview(admin, reviewId, tim.operatorId);
+      const { count } = await admin
+        .from("treasury_review_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("review_id", reviewId)
+        .eq("version", 1);
+      record(
+        7,
+        "publish creates version 1",
+        pub.ok && pub.version === 1 && (count ?? 0) === 1,
+        pub.ok ? `version=${pub.version}` : "blocked"
+      );
+    }
+
+    // 8 — client reads published snapshot via session RLS
+    {
+      const { data: review, error: revErr } = await clientASb
+        .from("treasury_reviews")
+        .select("id, status, current_version")
+        .eq("id", reviewId)
+        .maybeSingle();
+      const { data: version, error: verErr } = await clientASb
+        .from("treasury_review_versions")
+        .select("id, version, snapshot")
+        .eq("review_id", reviewId)
+        .is("superseded_at", null)
+        .maybeSingle();
+      const snap = version?.snapshot as { blocks?: unknown[] } | null;
+      record(
+        8,
+        "client reads published snapshot",
+        !revErr &&
+          !verErr &&
+          review?.status === "published" &&
+          version?.version === 1 &&
+          Boolean(snap),
+        `status=${review?.status ?? "?"} ver=${version?.version ?? "?"}`
+      );
+    }
+
+    // 9 — two-client isolation on published version
+    {
+      const { data, error } = await clientBSb
+        .from("treasury_review_versions")
+        .select("id")
+        .eq("review_id", reviewId);
+      record(
+        9,
+        "two-client version isolation",
+        !error && (data ?? []).length === 0,
+        error?.message ?? `leak=${(data ?? []).length}`
+      );
+    }
+
+    // 10 — immutability: snapshot UPDATE raises
+    {
+      const { data: ver } = await admin
+        .from("treasury_review_versions")
+        .select("id, snapshot")
+        .eq("review_id", reviewId)
+        .eq("version", 1)
+        .maybeSingle();
+      const { error } = await admin
+        .from("treasury_review_versions")
+        .update({
+          snapshot: { hacked: true } as unknown as Json,
+        })
+        .eq("id", ver!.id);
+      record(
+        10,
+        "version snapshot immutability",
+        Boolean(error?.message?.includes("immutable")),
+        error?.message ?? "update succeeded (bad)"
+      );
+    }
+
+    // 11 — republish v2 supersedes v1
+    {
+      await admin
+        .from("treasury_reviews")
+        .update({ status: "draft" })
+        .eq("id", reviewId);
+      await admin
+        .from("treasury_review_blocks")
+        .update({ body: "Updated note for v2." })
+        .eq("review_id", reviewId)
+        .eq("position", 1);
+      const pub = await publishReview(
+        admin,
+        reviewId,
+        tim.operatorId,
+        "Gate v2 change note"
+      );
+      const { data: v1 } = await admin
+        .from("treasury_review_versions")
+        .select("superseded_at")
+        .eq("review_id", reviewId)
+        .eq("version", 1)
+        .maybeSingle();
+      const { data: v2 } = await admin
+        .from("treasury_review_versions")
+        .select("version, change_note")
+        .eq("review_id", reviewId)
+        .eq("version", 2)
+        .maybeSingle();
+      record(
+        11,
+        "republish v2 supersedes v1",
+        pub.ok &&
+          pub.version === 2 &&
+          Boolean(v1?.superseded_at) &&
+          v2?.change_note === "Gate v2 change note",
+        `v2=${pub.ok ? pub.version : "?"} superseded=${Boolean(v1?.superseded_at)}`
+      );
+    }
+
+    // 12 — propose note draft-only + envelope on write
+    {
+      const { data: draft } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: tim.tenantId,
+          client_user_id: clientA.id,
+          period_month: "2026-08-01",
+          label: `${label}-mcp`,
+          title: "MCP gate draft",
+          status: "draft",
+          created_by: tim.operatorId,
+        })
+        .select("id")
+        .single();
+
+      await admin.from("treasury_review_blocks").insert({
+        review_id: draft!.id,
+        position: 1,
+        role: "note",
+        caption: "",
+        body: "Target note",
+        proposal_state: "confirmed",
+      });
+
+      let envelopeRejected = false;
+      try {
+        await gateProposeNote(
+          admin,
+          tim.tenantId,
+          clientA.id,
+          draft!.id,
+          1,
+          "R1 Gate tim@internal ledger row"
+        );
+      } catch (e) {
+        envelopeRejected = String(e).includes("Envelope violation");
+      }
+
+      await gateProposeNote(
+        admin,
+        tim.tenantId,
+        clientA.id,
+        draft!.id,
+        1,
+        "Liquidity remained stable through the month."
+      );
+
+      const preflight = await gatePreflight(admin, draft!.id);
+      let publishedRejected = false;
+      try {
+        await gateProposeNote(
+          admin,
+          tim.tenantId,
+          clientA.id,
+          reviewId,
+          1,
+          "Should not land on published issue"
+        );
+      } catch {
+        publishedRejected = true;
+      }
+
+      record(
+        12,
+        "propose_narrative envelope + draft-only",
+        envelopeRejected &&
+          preflight.proposed_count > 0 &&
+          publishedRejected &&
+          scanEnvelope("R1 Gate").length > 0,
+        `env=${envelopeRejected} proposed=${preflight.proposed_count} pub=${publishedRejected}`
+      );
+
+      await admin.from("treasury_reviews").delete().eq("id", draft!.id);
+    }
+  } finally {
+    await admin.from("treasury_reviews").delete().eq("id", reviewId);
   }
 
-  log("ALL CHECKS PASSED");
+  log("ALL 12/12 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

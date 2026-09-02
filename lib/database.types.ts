@@ -3034,13 +3034,13 @@ export type Database = {
           p_actor: string
           p_client: string
           p_rule: string
-          p_transaction_ids?: string[]
+          p_transaction_ids?: string[] | null
         }
         Returns: Json
       }
       treasury_ensure_primary_cash_model: {
         Args: {
-          p_account: string
+          p_account?: string | null
           p_actor: string
           p_client: string
           p_derived_snapshot?: Json
@@ -3055,9 +3055,9 @@ export type Database = {
       treasury_escape_ilike: { Args: { p_q: string }; Returns: string }
       treasury_monthly_by_category: {
         Args: {
-          p_account_id: string
+          p_account_id?: string | null | null
           p_client: string
-          p_direction?: string
+          p_direction?: string | null
           p_from: string
           p_to: string
         }
@@ -3068,18 +3068,18 @@ export type Database = {
           p_account_id: string
           p_client: string
           p_from: string
-          p_label?: string
+          p_label?: string | null
           p_to: string
         }
         Returns: Json
       }
       treasury_query_summary: {
         Args: {
-          p_account_id?: string
+          p_account_id?: string | null
           p_bucket: string
           p_client: string
-          p_from?: string
-          p_to?: string
+          p_from?: string | null
+          p_to?: string | null
         }
         Returns: Json
       }
@@ -3090,11 +3090,11 @@ export type Database = {
       treasury_rule_match_count:
         | {
             Args: {
-              p_amount_max?: number
-              p_amount_min?: number
+              p_amount_max?: number | null
+              p_amount_min?: number | null
               p_client: string
-              p_direction?: string
-              p_exclude_rejected_for_rule?: string
+              p_direction?: string | null
+              p_exclude_rejected_for_rule?: string | null
               p_label_null_only?: boolean
               p_match_type?: string
               p_payee_query: string
@@ -3103,13 +3103,13 @@ export type Database = {
           }
         | {
             Args: {
-              p_amount_max?: number
-              p_amount_min?: number
+              p_amount_max?: number | null
+              p_amount_min?: number | null
               p_client: string
-              p_date_from?: string
-              p_date_to?: string
-              p_direction?: string
-              p_exclude_rejected_for_rule?: string
+              p_date_from?: string | null
+              p_date_to?: string | null
+              p_direction?: string | null
+              p_exclude_rejected_for_rule?: string | null
               p_label_null_only?: boolean
               p_match_type?: string
               p_payee_query: string
@@ -3119,11 +3119,11 @@ export type Database = {
       treasury_rule_match_page:
         | {
             Args: {
-              p_amount_max?: number
-              p_amount_min?: number
+              p_amount_max?: number | null
+              p_amount_min?: number | null
               p_client: string
-              p_direction?: string
-              p_exclude_rejected_for_rule?: string
+              p_direction?: string | null
+              p_exclude_rejected_for_rule?: string | null
               p_label_null_only?: boolean
               p_limit?: number
               p_match_type?: string
@@ -3171,13 +3171,13 @@ export type Database = {
           }
         | {
             Args: {
-              p_amount_max?: number
-              p_amount_min?: number
+              p_amount_max?: number | null
+              p_amount_min?: number | null
               p_client: string
-              p_date_from?: string
-              p_date_to?: string
-              p_direction?: string
-              p_exclude_rejected_for_rule?: string
+              p_date_from?: string | null
+              p_date_to?: string | null
+              p_direction?: string | null
+              p_exclude_rejected_for_rule?: string | null
               p_label_null_only?: boolean
               p_limit?: number
               p_match_type?: string
@@ -3238,7 +3238,7 @@ export type Database = {
         | {
             Args: {
               p_client: string
-              p_direction?: string
+              p_direction?: string | null
               p_match_type?: string
               p_payee_query: string
             }
@@ -3246,12 +3246,12 @@ export type Database = {
           }
         | {
             Args: {
-              p_amount_max?: number
-              p_amount_min?: number
+              p_amount_max?: number | null
+              p_amount_min?: number | null
               p_client: string
-              p_date_from?: string
-              p_date_to?: string
-              p_direction?: string
+              p_date_from?: string | null
+              p_date_to?: string | null
+              p_direction?: string | null
               p_match_type?: string
               p_payee_query: string
             }
@@ -3283,15 +3283,15 @@ export type Database = {
       }
       treasury_tx_chip_counts: {
         Args: {
-          p_account_ids?: string[]
-          p_amount_exact?: number
-          p_amount_max?: number
-          p_amount_min?: number
+          p_account_ids?: string[] | null
+          p_amount_exact?: number | null
+          p_amount_max?: number | null
+          p_amount_min?: number | null
           p_client: string
-          p_direction?: string
-          p_from?: string
-          p_q?: string
-          p_to?: string
+          p_direction?: string | null
+          p_from?: string | null
+          p_q?: string | null
+          p_to?: string | null
         }
         Returns: Json
       }
@@ -3488,5 +3488,6 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.116.0 (currently installed v2.102.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+
+/** App alias — lib/temporal/* imports this instead of Database['public']['Enums'][...] */
+export type TemporalObjectKind = Database["public"]["Enums"]["temporal_object_kind"];
