@@ -318,4 +318,97 @@ export const DESCRIBE_WORKFLOW = `Summit Treasury MCP round-trip:
 2. get_transactions / get_monthly_by_category / get_rules — read categorized ledger data (amounts: positive = money in).
 3. Model externally in your Claude session; emit summit.results/v1.
 4. submit_results — lands as pending; confirm in the operator app.
-5. propose_recommendation — draft only, never auto-sent.`;
+5. propose_recommendation — draft only, never auto-sent.
+6. Review document loop (Spec B12): get_review → read envelope aggregates for the draft issue → propose_narrative → lands PROPOSED on draft blocks → operator confirms + publishes.
+7. preview_metric — try a grammar definition without persisting (read-only eval).`;
+
+export async function mcpGetReview(
+  admin: AdminClient,
+  auth: McpAuthContext,
+  clientId: string,
+  reviewId?: string,
+  refresh?: boolean
+) {
+  let q = admin
+    .from("treasury_reviews")
+    .select("*")
+    .eq("tenant_id", auth.tenantId)
+    .eq("client_user_id", clientId)
+    .eq("status", "draft")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (reviewId) {
+    q = admin
+      .from("treasury_reviews")
+      .select("*")
+      .eq("id", reviewId)
+      .eq("tenant_id", auth.tenantId)
+      .eq("client_user_id", clientId);
+  }
+
+  const { data: reviewRow, error } = await q.maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!reviewRow) throw new Error("Draft review not found");
+
+  const { normalizeBlockRow, normalizeReviewRow, computeBlockMetric, suggestedCaptionForBlock } =
+    await import("@/lib/treasury/review-assemble");
+
+  const review = normalizeReviewRow(reviewRow as Record<string, unknown>);
+  const { data: blockRows } = await admin
+    .from("treasury_review_blocks")
+    .select("*")
+    .eq("review_id", review.id)
+    .order("position", { ascending: true });
+
+  const blocks = await Promise.all(
+    (blockRows ?? []).map(async (row) => {
+      const block = normalizeBlockRow(row as Record<string, unknown>);
+      let computed: unknown = block.placed_snapshot;
+      if (refresh && block.metric_id) {
+        const out = await computeBlockMetric(
+          admin,
+          review.tenant_id,
+          review.client_user_id,
+          block
+        );
+        computed = out;
+      }
+      const suggested_caption = await suggestedCaptionForBlock(
+        admin,
+        review.tenant_id,
+        review.client_user_id,
+        block
+      );
+      return {
+        role: block.role,
+        position: block.position,
+        metric_id: block.metric_id,
+        window: block.pinned_window,
+        computed,
+        current_caption: block.caption || block.body,
+        suggested_caption,
+        proposal_state: block.proposal_state,
+      };
+    })
+  );
+
+  const { data: openThreads } = await admin
+    .from("treasury_recommendations")
+    .select("id, title, kind, status, client_response")
+    .eq("client_user_id", clientId)
+    .neq("status", "draft")
+    .eq("kind", "question")
+    .is("client_response", null);
+
+  return {
+    review: {
+      id: review.id,
+      period_month: review.period_month,
+      status: review.status,
+      version: review.current_version,
+    },
+    blocks,
+    open_threads: openThreads ?? [],
+  };
+}

@@ -17,6 +17,9 @@ import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 
 type Props = {
   onUnreadChange?: (count: number) => void;
+  /** When set, only render these recommendation ids (inline under review narrative blocks). */
+  filterIds?: string[];
+  inline?: boolean;
 };
 
 function ClientRecCard({
@@ -98,7 +101,11 @@ function ClientRecCard({
   );
 }
 
-export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
+export function TreasuryClientRecommendations({
+  onUnreadChange,
+  filterIds,
+  inline = false,
+}: Props) {
   const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,10 +143,12 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
     void load();
   }, [load]);
 
-  const visible = useMemo(
-    () => recommendations.filter((r) => r.status !== "draft"),
-    [recommendations]
-  );
+  const visible = useMemo(() => {
+    const base = recommendations.filter((r) => r.status !== "draft");
+    if (!filterIds?.length) return base;
+    const set = new Set(filterIds);
+    return base.filter((r) => set.has(r.id));
+  }, [recommendations, filterIds]);
 
   const needsAnswer = visible.filter(
     (r) => r.kind === "question" && r.status === "sent"
@@ -221,25 +230,27 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
-        <div>
-          <h1 className="rh1">Recommendations</h1>
-          <p className="rh-src">
-            Recommendations from your Summit team, and questions that need your
-            answer.
-          </p>
+      {!inline ? (
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div>
+            <h1 className="rh1">Recommendations</h1>
+            <p className="rh-src">
+              Recommendations from your Summit team, and questions that need your
+              answer.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setAskOpen(true);
+              setError(null);
+            }}
+          >
+            Ask your team
+          </button>
         </div>
-        <button
-          type="button"
-          className="chip"
-          onClick={() => {
-            setAskOpen(true);
-            setError(null);
-          }}
-        >
-          Ask your team
-        </button>
-      </div>
+      ) : null}
 
       {error ? (
         <p className="panel-note mb-4" style={{ color: "var(--su-neg)" }} role="alert">
@@ -248,12 +259,14 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
       ) : null}
 
       {loading ? (
-        <p className="meta">Loading…</p>
+        inline ? null : <p className="meta">Loading…</p>
       ) : visible.length === 0 ? (
+        inline ? null : (
         <p className="meta">
           Nothing here yet. When your Summit team sends a recommendation or a question, it
           will appear here.
         </p>
+        )
       ) : (
         <>
           {needsAnswer.length > 0 ? (

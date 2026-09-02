@@ -33,6 +33,7 @@
     "gate:analytics-client-scope": "npx tsx scripts/gate-analytics-client-scope.ts",
     "gate:analytics-boards-b7": "npx tsx scripts/gate-analytics-boards-b7.ts",
     "gate:onboarding": "npx tsx scripts/gate-onboarding-b10.ts",
+    "gate:review": "npx tsx scripts/gate-review-b12.ts",
     "test:seed:cash-model-demo": "npx tsx scripts/seed-cash-model-demo.ts",
     "test:wipe:bench-import": "node scripts/wipe-bench-import.mjs",
     "treasury:bench-import": "npx tsx scripts/bench-import.ts",

@@ -10,17 +10,12 @@ import { TreasuryConnectionsPanel } from "@/components/operator/treasury/Treasur
 import { TreasuryLedgerPanel } from "@/components/operator/treasury/TreasuryLedgerPanel";
 import { TreasuryOverviewTiles } from "@/components/treasury/TreasuryOverviewTiles";
 import { TreasuryProfilePanel } from "@/components/operator/treasury/TreasuryProfilePanel";
-import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
 import { TreasuryRecordCrumb } from "@/components/operator/treasury/TreasuryRecordCrumb";
 import { TreasuryRecordRailBack } from "@/components/operator/treasury/TreasuryRecordRailBack";
 import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treasury/DraftsRail";
 import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
-import {
-  TreasuryAnalyticsPanel,
-  type AnalyticsView,
-} from "@/components/operator/treasury/TreasuryAnalyticsPanel";
-import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
+import { ReviewTabPanel } from "@/components/operator/treasury/ReviewTabPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
@@ -39,45 +34,34 @@ import type {
 type Tab =
   | "profile"
   | "overview"
-  | "analytics"
-  | "metrics"
+  | "review"
   | "transactions"
   | "rules"
-  | "recommendations"
   | "connections";
 
 const VALID_TABS: Tab[] = [
   "profile",
   "overview",
-  "analytics",
-  "metrics",
+  "review",
   "transactions",
   "rules",
-  "recommendations",
   "connections",
 ];
 
 function parseInitialTab(value: string | undefined): Tab {
-  if (value === "spend-plan" || value === "summary") return "analytics";
+  if (
+    value === "analytics" ||
+    value === "metrics" ||
+    value === "recommendations" ||
+    value === "spend-plan" ||
+    value === "summary"
+  ) {
+    return "review";
+  }
   if (value && (VALID_TABS as string[]).includes(value)) {
     return value as Tab;
   }
   return "overview";
-}
-
-function parseInitialAnalyticsView(
-  tabParam: string | undefined,
-  viewParam: string | undefined
-): AnalyticsView {
-  // Spec 65-R: studies/analyzer → saved; spend-plan tab → spend_plan; forecast → cash_model
-  if (viewParam === "studies" || viewParam === "analyzer" || viewParam === "saved") {
-    return "saved";
-  }
-  if (viewParam === "spend_plan" || viewParam === "spend-plan") return "spend_plan";
-  if (viewParam === "cash_model") return "cash_model";
-  if (viewParam === "forecast") return "cash_model";
-  if (tabParam === "spend-plan") return "spend_plan";
-  return "cash_model";
 }
 
 type Props = {
@@ -148,9 +132,6 @@ export function OperatorTreasuryClientRecord({
   const wordmark = defaultWordmark(SUMMIT_BRAND);
   const [who, setWho] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(() => parseInitialTab(initialTab));
-  const [analyticsView, setAnalyticsView] = useState<AnalyticsView>(() =>
-    parseInitialAnalyticsView(initialTab, initialAnalyticsView)
-  );
   const [focusDraftId, setFocusDraftId] = useState<string | null>(
     () => initialDraftId ?? null
   );
@@ -268,30 +249,9 @@ export function OperatorTreasuryClientRecord({
   }, [router, supabase]);
 
   const switchTab = useCallback(
-    (next: Tab, opts?: { view?: AnalyticsView }) => {
+    (next: Tab) => {
       setTab(next);
-      const view =
-        next === "analytics" ? (opts?.view ?? analyticsView) : analyticsView;
-      if (next === "analytics" && opts?.view) {
-        setAnalyticsView(opts.view);
-      }
       const qs = new URLSearchParams({ tab: next });
-      if (next === "analytics" && view !== "cash_model") {
-        qs.set("view", view);
-      }
-      router.replace(
-        `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
-        { scroll: false }
-      );
-    },
-    [analyticsView, clientUserId, router]
-  );
-
-  const syncAnalyticsView = useCallback(
-    (view: AnalyticsView) => {
-      setAnalyticsView(view);
-      const qs = new URLSearchParams({ tab: "analytics" });
-      if (view !== "cash_model") qs.set("view", view);
       router.replace(
         `/operator/treasury/clients/${clientUserId}?${qs.toString()}`,
         { scroll: false }
@@ -345,31 +305,17 @@ export function OperatorTreasuryClientRecord({
             onClick: () => setTab("rules"),
           },
           {
-            id: "analytics",
-            icon: "money",
-            label: "Analytics",
-            active: tab === "analytics",
-            onClick: () => switchTab("analytics"),
-          },
-          {
-            id: "metrics",
-            icon: "money",
-            label: "Metrics",
-            active: tab === "metrics",
-            onClick: () => setTab("metrics"),
-          },
-          {
-            id: "recommendations",
-            icon: "pen",
-            label: "Recommendations",
-            active: tab === "recommendations",
+            id: "review",
+            icon: "doc",
+            label: "Review",
+            active: tab === "review",
             badge: recUnread,
-            onClick: () => setTab("recommendations"),
+            onClick: () => setTab("review"),
           },
         ],
       },
     ],
-    [clientName, tab, needsLabelCount, recUnread, switchTab]
+    [clientName, tab, needsLabelCount, recUnread]
   );
 
   async function suspendAccess() {
@@ -493,10 +439,9 @@ export function OperatorTreasuryClientRecord({
     }
     if (nav.kind === "study") {
       setFocusStudyId(nav.id);
-      setTab("analytics");
-      setAnalyticsView("saved");
+      setTab("review");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics&view=saved&study=${nav.id}`,
+        `/operator/treasury/clients/${clientUserId}?tab=review&study=${nav.id}`,
         { scroll: false }
       );
       return;
@@ -517,10 +462,9 @@ export function OperatorTreasuryClientRecord({
       if (from && to) {
         setDateRange({ preset: "custom", from, to });
       }
-      setTab("analytics");
-      setAnalyticsView("cash_model");
+      setTab("review");
       router.replace(
-        `/operator/treasury/clients/${clientUserId}?tab=analytics`,
+        `/operator/treasury/clients/${clientUserId}?tab=review`,
         { scroll: false }
       );
     }
@@ -656,33 +600,18 @@ export function OperatorTreasuryClientRecord({
               csvOnly={csvOnly}
               transactionCount={data?.transaction_count ?? 0}
               watchNote={watchNote}
-              onTabSwitch={switchTab}
+              onTabSwitch={(t) => {
+                if (t === "recommendations") setTab("review");
+                else switchTab(t);
+              }}
               onPick={handleOverviewPick}
               rulesRefreshKey={ledgerKey}
             />
           </>
         ) : null}
 
-        {tab === "analytics" ? (
-          <TreasuryAnalyticsPanel
-            clientUserId={clientUserId}
-            demo={demo}
-            hasSyncedData={hasSyncedData}
-            accountsData={data}
-            initialView={analyticsView}
-            initialStudyId={focusStudyId ?? initialStudyId}
-            clientName={clientName}
-            onSelectPeriod={handleSelectPeriod}
-            onPick={sharedPick}
-            onViewChange={syncAnalyticsView}
-          />
-        ) : null}
-
-        {tab === "metrics" ? (
-          <MetricsTab
-            clientUserId={clientUserId}
-            dataThrough={dataThrough}
-          />
+        {tab === "review" ? (
+          <ReviewTabPanel clientUserId={clientUserId} dataThrough={dataThrough} />
         ) : null}
 
         {tab === "transactions" ? (
@@ -724,26 +653,6 @@ export function OperatorTreasuryClientRecord({
           />
         ) : null}
 
-        {tab === "recommendations" ? (
-          <TreasuryRecommendationsPanel
-            clientUserId={clientUserId}
-            clientName={clientName}
-            institutions={data?.institutions ?? []}
-            operatorName={who}
-            onUnreadChange={setRecUnread}
-            onPick={sharedPick}
-            onBasketChanged={bumpBasket}
-            initialDraftId={focusDraftId}
-            onDraftDeepLinkConsumed={() => {
-              setFocusDraftId(null);
-              router.replace(
-                `/operator/treasury/clients/${clientUserId}?tab=recommendations`,
-                { scroll: false }
-              );
-            }}
-          />
-        ) : null}
-
         {tab === "connections" ? (
           <TreasuryConnectionsPanel
             clientUserId={clientUserId}
@@ -767,10 +676,10 @@ export function OperatorTreasuryClientRecord({
         onClearPickNotice={clearNotice}
         onSetPickNotice={setNotice}
         onOpenDraft={(draftId) => {
-          setTab("recommendations");
+          setTab("review");
           setFocusDraftId(draftId);
           router.replace(
-            `/operator/treasury/clients/${clientUserId}?tab=recommendations&draft=${draftId}`,
+            `/operator/treasury/clients/${clientUserId}?tab=review&draft=${draftId}`,
             { scroll: false }
           );
         }}

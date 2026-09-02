@@ -1968,6 +1968,180 @@ export type Database = {
           },
         ]
       }
+      treasury_review_blocks: {
+        Row: {
+          body: string
+          caption: string
+          created_at: string
+          id: string
+          metric_id: string | null
+          pinned_window: Json | null
+          placed_snapshot: Json | null
+          position: number
+          proposal_state: string
+          provenance: Json
+          recommendation_id: string | null
+          review_id: string
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string
+          caption?: string
+          created_at?: string
+          id?: string
+          metric_id?: string | null
+          pinned_window?: Json | null
+          placed_snapshot?: Json | null
+          position: number
+          proposal_state?: string
+          provenance?: Json
+          recommendation_id?: string | null
+          review_id: string
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          caption?: string
+          created_at?: string
+          id?: string
+          metric_id?: string | null
+          pinned_window?: Json | null
+          placed_snapshot?: Json | null
+          position?: number
+          proposal_state?: string
+          provenance?: Json
+          recommendation_id?: string | null
+          review_id?: string
+          role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_review_blocks_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_metrics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_review_blocks_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_recommendations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_review_blocks_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_review_versions: {
+        Row: {
+          change_note: string
+          id: string
+          published_at: string
+          published_by: string | null
+          review_id: string
+          reviewed_as_of: string
+          snapshot: Json
+          superseded_at: string | null
+          version: number
+        }
+        Insert: {
+          change_note?: string
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          review_id: string
+          reviewed_as_of: string
+          snapshot: Json
+          superseded_at?: string | null
+          version: number
+        }
+        Update: {
+          change_note?: string
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          review_id?: string
+          reviewed_as_of?: string
+          snapshot?: Json
+          superseded_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_review_versions_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treasury_reviews: {
+        Row: {
+          client_user_id: string
+          created_at: string
+          created_by: string | null
+          current_version: number
+          id: string
+          label: string
+          period_month: string
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          id?: string
+          label?: string
+          period_month: string
+          status?: string
+          tenant_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          id?: string
+          label?: string
+          period_month?: string
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_reviews_client_user_id_fkey"
+            columns: ["client_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_analytics: {
         Row: {
           client_user_id: string

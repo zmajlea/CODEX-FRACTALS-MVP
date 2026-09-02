@@ -68,3 +68,19 @@ export async function mcpComputeMetric(
     ...(out.kind === "analytics" ? { series: out.series } : {}),
   };
 }
+
+export async function mcpPreviewMetric(
+  admin: Admin,
+  auth: McpAuthContext,
+  clientId: string,
+  definition: Record<string, unknown>
+) {
+  const { previewMetricValue } = await import("@/lib/treasury/metrics-eval");
+  const out = await previewMetricValue(
+    admin,
+    auth.tenantId,
+    clientId,
+    definition
+  );
+  return out;
+}
