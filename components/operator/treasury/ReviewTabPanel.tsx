@@ -59,7 +59,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [status, setStatus] = useState("draft");
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
-  const [shelfOpen, setShelfOpen] = useState(true);
+  const [shelfOpen, setShelfOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
@@ -558,8 +558,17 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       </section>
 
       {/* ── Shelf (right drawer) ────────────────────── */}
+      <button
+        type="button"
+        className="rcx-shelf-mini"
+        onClick={() => setShelfOpen(true)}
+      >
+        The Shelf · {metrics.length}
+      </button>
       {shelfOpen ? (
-        <aside className="rcx-shelf">
+        <>
+          <div className="rcx-shelf-scrim" onClick={() => setShelfOpen(false)} />
+          <aside className="rcx-shelf">
           <div className="sh">
             <span className="st">The Shelf</span>
             <button
@@ -622,16 +631,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               Opens the builder full-width. Never client-visible.
             </p>
           </div>
-        </aside>
-      ) : (
-        <button
-          type="button"
-          className="rcx-shelf-mini"
-          onClick={() => setShelfOpen(true)}
-        >
-          The Shelf · {metrics.length}
-        </button>
-      )}
+          </aside>
+        </>
+      ) : null}
 
       {/* ── Metric builder (slide-over) ─────────────── */}
       {builderOpen ? (
@@ -668,9 +670,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 }
 
 const RCX_CSS = `
-.rcx-stage{display:grid;gap:20px;max-width:1640px;margin:0 auto;padding:2px 2px 48px;align-items:start;grid-template-columns:200px minmax(0,1fr) 300px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--ink)}
-.rcx-stage[data-shelf="collapsed"]{grid-template-columns:200px minmax(0,1fr) 48px}
-@media(max-width:1160px){.rcx-stage,.rcx-stage[data-shelf="collapsed"]{grid-template-columns:1fr}}
+.rcx-stage{display:grid;gap:20px;margin:0;padding:2px 2px 48px;align-items:start;grid-template-columns:196px minmax(0,1fr) 46px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--ink)}
+@media(max-width:820px){.rcx-stage{grid-template-columns:1fr}}
 .rcx-muted{color:var(--mute);font-size:13px}
 .rcx-kick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-bottom:10px}
 /* rail */
@@ -736,7 +737,8 @@ const RCX_CSS = `
 .rcx-addbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px dashed var(--canvas-2);margin-top:22px;padding-top:16px}
 .rcx-addbar .al{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-right:2px}
 /* shelf */
-.rcx-shelf{position:sticky;top:8px;background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:11px;box-shadow:var(--paper-shadow);padding:14px 12px;display:flex;flex-direction:column;max-height:calc(100vh - 40px)}
+.rcx-shelf-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 28%,transparent);z-index:60;animation:rcxfade .18s ease}
+.rcx-shelf{position:fixed;top:0;right:0;bottom:0;width:min(348px,92vw);z-index:61;background:var(--rail,#fff);border-left:1px solid var(--paper-edge);box-shadow:-18px 0 54px rgba(16,42,71,.18);padding:16px 16px;display:flex;flex-direction:column;overflow:auto;animation:rcxslide .2s ease}
 .rcx-shelf .sh{display:flex;align-items:center;justify-content:space-between}
 .rcx-shelf .st{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
 .rcx-slist{overflow:auto;margin:6px -2px;padding:2px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto}
