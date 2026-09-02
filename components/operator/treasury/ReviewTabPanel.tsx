@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
+import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 
 type ReviewItem = {
   id: string;
@@ -23,6 +24,21 @@ type BlockItem = {
   proposal_state: string;
   metric_name?: string | null;
   suggested_caption?: string;
+  placed_snapshot?: {
+    kind?: string;
+    value?: number | null;
+    series?: {
+      points?: {
+        bucket_start: string;
+        bucket_label: string;
+        value: number;
+        partial?: true;
+        breaches?: string[];
+      }[];
+      reference_lines?: { id: string; label: string; value: number; kind: string }[];
+      chart_hint?: string;
+    };
+  } | null;
 };
 
 type Preflight = {
@@ -498,6 +514,33 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     <p className="rcx-note">{block.body}</p>
                   ) : null}
 
+                  {block.role === "exhibit" &&
+                  block.placed_snapshot?.series?.points?.length ? (
+                    <div className="rcx-chart">
+                      <MetricChart
+                        points={block.placed_snapshot.series.points}
+                        referenceLines={
+                          block.placed_snapshot.series.reference_lines ?? []
+                        }
+                        chartHint={
+                          block.placed_snapshot.series.chart_hint === "line"
+                            ? "line"
+                            : "column"
+                        }
+                        height={210}
+                      />
+                    </div>
+                  ) : null}
+                  {block.role === "figure" &&
+                  typeof block.placed_snapshot?.value === "number" ? (
+                    <div className="rcx-figval">
+                      {block.placed_snapshot.value.toLocaleString(undefined, {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      })}
+                    </div>
+                  ) : null}
                   {hasMetric ? (
                     <div className="rcx-caprow">
                       <span className="rcx-caplbl">Caption</span>
@@ -710,6 +753,9 @@ const RCX_CSS = `
 .rcx-cap{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:13.5px;line-height:1.5;color:var(--ink);background:color-mix(in srgb,var(--canvas,#eef3f9) 40%,#fff);resize:vertical;min-height:54px}
 .rcx-cap:focus{outline:none;border-color:var(--brand);background:#fff}
 .rcx-note{font-size:14px;line-height:1.55;white-space:pre-wrap;color:var(--slate)}
+.rcx-chart{margin:6px 0 12px;max-width:660px}
+.rcx-chart svg{max-width:100%;height:auto}
+.rcx-figval{font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin:2px 0 8px}
 /* chips + buttons */
 .rcx-chip{display:inline-flex;align-items:center;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:3px 9px;background:var(--canvas-2);color:var(--slate);border:none}
 .rcx-role{background:var(--brand);color:#fff}
