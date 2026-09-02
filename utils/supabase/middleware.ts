@@ -142,6 +142,13 @@ async function updateSessionInner(request: NextRequest) {
   });
 
   const { pathname } = request.nextUrl;
+
+  // API routes authenticate themselves; skipping getClaims here avoids doubling
+  // Supabase Auth calls (middleware + handler) and hitting rate limits on fan-out.
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
   const isOAuthCallback = PUBLIC_AUTH_PATHS.some((route) =>
     pathname.startsWith(route)
@@ -157,7 +164,12 @@ async function updateSessionInner(request: NextRequest) {
   try {
     const { data, error } = await supabase.auth.getClaims();
     if (error) {
-      console.error("[auth] getClaims failed:", error.message);
+      if (error.message.includes("rate limit")) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        hasSession = Boolean(sessionData.session?.user);
+      } else {
+        console.error("[auth] getClaims failed:", error.message);
+      }
     } else {
       hasSession = Boolean(data?.claims?.sub);
     }
