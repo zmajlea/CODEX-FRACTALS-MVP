@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { canAccessModule } from "@/lib/auth/rbac";
 import { clientUnreadCount } from "@/lib/server/treasury-recommendations";
 import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
+/** Spec B10 — session client + RLS (never admin for client reads). */
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
@@ -20,12 +20,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await supabase
     .from("treasury_recommendations")
     .select("*")
-    .eq("client_user_id", user.id)
-    .neq("status", "draft")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -42,10 +39,9 @@ export async function GET(request: Request) {
     const now = new Date().toISOString();
     const toMark = recommendations.filter((r) => r.status === "sent");
     if (toMark.length > 0) {
-      await admin
+      await supabase
         .from("treasury_recommendations")
         .update({ client_seen_at: now })
-        .eq("client_user_id", user.id)
         .eq("status", "sent")
         .in(
           "id",
@@ -89,12 +85,10 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
   }
 
-  const admin = createSupabaseAdminClient();
   const now = new Date().toISOString();
-  let query = admin
+  let query = supabase
     .from("treasury_recommendations")
     .update({ client_seen_at: now })
-    .eq("client_user_id", user.id)
     .eq("status", "sent");
 
   if (Array.isArray(body.ids) && body.ids.length > 0) {
@@ -107,4 +101,78 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+/** Spec B10 Part F — client raises their own question. */
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const allowed = await canAccessModule(supabase, user.id, "treasury");
+  if (!allowed) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let body: { title?: string; why?: string };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const title = body.title?.trim() ?? "";
+  const why = body.why?.trim() ?? "";
+  if (!title || !why) {
+    return NextResponse.json(
+      { error: "title and why required" },
+      { status: 400 }
+    );
+  }
+
+  const { data: grant } = await supabase
+    .from("client_module_access")
+    .select("distributor_tenant_id")
+    .eq("client_user_id", user.id)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("treasury_recommendations")
+    .insert({
+      client_user_id: user.id,
+      operator_tenant_id: grant?.distributor_tenant_id ?? null,
+      kind: "question",
+      category: "liquidity",
+      title,
+      why,
+      status: "sent",
+      sent_at: now,
+      source: "client",
+      evidence: [] as unknown as import("@/lib/database.types").Json,
+      anchor_type: "general",
+      created_by: user.id,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(
+    {
+      recommendation: normalizeRecommendationRow(
+        data as Record<string, unknown>
+      ),
+    },
+    { status: 201 }
+  );
 }

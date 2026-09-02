@@ -17,6 +17,9 @@ import type { TreasuryRecommendationRow } from "@/lib/treasury/types";
 
 type Props = {
   onUnreadChange?: (count: number) => void;
+  /** When set, only render these recommendation ids (inline under review narrative blocks). */
+  filterIds?: string[];
+  inline?: boolean;
 };
 
 function ClientRecCard({
@@ -98,7 +101,11 @@ function ClientRecCard({
   );
 }
 
-export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
+export function TreasuryClientRecommendations({
+  onUnreadChange,
+  filterIds,
+  inline = false,
+}: Props) {
   const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +113,10 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
   const [declineId, setDeclineId] = useState<string | null>(null);
   const [answerId, setAnswerId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
+  const [answerFile, setAnswerFile] = useState<File | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askTitle, setAskTitle] = useState("");
+  const [askWhy, setAskWhy] = useState("");
   const [declineReason, setDeclineReason] = useState<DeclineReason>(DECLINE_REASONS[0]!);
   const [declineNote, setDeclineNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,10 +143,12 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
     void load();
   }, [load]);
 
-  const visible = useMemo(
-    () => recommendations.filter((r) => r.status !== "draft"),
-    [recommendations]
-  );
+  const visible = useMemo(() => {
+    const base = recommendations.filter((r) => r.status !== "draft");
+    if (!filterIds?.length) return base;
+    const set = new Set(filterIds);
+    return base.filter((r) => set.has(r.id));
+  }, [recommendations, filterIds]);
 
   const needsAnswer = visible.filter(
     (r) => r.kind === "question" && r.status === "sent"
@@ -165,22 +178,79 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
       setBusy(false);
       return false;
     }
+
+    if (action === "answer" && answerFile) {
+      const form = new FormData();
+      form.append("file", answerFile);
+      const up = await fetch(
+        `/api/treasury/recommendations/${recId}/attachments`,
+        { method: "POST", body: form }
+      );
+      if (!up.ok) {
+        const uj = (await up.json().catch(() => ({}))) as { error?: string };
+        setError(uj.error ?? "Answer saved; attachment failed");
+      }
+    }
+
     setAcceptId(null);
     setDeclineId(null);
     setAnswerId(null);
     setAnswerText("");
+    setAnswerFile(null);
     setDeclineNote("");
     setBusy(false);
     void load();
     return true;
   }
 
+  async function raiseQuestion() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/treasury/recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: askTitle.trim(),
+          why: askWhy.trim(),
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Could not send question");
+      setAskOpen(false);
+      setAskTitle("");
+      setAskWhy("");
+      void load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send question");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
-      <h1 className="rh1">Recommendations</h1>
-      <p className="rh-src">
-        Recommendations from your Summit team, and questions that need your answer.
-      </p>
+      {!inline ? (
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div>
+            <h1 className="rh1">Recommendations</h1>
+            <p className="rh-src">
+              Recommendations from your Summit team, and questions that need your
+              answer.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setAskOpen(true);
+              setError(null);
+            }}
+          >
+            Ask your team
+          </button>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="panel-note mb-4" style={{ color: "var(--su-neg)" }} role="alert">
@@ -189,12 +259,14 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
       ) : null}
 
       {loading ? (
-        <p className="meta">Loading…</p>
+        inline ? null : <p className="meta">Loading…</p>
       ) : visible.length === 0 ? (
+        inline ? null : (
         <p className="meta">
           Nothing here yet. When your Summit team sends a recommendation or a question, it
           will appear here.
         </p>
+        )
       ) : (
         <>
           {needsAnswer.length > 0 ? (
@@ -427,6 +499,16 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                 placeholder="Write your answer for your Summit team"
               />
             </label>
+            <label className="rc-f block mb-4">
+              <span>Attachment (optional)</span>
+              <input
+                type="file"
+                className="rec-input"
+                onChange={(e) =>
+                  setAnswerFile(e.target.files?.[0] ?? null)
+                }
+              />
+            </label>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -444,7 +526,74 @@ export function TreasuryClientRecommendations({ onUnreadChange }: Props) {
                 type="button"
                 className="btn btn-secondary"
                 disabled={busy}
-                onClick={() => setAnswerId(null)}
+                onClick={() => {
+                  setAnswerId(null);
+                  setAnswerFile(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {askOpen ? (
+        <div className="tx-drill-overlay" role="presentation">
+          <div
+            className="tx-drill-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rec-ask-title"
+          >
+            <div className="tx-drill-head">
+              <div>
+                <p className="eyebrow">Ask your Summit team</p>
+                <h3 id="rec-ask-title" className="sec-title" style={{ margin: 0 }}>
+                  New question
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary text-xs"
+                onClick={() => setAskOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <label className="rc-f block mb-3">
+              <span>Subject</span>
+              <input
+                className="rec-input"
+                value={askTitle}
+                onChange={(e) => setAskTitle(e.target.value)}
+                placeholder="Short subject"
+              />
+            </label>
+            <label className="rc-f block mb-4">
+              <span>Question</span>
+              <textarea
+                className="rec-input"
+                rows={4}
+                value={askWhy}
+                onChange={(e) => setAskWhy(e.target.value)}
+                placeholder="What do you need clarified?"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn"
+                disabled={busy || !askTitle.trim() || !askWhy.trim()}
+                onClick={() => void raiseQuestion()}
+              >
+                Send question
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setAskOpen(false)}
               >
                 Cancel
               </button>

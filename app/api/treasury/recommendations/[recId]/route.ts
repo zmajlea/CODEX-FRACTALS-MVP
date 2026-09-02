@@ -9,7 +9,6 @@ import {
   type RecommendationStatus,
 } from "@/lib/treasury/recommendation-status";
 import type { Database } from "@/lib/database.types";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = { params: Promise<{ recId: string }> };
@@ -21,6 +20,7 @@ type PatchBody = {
   client_response?: string;
 };
 
+/** Spec B10 — load/update via session RLS; admin only for audit write. */
 export async function PATCH(request: Request, context: RouteContext) {
   const { recId } = await context.params;
   const supabase = await createClient();
@@ -49,12 +49,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Missing action" }, { status: 400 });
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: rec, error: loadErr } = await admin
+  const { data: rec, error: loadErr } = await supabase
     .from("treasury_recommendations")
     .select("*")
     .eq("id", recId)
-    .eq("client_user_id", user.id)
     .maybeSingle();
 
   if (loadErr || !rec) {
@@ -65,7 +63,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const now = new Date().toISOString();
 
   if (action === "mark_seen") {
-    const { data: updated, error } = await admin
+    const { data: updated, error } = await supabase
       .from("treasury_recommendations")
       .update({ client_seen_at: now })
       .eq("id", recId)
@@ -76,7 +74,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json({
-      recommendation: normalizeRecommendationRow(updated as Record<string, unknown>),
+      recommendation: normalizeRecommendationRow(
+        updated as Record<string, unknown>
+      ),
     });
   }
 
@@ -92,7 +92,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  // Recommendations: accept/decline. Questions: answer only.
   if (current.kind === "question") {
     if (action !== "answer") {
       return NextResponse.json(
@@ -107,15 +106,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const update: Database["public"]["Tables"]["treasury_recommendations"]["Update"] = {
-    status: nextStatus,
-    decided_at: now,
-  };
+  const update: Database["public"]["Tables"]["treasury_recommendations"]["Update"] =
+    {
+      status: nextStatus,
+      decided_at: now,
+    };
 
   if (action === "decline") {
     const reason = body.decline_reason?.trim();
     if (!reason || !isDeclineReason(reason)) {
-      return NextResponse.json({ error: "Valid decline reason required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Valid decline reason required" },
+        { status: 400 }
+      );
     }
     update.decline_reason = reason;
     update.decline_note = body.decline_note?.trim() || null;
@@ -124,15 +127,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (action === "answer") {
     const response = body.client_response?.trim() ?? "";
     if (!response) {
-      return NextResponse.json({ error: "An answer is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "An answer is required" },
+        { status: 400 }
+      );
     }
     update.client_response = response;
     update.responded_at = now;
-    // Clear operator_seen so inbox lights up
     update.operator_seen_at = null;
   }
 
-  const { data: updated, error } = await admin
+  const { data: updated, error } = await supabase
     .from("treasury_recommendations")
     .update(update)
     .eq("id", recId)
@@ -143,7 +148,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  await writeTreasuryAudit(admin, {
+  await writeTreasuryAudit(null, {
     actorUserId: user.id,
     eventType:
       action === "accept"
@@ -158,13 +163,18 @@ export async function PATCH(request: Request, context: RouteContext) {
       from: current.status,
       to: nextStatus as RecommendationStatus,
       ...(action === "decline"
-        ? { decline_reason: update.decline_reason, decline_note: update.decline_note }
+        ? {
+            decline_reason: update.decline_reason,
+            decline_note: update.decline_note,
+          }
         : {}),
       ...(action === "answer" ? { responded_at: now } : {}),
     },
   });
 
   return NextResponse.json({
-    recommendation: normalizeRecommendationRow(updated as Record<string, unknown>),
+    recommendation: normalizeRecommendationRow(
+      updated as Record<string, unknown>
+    ),
   });
 }

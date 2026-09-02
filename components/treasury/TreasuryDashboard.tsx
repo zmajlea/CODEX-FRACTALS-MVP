@@ -6,11 +6,12 @@ import type { TreasuryAccountsResponse } from "@/lib/treasury/types";
 import { TreasuryClientCashHero } from "@/components/treasury/TreasuryClientCashHero";
 import { TreasuryClientCashTrend } from "@/components/treasury/TreasuryClientCashTrend";
 import { TreasuryClientConnections } from "@/components/treasury/TreasuryClientConnections";
+import { TreasuryClientDocuments } from "@/components/treasury/TreasuryClientDocuments";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
 import { TreasuryClientTreasurerStrip } from "@/components/treasury/TreasuryClientTreasurerStrip";
-import { ClientAnalyticsBoards } from "@/components/treasury/ClientAnalyticsBoards";
+import { ClientReviewView } from "@/components/treasury/ClientReviewView";
 
-type View = "overview" | "analytics" | "recommendations" | "connections";
+type View = "overview" | "review" | "recommendations" | "documents" | "connections";
 
 export function TreasuryDashboard() {
   const { grants, activeGrantId } = useClientGrants();
@@ -50,8 +51,9 @@ export function TreasuryDashboard() {
 
   const tabs: { id: View; label: string; badge?: number }[] = [
     { id: "overview", label: "Overview" },
-    { id: "analytics", label: "Analytics" },
+    { id: "review", label: "Review" },
     { id: "recommendations", label: "Recommendations", badge: recUnread },
+    { id: "documents", label: "Documents" },
     { id: "connections", label: "Connections" },
   ];
 
@@ -109,13 +111,13 @@ export function TreasuryDashboard() {
       </section>
 
       <section
-        className={`tabpanel${view === "analytics" ? " on" : ""}`}
-        id="p-analytics"
+        className={`tabpanel${view === "review" ? " on" : ""}`}
+        id="p-review"
         role="tabpanel"
-        aria-labelledby="t-analytics"
-        hidden={view !== "analytics"}
+        aria-labelledby="t-review"
+        hidden={view !== "review"}
       >
-        <ClientAnalyticsBoards />
+        <ClientReviewView tenantName={tenantName} />
       </section>
 
       <section
@@ -126,6 +128,18 @@ export function TreasuryDashboard() {
         hidden={view !== "recommendations"}
       >
         <TreasuryClientRecommendations onUnreadChange={setRecUnread} />
+      </section>
+
+      <section
+        className={`tabpanel${view === "documents" ? " on" : ""}`}
+        id="p-documents"
+        role="tabpanel"
+        aria-labelledby="t-documents"
+        hidden={view !== "documents"}
+      >
+        <h2 className="rh1">Documents</h2>
+        <p className="rh-src">Boards and reports your Summit team shared with you.</p>
+        <TreasuryClientDocuments />
       </section>
 
       <section

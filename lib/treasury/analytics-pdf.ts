@@ -14,7 +14,7 @@ function formatValue(v: number | undefined | null): string {
 }
 
 /** Inline SVG column/line chart from envelope points (same numbers as MetricChart). */
-function chartSvg(series: {
+export function chartSvg(series: {
   points: Array<{ bucket_label: string; value: number; breaches?: string[] }>;
   reference_lines?: Array<{ label: string; value: number }>;
   chart_hint?: string;

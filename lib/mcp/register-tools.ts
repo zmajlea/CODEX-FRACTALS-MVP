@@ -9,15 +9,17 @@ import {
   mcpGetClient,
   mcpGetMonthlyByCategory,
   mcpGetRecommendations,
+  mcpGetReview,
   mcpGetRules,
   mcpGetTransactions,
   mcpListClients,
 } from "@/lib/mcp/read-tools";
-import { mcpProposeRecommendation, mcpProposeRule, mcpSubmitResults, mcpDefineMetric } from "@/lib/mcp/write-tools";
+import { mcpProposeRecommendation, mcpProposeRule, mcpSubmitResults, mcpDefineMetric, mcpProposeNarrative } from "@/lib/mcp/write-tools";
 import {
   mcpComputeMetric,
   mcpGetMetric,
   mcpListMetrics,
+  mcpPreviewMetric,
 } from "@/lib/mcp/metric-tools";
 import {
   authContextFromInfo,
@@ -547,6 +549,107 @@ export function registerMcpTools(server: McpServer) {
           description: description ?? "",
           definition,
           clientId: client_id,
+        })
+      );
+    }
+  );
+
+  server.registerTool(
+    "get_review",
+    {
+      title: "Get review",
+      description:
+        "Read draft review blocks with envelope aggregates and suggested captions (Spec B12).",
+      inputSchema: clientIdSchema.extend({
+        review_id: z.string().uuid().optional(),
+        refresh: z.boolean().optional(),
+      }),
+    },
+    async ({ client_id, review_id, refresh }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      const denied = await requireClient(ctx, client_id);
+      if ("isError" in denied) return denied;
+      return withTool(ctx, "get_review", client_id, () =>
+        mcpGetReview(ctx.admin, ctx.auth, client_id, review_id, refresh)
+      );
+    }
+  );
+
+  server.registerTool(
+    "preview_metric",
+    {
+      title: "Preview metric",
+      description: "Evaluate a metric grammar without persisting (read-only).",
+      inputSchema: clientIdSchema.extend({
+        definition: z.record(z.string(), z.unknown()),
+      }),
+    },
+    async ({ client_id, definition }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      const denied = await requireClient(ctx, client_id);
+      if ("isError" in denied) return denied;
+      return withTool(ctx, "preview_metric", client_id, () =>
+        mcpPreviewMetric(ctx.admin, ctx.auth, client_id, definition)
+      );
+    }
+  );
+
+  server.registerTool(
+    "propose_narrative",
+    {
+      title: "Propose narrative",
+      description:
+        "Attach PROPOSED caption/note/narrative to a draft review (Spec B12).",
+      inputSchema: clientIdSchema.extend({
+        review_id: z.string().uuid(),
+        target: z.object({
+          kind: z.enum(["exhibit_caption", "figure_caption", "note", "narrative"]),
+          metric_id: z.string().uuid().optional(),
+          position: z.number().int().optional(),
+        }),
+        text: z.string().min(1),
+        title: z.string().optional(),
+        rec_kind: z.enum(["recommendation", "question"]).optional(),
+      }),
+    },
+    async ({ client_id, review_id, target, text, title, rec_kind }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:write");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      const denied = await requireClient(ctx, client_id);
+      if ("isError" in denied) return denied;
+      return withTool(ctx, "propose_narrative", client_id, () =>
+        mcpProposeNarrative(ctx.admin, ctx.auth, client_id, {
+          review_id,
+          target,
+          text,
+          title,
+          rec_kind,
         })
       );
     }

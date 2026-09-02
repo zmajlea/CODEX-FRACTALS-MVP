@@ -232,3 +232,103 @@ export async function mcpDefineMetric(
     source: "mcp",
   });
 }
+
+export async function mcpProposeNarrative(
+  admin: AdminClient,
+  auth: McpAuthContext,
+  clientId: string,
+  args: {
+    review_id: string;
+    target: {
+      kind: "exhibit_caption" | "figure_caption" | "note" | "narrative";
+      metric_id?: string;
+      position?: number;
+    };
+    text: string;
+    title?: string;
+    rec_kind?: "recommendation" | "question";
+  }
+) {
+  const { scanEnvelope } = await import("@/lib/treasury/envelope-scan");
+  const violations = scanEnvelope(args.text);
+  if (violations.length) {
+    throw new Error(`Envelope violation: ${violations[0]!.message}`);
+  }
+
+  const { data: review } = await admin
+    .from("treasury_reviews")
+    .select("id, status")
+    .eq("id", args.review_id)
+    .eq("tenant_id", auth.tenantId)
+    .eq("client_user_id", clientId)
+    .eq("status", "draft")
+    .maybeSingle();
+
+  if (!review) throw new Error("Draft review not found");
+
+  const kind = args.target.kind;
+
+  if (kind === "narrative") {
+    const rec = await mcpProposeRecommendation(admin, auth, clientId, {
+      kind: args.rec_kind ?? "recommendation",
+      title: args.title ?? "Narrative",
+      body: args.text,
+    });
+    const { data: maxPos } = await admin
+      .from("treasury_review_blocks")
+      .select("position")
+      .eq("review_id", args.review_id)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const position = (maxPos?.position ?? 0) + 1;
+    const { data: block, error } = await admin
+      .from("treasury_review_blocks")
+      .insert({
+        review_id: args.review_id,
+        position,
+        role: "narrative",
+        recommendation_id: rec.id,
+        proposal_state: "proposed",
+        provenance: { author: "assistant", source: "mcp" },
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      block_id: block.id,
+      message:
+        "Pending operator confirmation — not client-visible until you confirm and publish.",
+    };
+  }
+
+  let q = admin
+    .from("treasury_review_blocks")
+    .select("id")
+    .eq("review_id", args.review_id);
+
+  if (args.target.metric_id) q = q.eq("metric_id", args.target.metric_id);
+  if (args.target.position != null) q = q.eq("position", args.target.position);
+
+  const { data: block, error: findErr } = await q.maybeSingle();
+  if (findErr || !block) throw new Error("Target block not found");
+
+  const update =
+    kind === "note"
+      ? { body: args.text, proposal_state: "proposed", provenance: { author: "assistant", source: "mcp" } }
+      : { caption: args.text, proposal_state: "proposed", provenance: { author: "assistant", source: "mcp" } };
+
+  const { data: updated, error } = await admin
+    .from("treasury_review_blocks")
+    .update(update)
+    .eq("id", block.id)
+    .select("id")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return {
+    block_id: updated.id,
+    message:
+      "Pending operator confirmation — not client-visible until you confirm and publish.",
+  };
+}

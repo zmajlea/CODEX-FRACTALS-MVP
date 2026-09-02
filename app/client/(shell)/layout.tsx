@@ -34,12 +34,49 @@ export default async function ClientShellLayout({
   const { data: grants } = await supabase
     .from("client_module_access")
     .select(
-      "id, module_id, distributor_tenant_id, vault_id, modules(slug, name, route_base), tenants(name, branding, brand_color_hex)"
+      "id, module_id, distributor_tenant_id, vault_id, status, modules(slug, name, route_base), tenants(name, branding, brand_color_hex)"
     )
     .eq("client_user_id", user.id)
     .eq("status", "active");
 
   const grantList = grants ?? [];
+
+  // Spec B10 — suspended/revoked: no active grant → blocked shell (RLS also denies).
+  if (grantList.length === 0) {
+    const { data: blocked } = await supabase
+      .from("client_module_access")
+      .select("id, status, modules(slug), tenants(name)")
+      .eq("client_user_id", user.id)
+      .in("status", ["suspended", "revoked"])
+      .limit(5);
+
+    const treasuryBlocked = (blocked ?? []).find((g) => {
+      const mod = g.modules as { slug?: string } | null;
+      return mod?.slug === "treasury";
+    });
+
+    if (treasuryBlocked) {
+      const tenant = treasuryBlocked.tenants as { name?: string } | null;
+      const status = treasuryBlocked.status;
+      return (
+        <div className="client-wrap p-8 max-w-lg mx-auto">
+          <p className="eyebrow">Access</p>
+          <h1 className="sec-title">
+            {status === "suspended" ? "Access paused" : "Access ended"}
+          </h1>
+          <p className="treasury-meta mt-2">
+            {status === "suspended"
+              ? `Your Summit Treasury access with ${tenant?.name ?? "your advisor"} is paused. Contact them if you need it restored.`
+              : `Your Summit Treasury access with ${tenant?.name ?? "your advisor"} has ended.`}
+          </p>
+        </div>
+      );
+    }
+
+    if (tier !== "client" && tier !== "global_admin") {
+      redirect(`${CLIENT_LOGIN}?next=/client`);
+    }
+  }
 
   if (
     tier !== "client" &&

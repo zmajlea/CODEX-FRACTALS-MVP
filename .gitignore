@@ -68,3 +68,4 @@ service-account*.json
 
 # Misc
 .turbo
+.env*
