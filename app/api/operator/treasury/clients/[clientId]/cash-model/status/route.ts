@@ -20,6 +20,8 @@ export async function GET(_request: Request, context: RouteContext) {
     .eq("client_user_id", clientId)
     .eq("type", "cash_model")
     .eq("is_primary", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {

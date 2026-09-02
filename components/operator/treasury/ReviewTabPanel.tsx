@@ -258,7 +258,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               <p className="treasury-meta text-xs">
                 {preflight
                   ? `Proposed ${preflight.proposed_count} · Stale ${preflight.stale_count} · Envelope ${preflight.envelope_violations.length}`
-                  : "Loading preflight…"}
+                  : activeId
+                    ? "Loading preflight…"
+                    : "No draft issue — create or select one below"}
               </p>
             </div>
             <button
