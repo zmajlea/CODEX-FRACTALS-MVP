@@ -14,6 +14,11 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import type { Database, Json } from "../lib/database.types";
 import { scanEnvelope, scanEnvelopeFields } from "../lib/treasury/envelope-scan";
+import { previewMetricValue } from "../lib/treasury/metrics-eval";
+import {
+  resolveModuleThemeFromRpcPayload,
+  type ClientModuleBrandingPayload,
+} from "../lib/branding/resolve-theme";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -23,6 +28,9 @@ const MIGRATION = join(
   "supabase/migrations/20260825120000_review_document_b12.sql"
 );
 const MCP_PASSWORD = "mcp_gate_2026!";
+const R1_GATE_PASSWORD = "r1_gate_2026!";
+const R1_CLIENT1_EMAIL = "r1_gate_client_1@codexone.test";
+const R1_OPERATOR_EMAIL = "r1_gate_operator@codexone.test";
 
 type OperatorToken = {
   email: string;
@@ -131,7 +139,10 @@ function sessionClient(accessToken: string) {
   });
 }
 
-async function passwordLogin(email: string): Promise<string> {
+async function passwordLogin(
+  email: string,
+  password = MCP_PASSWORD
+): Promise<string> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -143,12 +154,62 @@ async function passwordLogin(email: string): Promise<string> {
   });
   const { data, error } = await sb.auth.signInWithPassword({
     email,
-    password: MCP_PASSWORD,
+    password,
   });
   if (error || !data.session) {
     throw new Error(`login ${email}: ${error?.message ?? "no session"}`);
   }
   return data.session.access_token;
+}
+
+async function resolveUserId(
+  admin: ReturnType<typeof adminClient>,
+  email: string
+): Promise<string> {
+  const { data, error } = await admin
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (error || !data) throw new Error(`user ${email}: ${error?.message ?? "missing"}`);
+  return data.id;
+}
+
+type SnapshotBlock = {
+  role?: string;
+  name?: string;
+  caption?: string;
+  computed?: {
+    kind?: string;
+    series?: { points?: unknown[] };
+    value?: number;
+  } | null;
+};
+
+function snapshotBlocksHaveSeries(snapshot: unknown): {
+  ok: boolean;
+  named: number;
+  withSeries: number;
+  total: number;
+} {
+  const blocks =
+    (snapshot as { blocks?: SnapshotBlock[] } | null)?.blocks?.filter(
+      (b) => b.role === "exhibit" || b.role === "figure"
+    ) ?? [];
+  let named = 0;
+  let withSeries = 0;
+  for (const b of blocks) {
+    const label = (b.name ?? b.caption ?? "").trim();
+    if (label && label !== "Metric") named += 1;
+    const pts = b.computed?.series?.points?.length ?? 0;
+    if (pts > 0) withSeries += 1;
+  }
+  return {
+    ok: blocks.length > 0 && named === blocks.length && withSeries > 0,
+    named,
+    withSeries,
+    total: blocks.length,
+  };
 }
 
 function walkFiles(dir: string, acc: string[] = []): string[] {
@@ -706,7 +767,209 @@ async function main() {
     await admin.from("treasury_reviews").delete().eq("id", reviewId);
   }
 
-  log("ALL 12/12 LIVE CHECKS PASSED");
+  log("B13 extension checks…");
+
+  const r1ClientId = await resolveUserId(admin, R1_CLIENT1_EMAIL);
+  const r1ClientToken = await passwordLogin(R1_CLIENT1_EMAIL, R1_GATE_PASSWORD);
+  const r1ClientSb = sessionClient(r1ClientToken);
+  const r1OperatorToken = await passwordLogin(R1_OPERATOR_EMAIL, R1_GATE_PASSWORD);
+  const r1OperatorSb = sessionClient(r1OperatorToken);
+
+  const { data: r1Grant } = await admin
+    .from("client_module_access")
+    .select("id, distributor_tenant_id, tenants(name)")
+    .eq("client_user_id", r1ClientId)
+    .limit(1)
+    .maybeSingle();
+  const r1TenantId = r1Grant?.distributor_tenant_id;
+  const r1TenantName =
+    (r1Grant?.tenants as { name?: string } | null)?.name ?? "R1 Gate";
+
+  // 13 — duplicate period returns existing; fresh period publishes
+  {
+    const dupPeriod = "2026-05-01";
+    const dupLabel = `gate-b13-dup-${stamp}`;
+    let dupReviewId: string | null = null;
+    try {
+      const { data: created, error: insErr } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: tim.tenantId,
+          client_user_id: clientA.id,
+          period_month: dupPeriod,
+          label: dupLabel,
+          title: "B13 dup gate",
+          status: "draft",
+          created_by: tim.operatorId,
+        })
+        .select("id")
+        .single();
+      if (insErr || !created) {
+        record(13, "duplicate period guard + publish", false, insErr?.message ?? "seed failed");
+      } else {
+        dupReviewId = created.id;
+        await admin.from("treasury_review_blocks").insert({
+          review_id: dupReviewId,
+          position: 1,
+          role: "note",
+          caption: "Ready to publish.",
+          body: "",
+          proposal_state: "confirmed",
+        });
+
+        const { data: collision } = await admin
+          .from("treasury_reviews")
+          .select("id")
+          .eq("tenant_id", tim.tenantId)
+          .eq("client_user_id", clientA.id)
+          .eq("period_month", dupPeriod)
+          .eq("label", dupLabel)
+          .maybeSingle();
+
+        const { error: dupErr } = await admin.from("treasury_reviews").insert({
+          tenant_id: tim.tenantId,
+          client_user_id: clientA.id,
+          period_month: dupPeriod,
+          label: dupLabel,
+          title: "B13 dup collision",
+          status: "draft",
+          created_by: tim.operatorId,
+        });
+
+        const pub = await publishReview(admin, dupReviewId, tim.operatorId);
+        record(
+          13,
+          "duplicate period guard + fresh publish",
+          Boolean(collision?.id) &&
+            Boolean(dupErr?.message?.includes("duplicate") || dupErr?.code === "23505") &&
+            pub.ok &&
+            pub.version === 1,
+          `collision=${Boolean(collision?.id)} dup=${dupErr?.code ?? "ok"} pub=v${pub.ok ? pub.version : "?"}`
+        );
+      }
+    } finally {
+      if (dupReviewId) {
+        await admin.from("treasury_reviews").delete().eq("id", dupReviewId);
+      }
+    }
+  }
+
+  // 14 — migrated + client session reads named exhibits with series
+  {
+    const { data: migrated } = await admin
+      .from("treasury_reviews")
+      .select("id, title")
+      .eq("client_user_id", r1ClientId)
+      .eq("status", "published")
+      .ilike("title", "%Test Analytics%")
+      .maybeSingle();
+
+    let migratedOk = false;
+    let migratedDetail = "no migrated review";
+    if (migrated) {
+      const { data: ver, error: verErr } = await r1ClientSb
+        .from("treasury_review_versions")
+        .select("snapshot")
+        .eq("review_id", migrated.id)
+        .is("superseded_at", null)
+        .maybeSingle();
+      const check = snapshotBlocksHaveSeries(ver?.snapshot);
+      migratedOk = !verErr && check.ok;
+      migratedDetail = migratedOk
+        ? `migrated blocks=${check.total} named=${check.named} series=${check.withSeries}`
+        : verErr?.message ?? `blocks=${check.total} named=${check.named} series=${check.withSeries}`;
+    }
+
+    record(
+      14,
+      "migrated review client render (named + series)",
+      migratedOk,
+      migratedDetail
+    );
+  }
+
+  // 15 — trailing value reduction bounded (not all-time)
+  {
+    if (!r1TenantId) {
+      record(15, "trailing value preview", false, "missing r1 tenant");
+    } else {
+      const trailingDef = {
+        of: "monthly_totals",
+        op: "sum",
+        source: { type: "category", key: "Tax", direction: "out" },
+        window: { kind: "trailing", months: 12 },
+      };
+      const allDef = {
+        ...trailingDef,
+        window: { kind: "all" },
+      };
+      const trailing = await previewMetricValue(
+        admin,
+        r1TenantId,
+        r1ClientId,
+        trailingDef
+      );
+      const allTime = await previewMetricValue(admin, r1TenantId, r1ClientId, allDef);
+      const trailVal =
+        trailing.ok && trailing.kind === "value" ? trailing.value : null;
+      const allVal = allTime.ok && allTime.kind === "value" ? allTime.value : null;
+      const bounded =
+        trailVal != null &&
+        allVal != null &&
+        trailVal < allVal * 0.75 &&
+        trailVal > 15_000 &&
+        trailVal < 40_000;
+      record(
+        15,
+        "trailing value preview (monthly_totals)",
+        bounded,
+        `trailing=${trailVal?.toFixed(2) ?? "?"} all=${allVal?.toFixed(2) ?? "?"}`
+      );
+    }
+  }
+
+  // 16 — client branding uses wordmark, not raw tenant codename
+  {
+    let brandOk = false;
+    let brandDetail = "missing grant";
+    if (r1Grant?.id) {
+      const { data: brandingPayload, error: brandErr } = await r1ClientSb.rpc(
+        "get_client_module_branding",
+        { p_grant_id: r1Grant.id }
+      );
+      if (!brandErr && brandingPayload) {
+        const theme = resolveModuleThemeFromRpcPayload(
+          brandingPayload as ClientModuleBrandingPayload
+        );
+        const wm = (theme.wordmark ?? "").trim();
+        const leaksCodename = /r1\s*gate/i.test(wm);
+        brandOk = Boolean(wm) && !leaksCodename && wm !== r1TenantName;
+        brandDetail = `wordmark="${wm}" tenant="${r1TenantName}"`;
+      } else {
+        brandDetail = brandErr?.message ?? "branding rpc failed";
+      }
+    }
+    record(16, "client wordmark not tenant codename", brandOk, brandDetail);
+  }
+
+  // 17 — operator login lands on treasury portfolio
+  {
+    const { data: routeData, error: routeErr } = await r1OperatorSb.rpc(
+      "get_ff_login_route"
+    );
+    const route =
+      routeData && typeof routeData === "object" && "route" in routeData
+        ? String((routeData as { route: string }).route)
+        : "";
+    record(
+      17,
+      "operator default login route",
+      !routeErr && route === "/operator/treasury",
+      routeErr?.message ?? `route=${route}`
+    );
+  }
+
+  log("ALL 17/17 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

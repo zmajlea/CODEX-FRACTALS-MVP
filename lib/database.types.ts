@@ -2853,6 +2853,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      backfill_migrated_review_snapshot: {
+        Args: { p_snapshot: Json; p_version_id: string }
+        Returns: undefined
+      }
       claim_bootstrap_global_admin: { Args: never; Returns: boolean }
       claim_demo_tenant_admin: { Args: never; Returns: boolean }
       create_distributor_tenant: {
