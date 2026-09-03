@@ -67,7 +67,7 @@ export function ReviewDraftsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim() || (kind === "question" ? "Question" : "Recommendation"),
-          why: why.trim() || " ",
+          why: why.trim(),
           category: "liquidity",
           kind,
           send: false,

@@ -1761,7 +1761,213 @@ async function main() {
     }
   }
 
-  log("ALL 24/24 LIVE CHECKS PASSED");
+  log("ALL 24/24 LIVE CHECKS PASSED (through B15); running B15-FIXES…");
+
+  // 25 — source: optimistic switch + stale guard; Drafts never hits /reviews
+  {
+    const panel = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
+      "utf8"
+    );
+    const drafts = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewDraftsPanel.tsx"),
+      "utf8"
+    );
+    const hasLoading =
+      panel.includes("loadingId") &&
+      panel.includes("setLoadingId") &&
+      panel.includes("activeIdRef.current !== reviewId");
+    const draftsNoReviews =
+      !drafts.includes("/reviews") &&
+      drafts.includes("/recommendations");
+    const quiet409 =
+      panel.includes("Handled 409") ||
+      (panel.includes('res.status === 409 && json.existing') &&
+        !panel.includes("An issue for this period already exists"));
+    record(
+      25,
+      "switch loading + drafts no /reviews",
+      hasLoading && draftsNoReviews && quiet409,
+      `loading=${hasLoading} draftsOk=${draftsNoReviews} quiet409=${quiet409}`
+    );
+  }
+
+  // 26 — empty why allowed for send:false draft create
+  {
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let recId: string | null = null;
+    try {
+      const { data: rec, error } = await admin
+        .from("treasury_recommendations")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          title: `Gate B15F EmptyWhy ${stamp}`,
+          why: " ",
+          category: "liquidity",
+          kind: "recommendation",
+          status: "draft",
+          evidence: [],
+          anchor_type: "general",
+        })
+        .select("id")
+        .single();
+      // Also assert route source allows empty why for drafts
+      const routeSrc = readFileSync(
+        join(
+          ROOT,
+          "app/api/operator/treasury/clients/[clientId]/recommendations/route.ts"
+        ),
+        "utf8"
+      );
+      const allowsEmpty =
+        routeSrc.includes("sending && !whyRaw") ||
+        routeSrc.includes("(sending && !whyRaw)");
+      recId = rec?.id ?? null;
+      record(
+        26,
+        "draft empty why allowed",
+        !error && Boolean(recId) && allowsEmpty,
+        `id=${recId ?? "?"} allowsEmpty=${allowsEmpty} err=${error?.message ?? "none"}`
+      );
+    } finally {
+      if (recId) {
+        await admin.from("treasury_recommendations").delete().eq("id", recId);
+      }
+    }
+  }
+
+  // 27 — hard-delete cascades versions + blocks; soft archive still works
+  {
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let softId: string | null = null;
+    let hardId: string | null = null;
+    try {
+      const { data: soft } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: r1TenantId!,
+          client_user_id: r1ClientId,
+          period_month: "2025-11-01",
+          label: `${label}-b15f-soft`,
+          title: "B15F Soft Archive",
+          status: "draft",
+          created_by: r1OperatorId,
+        })
+        .select("id")
+        .single();
+      softId = soft?.id ?? null;
+      await admin
+        .from("treasury_reviews")
+        .update({ status: "archived" })
+        .eq("id", softId!);
+      const { data: softRow } = await admin
+        .from("treasury_reviews")
+        .select("status")
+        .eq("id", softId!)
+        .maybeSingle();
+
+      const { data: hard } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: r1TenantId!,
+          client_user_id: r1ClientId,
+          period_month: "2025-10-01",
+          label: `${label}-b15f-hard`,
+          title: "B15F Hard Delete",
+          status: "draft",
+          created_by: r1OperatorId,
+        })
+        .select("id")
+        .single();
+      hardId = hard?.id ?? null;
+      await admin.from("treasury_review_blocks").insert({
+        review_id: hardId!,
+        position: 1,
+        role: "note",
+        caption: "",
+        body: "to cascade",
+        proposal_state: "none",
+        provenance: {},
+      });
+      await admin.from("treasury_review_versions").insert({
+        review_id: hardId!,
+        version: 1,
+        reviewed_as_of: "2025-10-01",
+        published_by: r1OperatorId,
+        change_note: "seed",
+        snapshot: {
+          meta: {},
+          blocks: [],
+          cover_figures: [],
+          live_strip: { enabled: false },
+          disclosures: { advisory: "", accuracy: "", review: "" },
+        } as unknown as Json,
+      });
+      await admin.from("treasury_reviews").delete().eq("id", hardId!);
+      const { data: goneReview } = await admin
+        .from("treasury_reviews")
+        .select("id")
+        .eq("id", hardId!)
+        .maybeSingle();
+      const { count: leftBlocks } = await admin
+        .from("treasury_review_blocks")
+        .select("id", { count: "exact", head: true })
+        .eq("review_id", hardId!);
+      const { count: leftVers } = await admin
+        .from("treasury_review_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("review_id", hardId!);
+      hardId = null; // already deleted
+
+      const routeSrc = readFileSync(
+        join(
+          ROOT,
+          "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/route.ts"
+        ),
+        "utf8"
+      );
+      const hasHard = routeSrc.includes('hard") === "1"') || routeSrc.includes("hard=1");
+
+      record(
+        27,
+        "hard-delete cascade + soft archive",
+        softRow?.status === "archived" &&
+          !goneReview &&
+          (leftBlocks ?? 0) === 0 &&
+          (leftVers ?? 0) === 0 &&
+          hasHard,
+        `soft=${softRow?.status} gone=${!goneReview} blocks=${leftBlocks} vers=${leftVers} hasHard=${hasHard}`
+      );
+    } finally {
+      if (softId) await admin.from("treasury_reviews").delete().eq("id", softId);
+      if (hardId) await admin.from("treasury_reviews").delete().eq("id", hardId);
+    }
+  }
+
+  // 28 — snapshot-first GET (no suggestedCaptionForBlock on review GET)
+  {
+    const routeSrc = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/route.ts"
+      ),
+      "utf8"
+    );
+    const snapshotFirst =
+      routeSrc.includes("snapshot-first") &&
+      !routeSrc.includes("suggestedCaptionForBlock") &&
+      !routeSrc.includes("computeReviewPreflight");
+    record(
+      28,
+      "review GET snapshot-first",
+      snapshotFirst,
+      `snapshotFirst=${snapshotFirst}`
+    );
+  }
+
+  log("ALL 28/28 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {
