@@ -32,6 +32,7 @@ type PatchBody = {
   title?: string;
   category?: string;
   why?: string;
+  kind?: "recommendation" | "question";
   impact_amount?: number | null;
   impact_unit?: string | null;
   impact_basis?: string | null;
@@ -281,6 +282,9 @@ export async function PATCH(request: Request, context: RouteContext) {
         update.impact_basis = body.impact_basis
           ? (body.impact_basis as "per_month" | "per_year" | "one_time")
           : null;
+      }
+      if (body.kind === "recommendation" || body.kind === "question") {
+        update.kind = body.kind;
       }
     }
 

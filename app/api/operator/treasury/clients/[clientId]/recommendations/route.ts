@@ -56,6 +56,7 @@ type PostBody = {
   title?: string;
   category?: string;
   why?: string;
+  kind?: "recommendation" | "question";
   impact_amount?: number | null;
   impact_unit?: string | null;
   impact_basis?: string | null;
@@ -78,10 +79,12 @@ export async function POST(request: Request, context: RouteContext) {
 
   const title = body.title?.trim();
   const category = body.category?.trim();
-  const why = body.why?.trim();
+  const whyRaw = body.why?.trim() ?? "";
   const anchorType = body.anchor_type ?? "general";
+  const sending = body.send === true;
 
-  if (!title || !category || !why) {
+  // Spec B15-FIXES: drafts may be empty until send; require why only when sealing.
+  if (!title || !category || (sending && !whyRaw)) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
   if (!isRecommendationCategory(category)) {
@@ -107,7 +110,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const now = new Date().toISOString();
-  const sending = body.send === true;
+  const why = whyRaw || " ";
 
   const insert: Database["public"]["Tables"]["treasury_recommendations"]["Insert"] = {
     client_user_id: clientId,
@@ -116,6 +119,7 @@ export async function POST(request: Request, context: RouteContext) {
     title,
     category,
     why,
+    kind: body.kind === "question" ? "question" : "recommendation",
     impact_amount: body.impact_amount ?? null,
     impact_unit: body.impact_unit?.trim() || null,
     impact_basis: body.impact_basis ? (body.impact_basis as "per_month" | "per_year" | "one_time") : null,

@@ -3,7 +3,13 @@ import { z } from "zod";
 const OPS = ["avg", "sum", "stddev", "min", "max", "yoy", "pct_of", "count"] as const;
 const SOURCE_TYPES = ["bucket", "category", "account", "metric"] as const;
 const DIRECTIONS = ["in", "out", "any"] as const;
-const WINDOW_KINDS = ["trailing", "calendar_year", "ytd", "all"] as const;
+const WINDOW_KINDS = [
+  "trailing",
+  "calendar_year",
+  "ytd",
+  "all",
+  "range",
+] as const;
 const OF_KINDS = ["monthly_totals", "series_totals", "series_compare"] as const;
 const SUBDIVISIONS = ["day", "week", "month", "quarter", "year"] as const;
 const BUCKET_OPS = ["sum", "count", "avg", "min", "max"] as const;
@@ -41,10 +47,30 @@ const metricSourceSchema = z
     }
   });
 
-const windowSchema = z.object({
-  kind: z.enum(WINDOW_KINDS),
-  months: z.number().int().positive().optional(),
-});
+const windowSchema = z
+  .object({
+    kind: z.enum(WINDOW_KINDS),
+    months: z.number().int().positive().optional(),
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  })
+  .superRefine((w, ctx) => {
+    if (w.kind === "range") {
+      if (!w.start || !w.end) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["start"],
+          message: "range window requires start and end (YYYY-MM-DD)",
+        });
+      } else if (w.end < w.start) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["end"],
+          message: "range end must be on or after start",
+        });
+      }
+    }
+  });
 
 const compareSchema = z
   .object({
@@ -133,13 +159,22 @@ export function estimateBucketCount(
   subdivision: MetricSubdivision,
   window: MetricWindow
 ): number {
-  const monthsSpan =
-    window.kind === "trailing"
-      ? (window.months ?? 3)
-      : window.kind === "calendar_year" || window.kind === "ytd"
-        ? 12
-        : /* all — assume long history so fine subdivisions fail the cap */
-          480;
+  let monthsSpan: number;
+  if (window.kind === "trailing") {
+    monthsSpan = window.months ?? 3;
+  } else if (window.kind === "calendar_year" || window.kind === "ytd") {
+    monthsSpan = 12;
+  } else if (window.kind === "range" && window.start && window.end) {
+    const start = new Date(`${window.start}T00:00:00Z`);
+    const end = new Date(`${window.end}T00:00:00Z`);
+    const months =
+      (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+      (end.getUTCMonth() - start.getUTCMonth()) +
+      1;
+    monthsSpan = Math.max(1, months);
+  } else {
+    monthsSpan = 480;
+  }
 
   switch (subdivision) {
     case "day":

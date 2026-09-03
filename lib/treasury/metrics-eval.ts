@@ -357,7 +357,13 @@ function filterWindow(points: SeriesPoint[], window: MetricWindow): SeriesPoint[
     const months = window.months ?? 3;
     const start = new Date(Date.UTC(y, m - (months - 1), 1));
     const startYm = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-    const endYm = `${y}-${String(m + 1).padStart(2, "0")}`;
+    const endYm = `${y}-${String(m).padStart(2, "0")}`;
+    return sorted.filter((p) => p.month >= startYm && p.month <= endYm);
+  }
+
+  if (window.kind === "range" && window.start && window.end) {
+    const startYm = window.start.slice(0, 7);
+    const endYm = window.end.slice(0, 7);
     return sorted.filter((p) => p.month >= startYm && p.month <= endYm);
   }
 
@@ -457,6 +463,9 @@ function calendarWindowBounds(window: MetricWindow, now = new Date()): {
 
   if (window.kind === "all") {
     return { start: "2000-01-01", end: "2099-12-31" };
+  }
+  if (window.kind === "range" && window.start && window.end) {
+    return { start: window.start, end: window.end };
   }
   if (window.kind === "calendar_year") {
     return { start: `${y}-01-01`, end: `${y}-12-31` };

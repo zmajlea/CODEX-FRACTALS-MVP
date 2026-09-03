@@ -16,19 +16,27 @@ function defaultTitle(d: Date = new Date()): string {
     " Treasury Review";
 }
 
-/** Spec B12 — list reviews + create draft issue. */
-export async function GET(_request: Request, context: RouteContext) {
+/** Spec B12 — list reviews + create draft issue. Spec B15 — optional archived. */
+export async function GET(request: Request, context: RouteContext) {
   const { clientId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
-  const { data: reviews, error } = await guard.admin
+  const includeArchived =
+    new URL(request.url).searchParams.get("include_archived") === "1";
+
+  let q = guard.admin
     .from("treasury_reviews")
     .select("*")
     .eq("tenant_id", guard.grant.tenantId)
     .eq("client_user_id", clientId)
-    .neq("status", "archived")
     .order("period_month", { ascending: false });
+
+  if (!includeArchived) {
+    q = q.neq("status", "archived");
+  }
+
+  const { data: reviews, error } = await q;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

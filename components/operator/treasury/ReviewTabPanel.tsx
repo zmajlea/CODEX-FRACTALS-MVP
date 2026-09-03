@@ -4,7 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import {
+  MetricComparisonTable,
+  MetricSeriesTable,
+} from "@/components/operator/treasury/analytics/MetricTable";
+import { ReviewDraftsPanel } from "@/components/operator/treasury/ReviewDraftsPanel";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
+import { postPickableToDraft } from "@/lib/treasury/post-pickable";
+import {
+  PINNED_WINDOW_PRESETS,
+  type PinnedWindow,
+  type PinnedWindowPreset,
+  isPinnedWindow,
+} from "@/lib/treasury/pinned-window";
 
 type ReviewItem = {
   id: string;
@@ -26,6 +39,8 @@ type BlockItem = {
   proposal_state: string;
   metric_name?: string | null;
   suggested_caption?: string;
+  pinned_window?: PinnedWindow | null;
+  view_mode?: "chart" | "table";
   placed_snapshot?: {
     kind?: string;
     value?: number | null;
@@ -64,8 +79,9 @@ type Props = {
   dataThrough?: string | null;
 };
 
-function stateChip(block: BlockItem): string {
+function stateChip(block: BlockItem, staleIds: string[]): string {
   if (block.proposal_state === "proposed") return "PROPOSED · assistant";
+  if (staleIds.includes(block.id)) return "STALE · recompute";
   if (block.proposal_state === "confirmed") return "CONFIRMED · was proposed";
   return "READY";
 }
@@ -73,6 +89,7 @@ function stateChip(block: BlockItem): string {
 export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<BlockItem[]>([]);
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState("draft");
@@ -83,35 +100,65 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [busy, setBusy] = useState(false);
   const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [draftKindTarget, setDraftKindTarget] = useState<DraftKind>("recommendation");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 
   const base = `/api/operator/treasury/clients/${clientUserId}`;
 
   const loadReviews = useCallback(async () => {
-    const res = await fetch(`${base}/reviews`);
+    const qs = showArchived ? "?include_archived=1" : "";
+    const res = await fetch(`${base}/reviews${qs}`);
     if (!res.ok) throw new Error("Failed to load reviews");
     const json = (await res.json()) as { reviews: ReviewItem[] };
     setReviews(json.reviews ?? []);
     return json.reviews ?? [];
-  }, [base]);
+  }, [base, showArchived]);
 
-  const loadReview = useCallback(
+  const loadPreflight = useCallback(
     async (reviewId: string) => {
-      const res = await fetch(`${base}/reviews/${reviewId}`);
-      if (!res.ok) throw new Error("Failed to load review");
-      const json = (await res.json()) as {
-        review: { id: string; title: string; status: string };
-        blocks: BlockItem[];
-        preflight: Preflight;
-      };
-      setActiveId(reviewId);
-      setTitle(json.review.title);
-      setStatus(json.review.status);
-      setBlocks(json.blocks);
-      setPreflight(json.preflight);
+      const res = await fetch(`${base}/reviews/${reviewId}/preflight`);
+      if (!res.ok) return;
+      const json = (await res.json()) as { preflight?: Preflight };
+      if (activeIdRef.current !== reviewId) return;
+      if (json.preflight) setPreflight(json.preflight);
     },
     [base]
+  );
+
+  const loadReview = useCallback(
+    async (reviewId: string, optimisticTitle?: string) => {
+      activeIdRef.current = reviewId;
+      setActiveId(reviewId);
+      setLoadingId(reviewId);
+      setBlocks([]);
+      setPreflight(null);
+      if (optimisticTitle !== undefined) setTitle(optimisticTitle);
+      setError(null);
+      try {
+        const res = await fetch(`${base}/reviews/${reviewId}`);
+        if (!res.ok) throw new Error("Failed to load review");
+        const json = (await res.json()) as {
+          review: { id: string; title: string; status: string };
+          blocks: BlockItem[];
+          preflight: Preflight;
+        };
+        if (activeIdRef.current !== reviewId) return;
+        setTitle(json.review.title);
+        setStatus(json.review.status);
+        setBlocks(json.blocks);
+        setPreflight(json.preflight);
+        setLoadingId(null);
+        void loadPreflight(reviewId);
+      } catch (e) {
+        if (activeIdRef.current !== reviewId) return;
+        setLoadingId(null);
+        setError(e instanceof Error ? e.message : "Load failed");
+      }
+    },
+    [base, loadPreflight]
   );
 
   const loadMetrics = useCallback(async () => {
@@ -131,9 +178,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           (targetId ? list.find((r) => r.id === targetId) : null) ??
           list.find((r) => r.status === "draft") ??
           list[0];
-        if (picked) await loadReview(picked.id);
+        if (picked) await loadReview(picked.id, picked.title || picked.period_month);
         else {
+          activeIdRef.current = null;
           setActiveId(null);
+          setLoadingId(null);
           setBlocks([]);
           setPreflight(null);
         }
@@ -153,6 +202,149 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     void refreshRef.current();
   }, [clientUserId]);
 
+  useEffect(() => {
+    void refreshRef.current(activeIdRef.current);
+  }, [showArchived]);
+
+  async function archiveReview(reviewId: string) {
+    setMenuOpenId(null);
+    if (
+      !confirm(
+        "Archive this issue? Published issues leave the client view; versions are retained."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${reviewId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Archive failed");
+      }
+      await refresh(activeId === reviewId ? null : activeId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Archive failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function hardDeleteReview(review: ReviewItem) {
+    setMenuOpenId(null);
+    const label = review.title || review.period_month;
+    if (review.status === "published") {
+      const typed = prompt(
+        `This issue is published — the client will lose it permanently.\nType the issue title to confirm delete:\n\n${label}`
+      );
+      if (typed !== label) {
+        if (typed != null) setError("Delete cancelled — title did not match.");
+        return;
+      }
+    } else if (!confirm(`Permanently delete “${label}”? This cannot be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${review.id}?hard=1`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Delete failed");
+      }
+      await refresh(activeId === review.id ? null : activeId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardMetric(metricId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      let res = await fetch(`${base}/metrics/${metricId}`, { method: "DELETE" });
+      let json = (await res.json()) as {
+        error?: string;
+        references?: { draft_blocks: number; published_versions: number };
+      };
+      if (res.status === 409 && json.references) {
+        const { draft_blocks, published_versions } = json.references;
+        const ok = confirm(
+          `This metric is used in ${draft_blocks} draft block(s) and ${published_versions} published version(s). Remove from library anyway?`
+        );
+        if (!ok) return;
+        res = await fetch(`${base}/metrics/${metricId}?force=1`, {
+          method: "DELETE",
+        });
+        json = (await res.json()) as typeof json;
+      }
+      if (!res.ok) throw new Error(json.error ?? "Discard failed");
+      await loadMetrics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Discard failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addExhibitToDraft(block: BlockItem) {
+    if (!block.metric_id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const pickable: Pickable = {
+        kind: "figure",
+        ref: block.metric_id,
+        label: block.metric_name ?? "Exhibit",
+        params: {
+          metric: block.metric_name ?? block.metric_id,
+          from: "2000-01-01",
+          to: new Date().toISOString().slice(0, 10),
+        },
+        snap: {
+          label: block.metric_name ?? "Exhibit",
+          name: block.metric_name ?? "Exhibit",
+          snapshot: block.placed_snapshot ?? null,
+        },
+      };
+      await postPickableToDraft(clientUserId, draftKindTarget, pickable);
+      setError(`Cited in ${draftKindTarget} draft.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Add to draft failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function presetFromPinned(pinned: unknown): PinnedWindowPreset | "" {
+    if (!isPinnedWindow(pinned)) return "";
+    return pinned.preset;
+  }
+
+  async function setBlockWindow(blockId: string, preset: PinnedWindowPreset | "") {
+    if (!preset) {
+      await patchBlock(blockId, { action: "set_window", window: null });
+      return;
+    }
+    if (preset === "custom") {
+      const start = prompt("Custom start (YYYY-MM-DD):");
+      const end = prompt("Custom end (YYYY-MM-DD):");
+      if (!start || !end) return;
+      const window: PinnedWindow = { preset: "custom", start, end };
+      await patchBlock(blockId, { action: "set_window", window });
+      return;
+    }
+    await patchBlock(blockId, {
+      action: "set_window",
+      window: { preset } satisfies PinnedWindow,
+    });
+  }
+
   async function createDraft() {
     setBusy(true);
     setError(null);
@@ -167,11 +359,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         existing?: ReviewItem;
         error?: string;
       };
+      // Handled 409: open existing issue — success path, not an error.
       if (res.status === 409 && json.existing?.id) {
-        await loadReview(json.existing.id);
-        setError(
-          json.error ??
-            "An issue for this period already exists — opened the existing issue."
+        await loadReview(
+          json.existing.id,
+          json.existing.title || json.existing.period_month
         );
         return;
       }
@@ -197,7 +389,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     }
   }
 
-  async function addMetricBlock(metric: MetricRow, role: "figure" | "exhibit") {
+  async function addMetricBlock(
+    metric: MetricRow,
+    role: "figure" | "exhibit",
+    viewMode?: "chart" | "table"
+  ) {
     if (!activeId || addingMetricId) return;
     setAddingMetricId(metric.id);
     setError(null);
@@ -207,11 +403,21 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role, metric_id: metric.id }),
       });
+      const json = (await res.json()) as {
+        error?: string;
+        block?: { id: string };
+      };
       if (!res.ok) {
-        const json = (await res.json()) as { error?: string };
         throw new Error(json.error ?? "Add failed");
       }
-      await loadReview(activeId);
+      if (role === "exhibit" && viewMode === "table" && json.block?.id) {
+        await patchBlock(json.block.id, {
+          action: "set_view_mode",
+          view_mode: "table",
+        });
+      } else {
+        await loadReview(activeId);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Add failed");
     } finally {
@@ -298,6 +504,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 
   const activeReview = reviews.find((r) => r.id === activeId);
   const nextVersion = (activeReview?.current_version ?? 0) + 1;
+  const staleIds = preflight?.stale_block_ids ?? [];
+  const isLoadingIssue = Boolean(loadingId && loadingId === activeId);
 
   const openShelfFor = (role: "figure" | "exhibit") => {
     setShelfOpen(true);
@@ -313,26 +521,102 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       className="rcx-stage"
       data-shelf={shelfOpen ? "open" : "collapsed"}
       data-builder={builderOpen ? "open" : "closed"}
+      onClick={() => {
+        if (menuOpenId) setMenuOpenId(null);
+      }}
     >
       <style>{RCX_CSS}</style>
 
       {/* ── Issues rail ─────────────────────────────── */}
       <aside className="rcx-rail">
         <div className="rcx-kick">Issues</div>
+        <label
+          className="rcx-muted"
+          style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, marginBottom: 6 }}
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          Show archived
+        </label>
         {reviews.map((r) => (
-          <button
+          <div
             key={r.id}
-            type="button"
-            className={`rcx-issue${activeId === r.id ? " on" : ""}`}
-            onClick={() => void loadReview(r.id)}
+            className={`rcx-issue-row${activeId === r.id ? " on" : ""}`}
+            style={{ display: "flex", gap: 4, alignItems: "stretch", position: "relative" }}
           >
-            <div className="t">{r.title || r.period_month}</div>
-            <div className="m">
-              {r.status}
-              {r.current_version ? ` · v${r.current_version}` : ""}
-              {r.reply_count ? ` · ${r.reply_count} replies` : ""}
-            </div>
-          </button>
+            <button
+              type="button"
+              className={`rcx-issue${activeId === r.id ? " on" : ""}`}
+              style={{ flex: 1 }}
+              onClick={() =>
+                void loadReview(r.id, r.title || r.period_month)
+              }
+            >
+              <div className="t">{r.title || r.period_month}</div>
+              <div className="m">
+                {r.status}
+                {r.current_version ? ` · v${r.current_version}` : ""}
+                {r.reply_count ? ` · ${r.reply_count} replies` : ""}
+              </div>
+            </button>
+            {r.status !== "archived" ? (
+              <div style={{ position: "relative", alignSelf: "center" }}>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  title="Issue actions"
+                  disabled={busy}
+                  aria-expanded={menuOpenId === r.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpenId((cur) => (cur === r.id ? null : r.id));
+                  }}
+                >
+                  ⋯
+                </button>
+                {menuOpenId === r.id ? (
+                  <div
+                    className="rcx-menu"
+                    role="menu"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "100%",
+                      zIndex: 20,
+                      background: "var(--su-paper, #FCFBF9)",
+                      border: "1px solid var(--su-line, #DED9D1)",
+                      minWidth: 120,
+                      padding: 4,
+                      boxShadow: "0 4px 12px rgba(0,0,0,.08)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="rcx-tool"
+                      style={{ display: "block", width: "100%", textAlign: "left" }}
+                      role="menuitem"
+                      onClick={() => void archiveReview(r.id)}
+                    >
+                      Archive
+                    </button>
+                    <button
+                      type="button"
+                      className="rcx-tool danger"
+                      style={{ display: "block", width: "100%", textAlign: "left" }}
+                      role="menuitem"
+                      onClick={() => void hardDeleteReview(r)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         ))}
         <button
           type="button"
@@ -395,6 +679,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           <div className="rcx-paper">
             <p className="rcx-muted">Create or select a draft issue to begin.</p>
           </div>
+        ) : isLoadingIssue ? (
+          <div className="rcx-paper">
+            <div className="rcx-cover">
+              <div className="ct">{title || "Issue"}</div>
+              <div className="cs">Loading…</div>
+            </div>
+            <p className="rcx-muted" style={{ padding: "24px 0" }}>
+              Loading {title || "issue"}…
+            </p>
+          </div>
         ) : (
           <div className="rcx-paper">
             <div className="rcx-cover">
@@ -452,18 +746,20 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 
             {blocks.map((block) => {
               const isProposed = block.proposal_state === "proposed";
+              const isStale = staleIds.includes(block.id);
               const hasMetric =
                 block.role === "figure" || block.role === "exhibit";
+              const viewMode = block.view_mode === "table" ? "table" : "chart";
               return (
                 <article
                   key={block.id}
                   className="rcx-block"
-                  data-gate={isProposed ? "proposed" : undefined}
+                  data-gate={isProposed ? "proposed" : isStale ? "stale" : undefined}
                 >
                   <div className="rcx-bchrome">
                     <span className="rcx-chip rcx-role">{block.role}</span>
-                    <span className="rcx-chip" data-state={stateChip(block)}>
-                      {stateChip(block)}
+                    <span className="rcx-chip" data-state={stateChip(block, staleIds)}>
+                      {stateChip(block, staleIds)}
                     </span>
                     {block.metric_name ? (
                       <span className="rcx-src">{block.metric_name}</span>
@@ -484,17 +780,112 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           Confirm proposal
                         </button>
                       ) : null}
+                      {hasMetric && block.role === "exhibit" ? (
+                        <select
+                          className="rcx-tool"
+                          disabled={status !== "draft"}
+                          value={presetFromPinned(block.pinned_window)}
+                          onChange={(e) =>
+                            void setBlockWindow(
+                              block.id,
+                              e.target.value as PinnedWindowPreset | ""
+                            ).catch((err) => setError(String(err.message)))
+                          }
+                          title="Date window"
+                        >
+                          <option value="">Window: metric default</option>
+                          {PINNED_WINDOW_PRESETS.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      {hasMetric && block.role === "exhibit" ? (
+                        <div
+                          className="rcx-seg"
+                          role="group"
+                          aria-label="View mode"
+                          style={{
+                            display: "inline-flex",
+                            border: "1px solid var(--su-line, #DED9D1)",
+                            borderRadius: 4,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="rcx-tool"
+                            disabled={status !== "draft"}
+                            aria-pressed={viewMode === "chart"}
+                            style={{
+                              border: 0,
+                              borderRadius: 0,
+                              fontWeight: viewMode === "chart" ? 600 : 400,
+                              background:
+                                viewMode === "chart"
+                                  ? "var(--su-line, #DED9D1)"
+                                  : "transparent",
+                            }}
+                            onClick={() =>
+                              void patchBlock(block.id, {
+                                action: "set_view_mode",
+                                view_mode: "chart",
+                              }).catch((e) => setError(String(e.message)))
+                            }
+                          >
+                            Chart
+                          </button>
+                          <button
+                            type="button"
+                            className="rcx-tool"
+                            disabled={status !== "draft"}
+                            aria-pressed={viewMode === "table"}
+                            style={{
+                              border: 0,
+                              borderRadius: 0,
+                              fontWeight: viewMode === "table" ? 600 : 400,
+                              background:
+                                viewMode === "table"
+                                  ? "var(--su-line, #DED9D1)"
+                                  : "transparent",
+                            }}
+                            onClick={() =>
+                              void patchBlock(block.id, {
+                                action: "set_view_mode",
+                                view_mode: "table",
+                              }).catch((e) => setError(String(e.message)))
+                            }
+                          >
+                            Table
+                          </button>
+                        </div>
+                      ) : null}
                       {hasMetric ? (
                         <button
                           type="button"
                           className="rcx-tool"
+                          disabled={busy}
+                          onClick={() => void addExhibitToDraft(block)}
+                        >
+                          ＋ Add to draft
+                        </button>
+                      ) : null}
+                      {hasMetric ? (
+                        <button
+                          type="button"
+                          className={`rcx-tool${isStale ? " primary" : ""}`}
                           onClick={() =>
                             void patchBlock(block.id, {
                               action: "recalculate",
-                            }).catch((e) => setError(String(e.message)))
+                            })
+                              .then(() => {
+                                if (activeId) void loadPreflight(activeId);
+                              })
+                              .catch((e) => setError(String(e.message)))
                           }
                         >
-                          Recalculate
+                          {isStale ? "Recompute" : "Recalculate"}
                         </button>
                       ) : null}
                       <button
@@ -520,27 +911,42 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                   {block.role === "exhibit" &&
                   block.placed_snapshot?.comparison?.v === 3 ? (
                     <div className="rcx-chart">
-                      <MetricComparisonChart
-                        comparison={block.placed_snapshot.comparison}
-                        height={210}
-                      />
+                      {viewMode === "table" ? (
+                        <MetricComparisonTable
+                          comparison={block.placed_snapshot.comparison}
+                        />
+                      ) : (
+                        <MetricComparisonChart
+                          comparison={block.placed_snapshot.comparison}
+                          height={210}
+                        />
+                      )}
                     </div>
                   ) : null}
                   {block.role === "exhibit" &&
                   block.placed_snapshot?.series?.points?.length ? (
                     <div className="rcx-chart">
-                      <MetricChart
-                        points={block.placed_snapshot.series.points}
-                        referenceLines={
-                          block.placed_snapshot.series.reference_lines ?? []
-                        }
-                        chartHint={
-                          block.placed_snapshot.series.chart_hint === "line"
-                            ? "line"
-                            : "column"
-                        }
-                        height={210}
-                      />
+                      {viewMode === "table" ? (
+                        <MetricSeriesTable
+                          points={block.placed_snapshot.series.points}
+                          referenceLines={
+                            block.placed_snapshot.series.reference_lines ?? []
+                          }
+                        />
+                      ) : (
+                        <MetricChart
+                          points={block.placed_snapshot.series.points}
+                          referenceLines={
+                            block.placed_snapshot.series.reference_lines ?? []
+                          }
+                          chartHint={
+                            block.placed_snapshot.series.chart_hint === "line"
+                              ? "line"
+                              : "column"
+                          }
+                          height={210}
+                        />
+                      )}
                     </div>
                   ) : null}
                   {block.role === "figure" &&
@@ -581,6 +987,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                 </article>
               );
             })}
+
+            {status === "draft" ? (
+              <div className="rcx-drafts-wrap" style={{ marginTop: 16 }}>
+                <ReviewDraftsPanel
+                  clientUserId={clientUserId}
+                  draftKindTarget={draftKindTarget}
+                  onDraftKindChange={setDraftKindTarget}
+                />
+              </div>
+            ) : null}
 
             {status === "draft" ? (
               <div className="rcx-addbar">
@@ -643,7 +1059,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               <div key={m.id} className="rcx-sitem">
                 <div className="sn">{m.name}</div>
                 <div className="sk">
-                  {m.kind === "value" ? "Value" : "Analytics"}
+                  {m.kind === "value"
+                    ? "Value"
+                    : m.kind === "comparison"
+                      ? "Comparison"
+                      : "Analytics"}
                 </div>
                 <div className="sb">
                   <button
@@ -655,15 +1075,35 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     Figure
                   </button>
                   {m.kind !== "value" ? (
-                    <button
-                      type="button"
-                      className="rcx-tool"
-                      disabled={status !== "draft" || !!addingMetricId}
-                      onClick={() => void addMetricBlock(m, "exhibit")}
-                    >
-                      Exhibit
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="rcx-tool"
+                        disabled={status !== "draft" || !!addingMetricId}
+                        onClick={() => void addMetricBlock(m, "exhibit")}
+                      >
+                        Exhibit
+                      </button>
+                      <button
+                        type="button"
+                        className="rcx-tool"
+                        disabled={status !== "draft" || !!addingMetricId}
+                        onClick={() =>
+                          void addMetricBlock(m, "exhibit", "table")
+                        }
+                      >
+                        As table
+                      </button>
+                    </>
                   ) : null}
+                  <button
+                    type="button"
+                    className="rcx-tool danger"
+                    disabled={busy}
+                    onClick={() => void discardMetric(m.id)}
+                  >
+                    Remove
+                  </button>
                 </div>
               </div>
             ))}

@@ -6,16 +6,12 @@ import {
 import {
   normalizeBlockRow,
   normalizeReviewRow,
-  suggestedCaptionForBlock,
 } from "@/lib/treasury/review-assemble";
-import {
-  computeReviewPreflight,
-  preflightBlocked,
-} from "@/lib/treasury/review-preflight";
 import type { Database } from "@/lib/database.types";
 
 type RouteContext = { params: Promise<{ clientId: string; reviewId: string }> };
 
+/** Spec B15-FIXES — snapshot-first GET (no per-block recompute on load). */
 export async function GET(_request: Request, context: RouteContext) {
   const { clientId, reviewId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -45,34 +41,40 @@ export async function GET(_request: Request, context: RouteContext) {
     normalizeBlockRow(r as Record<string, unknown>)
   );
 
-  const preflight = await computeReviewPreflight(guard.admin, reviewId);
-
+  // Cheap metadata only — placed_snapshot is already on the row.
   const blocksWithMeta = await Promise.all(
     blocks.map(async (b) => {
       let metricName: string | null = null;
       if (b.metric_id) {
         const { data: m } = await guard.admin
           .from("treasury_metrics")
-          .select("name, kind, computed_at")
+          .select("name")
           .eq("id", b.metric_id)
           .maybeSingle();
         metricName = m?.name ?? null;
       }
-      const suggested_caption = await suggestedCaptionForBlock(
-        guard.admin,
-        review.tenant_id,
-        review.client_user_id,
-        b
-      );
-      return { ...b, metric_name: metricName, suggested_caption };
+      return { ...b, metric_name: metricName };
     })
   );
+
+  // Lightweight preflight without stale recompute (proposed + envelope only).
+  // Full stale scan is deferred to GET …/preflight after paint.
+  const proposed_block_ids = blocks
+    .filter((b) => b.proposal_state === "proposed")
+    .map((b) => b.id);
+  const lightPreflight = {
+    proposed_count: proposed_block_ids.length,
+    stale_count: 0,
+    envelope_violations: [] as Array<{ field: string; message: string }>,
+    stale_block_ids: [] as string[],
+    proposed_block_ids,
+  };
 
   return NextResponse.json({
     review,
     blocks: blocksWithMeta,
-    preflight,
-    publish_blocked: preflightBlocked(preflight),
+    preflight: lightPreflight,
+    publish_blocked: lightPreflight.proposed_count > 0,
   });
 }
 
@@ -154,10 +156,27 @@ export async function PATCH(request: Request, context: RouteContext) {
   return NextResponse.json({ review: normalizeReviewRow(data as Record<string, unknown>) });
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   const { clientId, reviewId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
+
+  const hard = new URL(request.url).searchParams.get("hard") === "1";
+
+  if (hard) {
+    // FKs on versions + blocks cascade — single row delete is enough.
+    const { error } = await guard.admin
+      .from("treasury_reviews")
+      .delete()
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, hard: true });
+  }
 
   const { error } = await guard.admin
     .from("treasury_reviews")

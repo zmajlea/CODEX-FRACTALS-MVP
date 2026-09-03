@@ -41,6 +41,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     action?: string;
     caption?: string;
     body?: string;
+    window?: unknown;
+    view_mode?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -81,6 +83,27 @@ export async function PATCH(request: Request, context: RouteContext) {
       update.placed_snapshot = toPlacedSnapshot(out);
       update.proposal_state = "none";
     }
+  } else if (action === "set_window") {
+    const { isPinnedWindow } = await import("@/lib/treasury/pinned-window");
+    if (body.window != null && !isPinnedWindow(body.window)) {
+      return NextResponse.json({ error: "Invalid window" }, { status: 400 });
+    }
+    const pinned = body.window == null ? null : body.window;
+    update.pinned_window = pinned as Json | null;
+    const nextBlock = { ...block, pinned_window: pinned as Json | null };
+    const out = await computeBlockMetric(
+      guard.admin,
+      review.tenant_id,
+      review.client_user_id,
+      nextBlock
+    );
+    if (out) {
+      update.placed_snapshot = toPlacedSnapshot(out);
+      update.proposal_state = "none";
+    }
+  } else if (action === "set_view_mode") {
+    const mode = body.view_mode === "table" ? "table" : "chart";
+    update.view_mode = mode;
   } else {
     if (body.caption !== undefined) {
       const cap = body.caption.trim();

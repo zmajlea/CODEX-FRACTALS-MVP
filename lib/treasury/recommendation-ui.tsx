@@ -228,11 +228,28 @@ export function FrozenEvidenceList({
   if (variant === "client") {
     const evHeader = isQuestion
       ? "The 5 most recent similar payments, for context"
-      : "What we looked at";
+      : "Based on:";
     const items: ReactNode[] = [];
 
     for (const [idx, ev] of evidence.entries()) {
       const key = "id" in ev && ev.id ? ev.id : `${ev.kind}-${idx}`;
+
+      if (ev.kind === "figure") {
+        const snap = ev.snap as
+          | { label?: string; name?: string; sublabel?: string }
+          | undefined;
+        const label =
+          snap?.label ??
+          snap?.name ??
+          (typeof ev.params?.metric === "string" ? ev.params.metric : "Exhibit");
+        items.push(
+          <li key={key}>
+            <span className="based-on-chip">{label}</span>
+            {snap?.sublabel ? ` — ${snap.sublabel}` : null}
+          </li>
+        );
+        continue;
+      }
 
       if (ev.kind === "transaction" && ev.snap) {
         const snap = ev.snap;

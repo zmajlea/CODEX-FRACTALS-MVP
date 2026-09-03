@@ -1987,6 +1987,7 @@ export type Database = {
           review_id: string
           role: string
           updated_at: string
+          view_mode: string
         }
         Insert: {
           body?: string
@@ -2003,6 +2004,7 @@ export type Database = {
           review_id: string
           role: string
           updated_at?: string
+          view_mode?: string
         }
         Update: {
           body?: string
@@ -2019,6 +2021,7 @@ export type Database = {
           review_id?: string
           role?: string
           updated_at?: string
+          view_mode?: string
         }
         Relationships: [
           {

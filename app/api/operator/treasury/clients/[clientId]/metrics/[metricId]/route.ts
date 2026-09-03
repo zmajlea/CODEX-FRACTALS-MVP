@@ -142,8 +142,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   return NextResponse.json({ metric: row, computed });
 }
 
-/** Spec B4 — soft-discard; client-or-null ownership (hardened from B3). */
-export async function DELETE(_request: Request, context: RouteContext) {
+/** Spec B4 — soft-discard; client-or-null ownership (hardened from B3). Spec B15 — reference guard. */
+export async function DELETE(request: Request, context: RouteContext) {
   const { clientId, metricId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
@@ -158,6 +158,27 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Metric not found" }, { status: 404 });
   }
 
+  const url = new URL(request.url);
+  const force = url.searchParams.get("force") === "1";
+  const { findMetricReferences } = await import(
+    "@/lib/treasury/metric-references"
+  );
+  const refs = await findMetricReferences(
+    guard.admin,
+    guard.grant.tenantId,
+    clientId,
+    metricId
+  );
+  if ((refs.draft_blocks > 0 || refs.published_versions > 0) && !force) {
+    return NextResponse.json(
+      {
+        error: "Metric is referenced by a review",
+        references: refs,
+      },
+      { status: 409 }
+    );
+  }
+
   const { error } = await guard.admin
     .from("treasury_metrics")
     .update({ status: "discarded" })
@@ -168,5 +189,5 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, references: refs });
 }

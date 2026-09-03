@@ -13,8 +13,15 @@ import {
 } from "@/lib/treasury/metrics-eval";
 import { autoCaption, autoCaptionComparison, autoCaptionValue } from "@/lib/treasury/auto-caption";
 import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
+import {
+  definitionWithPinnedWindow,
+  isPinnedWindow,
+} from "@/lib/treasury/pinned-window";
+import type { MetricDefinition } from "@/lib/mcp/metrics-schema";
 
 type Admin = SupabaseClient<Database>;
+
+export type ReviewBlockViewMode = "chart" | "table";
 
 export type ReviewBlockRow = {
   id: string;
@@ -24,6 +31,7 @@ export type ReviewBlockRow = {
   metric_id: string | null;
   recommendation_id: string | null;
   pinned_window: Json | null;
+  view_mode: ReviewBlockViewMode;
   placed_snapshot: Json | null;
   caption: string;
   body: string;
@@ -88,6 +96,7 @@ export function normalizeReviewRow(row: Record<string, unknown>): ReviewRow {
 }
 
 export function normalizeBlockRow(row: Record<string, unknown>): ReviewBlockRow {
+  const viewMode = row.view_mode === "table" ? "table" : "chart";
   return {
     id: String(row.id),
     review_id: String(row.review_id),
@@ -96,6 +105,7 @@ export function normalizeBlockRow(row: Record<string, unknown>): ReviewBlockRow 
     metric_id: (row.metric_id as string | null) ?? null,
     recommendation_id: (row.recommendation_id as string | null) ?? null,
     pinned_window: (row.pinned_window as Json | null) ?? null,
+    view_mode: viewMode,
     placed_snapshot: (row.placed_snapshot as Json | null) ?? null,
     caption: String(row.caption ?? ""),
     body: String(row.body ?? ""),
@@ -147,7 +157,7 @@ function snapshotValueDiff(
   return ps?.summary?.value !== cs && p.value !== current.value;
 }
 
-/** Compute fresh metric output for a block. */
+/** Compute fresh metric output for a block (honors pinned_window override). */
 export async function computeBlockMetric(
   admin: Admin,
   tenantId: string,
@@ -162,11 +172,16 @@ export async function computeBlockMetric(
     block.metric_id
   );
   if (!metric) return null;
+  const baseDef = metric.definition as unknown as MetricDefinition;
+  const pinned = isPinnedWindow(block.pinned_window)
+    ? block.pinned_window
+    : null;
+  const definition = definitionWithPinnedWindow(baseDef, pinned);
   return computeMetricValue(admin, {
     id: metric.id,
     tenant_id: metric.tenant_id,
     client_user_id: metric.client_user_id ?? clientUserId,
-    definition: metric.definition as Json,
+    definition: definition as unknown as Json,
   });
 }
 
@@ -259,31 +274,48 @@ export async function buildReviewSnapshot(
         caption: block.caption,
       });
     } else if (block.role === "exhibit" && block.metric_id) {
-      const items: AnalyticsBoardItem[] = [
-        { metric_id: block.metric_id, note: block.caption || undefined },
-      ];
-      const board: AnalyticsBoardRow = {
-        id: review.id,
-        tenant_id: review.tenant_id,
-        client_user_id: review.client_user_id,
-        title: review.title,
-        description: "",
-        items,
-        status: "draft",
-        shared_at: null,
-        shared_by: null,
-        created_by: review.created_by,
-        created_at: review.created_at,
-        updated_at: review.updated_at,
-      };
-      const assembled = await assembleAnalyticsBoard(admin, board);
-      const sanitized = sanitizeAssembledForClient(assembled);
-      const item = sanitized.items[0];
+      const out = await computeBlockMetric(
+        admin,
+        review.tenant_id,
+        review.client_user_id,
+        block
+      );
+      const metric = await findMetricForClient(
+        admin,
+        review.tenant_id,
+        review.client_user_id,
+        block.metric_id
+      );
+      let computed: Record<string, unknown> | null = null;
+      if (out?.kind === "comparison") {
+        computed = {
+          kind: "comparison",
+          value: out.value,
+          comparison: out.comparison,
+          computed_at: out.computed_at,
+        };
+      } else if (out?.kind === "analytics") {
+        computed = {
+          kind: "analytics",
+          value: out.value,
+          series: out.series,
+          computed_at: out.computed_at,
+        };
+      } else if (out?.kind === "value") {
+        computed = {
+          kind: "value",
+          value: out.value,
+          computed_at: out.computed_at,
+        };
+      }
       snapshotBlocks.push({
         role: "exhibit",
-        name: item?.name ?? "Exhibit",
+        name: metric?.name ?? "Exhibit",
         caption: block.caption,
-        computed: item?.computed ?? null,
+        metric_id: block.metric_id,
+        view_mode: block.view_mode ?? "chart",
+        pinned_window: block.pinned_window,
+        computed,
       });
     } else if (block.role === "note") {
       snapshotBlocks.push({

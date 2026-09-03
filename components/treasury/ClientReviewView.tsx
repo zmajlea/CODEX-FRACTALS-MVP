@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReviewSnapshot } from "@/lib/treasury/review-assemble";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import {
+  MetricComparisonTable,
+  MetricSeriesTable,
+} from "@/components/operator/treasury/analytics/MetricTable";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import type { MetricSeries } from "@/lib/treasury/metrics-eval";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
@@ -170,6 +174,7 @@ export function ClientReviewView({ tenantName }: Props) {
               comparison?: MetricComparison;
               value?: number;
             } | null;
+            const viewMode = block.view_mode === "table" ? "table" : "chart";
             return (
               <section key={i} className="panel p-4">
                 <h2 className="sec-title">{String(block.name ?? "Exhibit")}</h2>
@@ -177,13 +182,24 @@ export function ClientReviewView({ tenantName }: Props) {
                   <p className="treasury-meta text-sm mb-2">{String(block.caption)}</p>
                 ) : null}
                 {computed?.kind === "comparison" && computed.comparison ? (
-                  <MetricComparisonChart comparison={computed.comparison} />
+                  viewMode === "table" ? (
+                    <MetricComparisonTable comparison={computed.comparison} />
+                  ) : (
+                    <MetricComparisonChart comparison={computed.comparison} />
+                  )
                 ) : computed?.kind === "analytics" && computed.series ? (
-                  <MetricChart
-                    points={computed.series.points}
-                    referenceLines={computed.series.reference_lines}
-                    chartHint={computed.series.chart_hint}
-                  />
+                  viewMode === "table" ? (
+                    <MetricSeriesTable
+                      points={computed.series.points}
+                      referenceLines={computed.series.reference_lines}
+                    />
+                  ) : (
+                    <MetricChart
+                      points={computed.series.points}
+                      referenceLines={computed.series.reference_lines}
+                      chartHint={computed.series.chart_hint}
+                    />
+                  )
                 ) : computed?.value != null ? (
                   <p className="font-medium">{fmtMoney(computed.value)}</p>
                 ) : (
