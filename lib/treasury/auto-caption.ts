@@ -1,4 +1,4 @@
-import type { MetricSeries } from "@/lib/treasury/metrics-eval";
+import type { MetricComparison, MetricSeries } from "@/lib/treasury/metrics-eval";
 
 function fmtMoney(n: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -51,6 +51,32 @@ export function autoCaption(series: MetricSeries | null | undefined): string {
   }
   if (partial) s += "; latest period partial";
   if (breachCount > 0) s += `; ${breachCount} reference breach${breachCount === 1 ? "" : "es"}`;
+  return `${s}.`;
+}
+
+/** Spec B14 — comparison envelope caption. */
+export function autoCaptionComparison(
+  comparison: MetricComparison | null | undefined
+): string {
+  if (!comparison?.groups?.length) return "";
+
+  const groupLabels = comparison.groups.map((g) => g.label).join(", ");
+  const latest = comparison.groups[comparison.groups.length - 1];
+  const latestSum = latest?.points.reduce((a, p) => a + p.value, 0) ?? 0;
+  const avgLine = comparison.reference_lines.find((l) => l.kind === "avg");
+  const avgVal = avgLine?.value;
+  const unit = isMoneyUnit(comparison.unit) ? fmtMoney(Math.round(latestSum)) : `${Math.round(latestSum)}`;
+
+  let s = `Compared ${groupLabels} across ${comparison.axis.labels.length} periods`;
+  if (avgVal != null && latestSum !== 0) {
+    const pct = avgVal === 0 ? 0 : ((latestSum - avgVal) / Math.abs(avgVal)) * 100;
+    const pctRounded = Math.round(pct);
+    s += ` — latest group ${unit}, ${pctRounded >= 0 ? "+" : ""}${pctRounded}% vs ${avgLine?.label ?? "average"}`;
+  } else {
+    s += ` — latest group total ${unit}`;
+  }
+  const partial = comparison.groups.some((g) => g.points.some((p) => p.partial));
+  if (partial) s += "; latest period partial";
   return `${s}.`;
 }
 

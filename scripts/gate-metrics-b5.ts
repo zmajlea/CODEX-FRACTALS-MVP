@@ -4,7 +4,7 @@
  *
  * Prereqs:
  *   npm run test:seed:mcp-testers
- *   Migration 20260820160000_metrics_kind applied
+ *   Migration 20260820160000_metrics_kind + 20260902180000_comparison_metric_kind applied
  *   Dev server on MCP_GATE_URL host (default http://localhost:14000)
  *   gate:mcp-b3 + gate:metrics-ui still pass
  *
@@ -19,9 +19,18 @@ import ws from "ws";
 import type { Database } from "../lib/database.types";
 import {
   estimateBucketCount,
+  kindFromDefinition,
   validateMetricDefinition,
 } from "../lib/mcp/metrics-schema";
-import { findMetricForClient } from "../lib/treasury/metrics-eval";
+import { createMetric } from "../lib/treasury/metrics-define";
+import {
+  computeMetricValue,
+  findMetricForClient,
+  previewMetricValue,
+} from "../lib/treasury/metrics-eval";
+
+const R1_CLIENT1_EMAIL = "r1_gate_client_1@codexone.test";
+const R1_OPERATOR_EMAIL = "r1_gate_operator@codexone.test";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -194,6 +203,41 @@ const valueDef = {
   op: "avg" as const,
   window: { kind: "trailing" as const, months: 3 },
 };
+
+async function resolveUserId(
+  admin: ReturnType<typeof adminClient>,
+  email: string
+): Promise<string> {
+  const { data, error } = await admin
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (error || !data) throw new Error(`user ${email}: ${error?.message ?? "missing"}`);
+  return data.id;
+}
+
+function comparisonYearDef(key = "Tax") {
+  return {
+    of: "series_compare" as const,
+    source: { type: "category" as const, key, direction: "out" as const },
+    subdivision: "month" as const,
+    bucket_op: "sum" as const,
+    window: { kind: "all" as const },
+    compare: { by: "year" as const, last_n_years: 3 },
+  };
+}
+
+function comparisonCategoryDef() {
+  return {
+    of: "series_compare" as const,
+    source: { type: "category" as const, key: "Tax", direction: "out" as const },
+    subdivision: "month" as const,
+    bucket_op: "sum" as const,
+    window: { kind: "trailing" as const, months: 12 },
+    compare: { by: "category" as const, keys: ["Tax", "Payroll"] },
+  };
+}
 
 function analyticsDef(maxCap: number) {
   return {
@@ -559,6 +603,145 @@ async function main() {
     record(8, "no transaction write path", !mutates, `mutates=${mutates}`);
   }
 
+  // 10. kindFromDefinition trap — series_compare + subdivision must not classify as analytics
+  {
+    const def = comparisonYearDef("Tax");
+    const kind = kindFromDefinition(def);
+    const legacyTrap = def.subdivision ? "analytics" : "value";
+    record(
+      10,
+      "kindFromDefinition series_compare not analytics trap",
+      kind === "comparison" && kind !== legacyTrap,
+      `kind=${kind} legacyTrap=${legacyTrap}`
+    );
+  }
+
+  const r1ClientId = await resolveUserId(admin, R1_CLIENT1_EMAIL);
+  const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+  const { data: r1Grant } = await admin
+    .from("client_module_access")
+    .select("distributor_tenant_id")
+    .eq("client_user_id", r1ClientId)
+    .limit(1)
+    .maybeSingle();
+  const r1TenantId = r1Grant?.distributor_tenant_id;
+
+  // 11. Comparison by year — v:3 envelope, aligned axis
+  {
+    if (!r1TenantId) {
+      record(11, "comparison by year v:3 envelope", false, "missing r1 tenant");
+    } else {
+      const out = await previewMetricValue(
+        admin,
+        r1TenantId,
+        r1ClientId,
+        comparisonYearDef("Tax")
+      );
+      const cmp =
+        out.ok && out.kind === "comparison" ? out.comparison : null;
+      const ok =
+        out.ok &&
+        out.kind === "comparison" &&
+        cmp?.v === 3 &&
+        cmp.kind === "comparison" &&
+        (cmp.groups?.length ?? 0) === 3 &&
+        (cmp.axis?.labels?.length ?? 0) === 12;
+      record(
+        11,
+        "comparison by year v:3 envelope",
+        ok,
+        `kind=${out.ok ? out.kind : "?"} v=${cmp?.v} groups=${cmp?.groups?.length} axis=${cmp?.axis?.labels?.length}`
+      );
+    }
+  }
+
+  // 12. Comparison by category — two groups over window
+  {
+    if (!r1TenantId) {
+      record(12, "comparison by category two groups", false, "missing r1 tenant");
+    } else {
+      const out = await previewMetricValue(
+        admin,
+        r1TenantId,
+        r1ClientId,
+        comparisonCategoryDef()
+      );
+      const cmp =
+        out.ok && out.kind === "comparison" ? out.comparison : null;
+      const ok =
+        out.ok &&
+        out.kind === "comparison" &&
+        cmp?.v === 3 &&
+        (cmp.groups?.length ?? 0) >= 2;
+      record(
+        12,
+        "comparison by category two groups",
+        ok,
+        `kind=${out.ok ? out.kind : "?"} groups=${cmp?.groups?.length}`
+      );
+    }
+  }
+
+  // 13. Persist comparison metric — kind=comparison, computed_value v:3
+  {
+    if (!r1TenantId) {
+      record(13, "persist comparison kind=comparison", false, "missing r1 tenant");
+    } else {
+      const def = comparisonYearDef("Tax");
+      const name = `gate_b14_cmp_${Date.now()}`;
+      const created = await createMetric(admin, {
+        tenantId: r1TenantId,
+        operatorUserId: r1OperatorId,
+        scope: "client",
+        clientId: r1ClientId,
+        name,
+        description: "B14 gate comparison",
+        definition: def,
+        source: "platform",
+      });
+      cleanupIds.push(created.id);
+      const computed = await computeMetricValue(admin, {
+        id: created.id,
+        tenant_id: r1TenantId,
+        client_user_id: r1ClientId,
+        definition: def,
+      });
+      const { data: row } = await admin
+        .from("treasury_metrics")
+        .select("kind, computed_value")
+        .eq("id", created.id)
+        .single();
+      const cv = row?.computed_value as { v?: number; kind?: string } | null;
+      const ok =
+        created.kind === "comparison" &&
+        row?.kind === "comparison" &&
+        computed.kind === "comparison" &&
+        computed.comparison?.v === 3 &&
+        cv?.v === 3 &&
+        cv?.kind === "comparison";
+      record(
+        13,
+        "persist comparison kind=comparison",
+        ok,
+        `createKind=${created.kind} rowKind=${row?.kind} v=${cv?.v}`
+      );
+    }
+  }
+
+  // 14. Analytics regression — subdivision still maps to analytics (not comparison)
+  {
+    const kind = kindFromDefinition({
+      of: "series_totals",
+      subdivision: "month",
+    });
+    record(
+      14,
+      "analytics kind unchanged (series_totals)",
+      kind === "analytics",
+      `kind=${kind}`
+    );
+  }
+
   for (const id of cleanupIds) {
     if (id) {
       await admin
@@ -570,10 +753,10 @@ async function main() {
 
   log("Running npm run build…");
   execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
-  record(9, "npm run build", true, "green");
+  record(15, "npm run build", true, "green");
 
   log("");
-  log("=== Spec B5 gate: ALL PASS ===");
+  log("=== Spec B5/B14 gate: ALL PASS ===");
   for (const r of results) log(`  ${r.ok ? "✓" : "✗"} ${r.id}. ${r.name}`);
 }
 

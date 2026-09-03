@@ -38,6 +38,12 @@ export async function POST(request: Request, context: RouteContext) {
   if (out.kind === "value") {
     return NextResponse.json({ value: out.value });
   }
+  if (out.kind === "comparison") {
+    return NextResponse.json({
+      ...out.comparison,
+      value: out.value,
+    });
+  }
   return NextResponse.json({
     ...out.series,
     value: out.value,

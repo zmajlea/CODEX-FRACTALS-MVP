@@ -4,6 +4,7 @@ import {
   computeMetricValue,
   findMetricForClient,
   type ComputeMetricResult,
+  type MetricComparison,
   type MetricSeries,
 } from "@/lib/treasury/metrics-eval";
 
@@ -42,9 +43,10 @@ export type AssembledMetricItem = {
     computed_at: string | null;
   };
   computed?: {
-    kind: "value" | "analytics";
+    kind: "value" | "analytics" | "comparison";
     value?: number;
     series?: MetricSeries;
+    comparison?: MetricComparison;
     computed_at: string;
   };
 };
@@ -93,6 +95,14 @@ function toComputedPayload(out: ComputeMetricResult): AssembledMetricItem["compu
     return {
       kind: "value",
       value: out.value,
+      computed_at: out.computed_at,
+    };
+  }
+  if (out.kind === "comparison") {
+    return {
+      kind: "comparison",
+      value: out.value,
+      comparison: out.comparison,
       computed_at: out.computed_at,
     };
   }
@@ -206,6 +216,19 @@ export function sanitizeAssembledForClient(assembled: AssembledBoard) {
                   reference_lines: it.computed.series.reference_lines,
                   summary: it.computed.series.summary,
                   chart_hint: it.computed.series.chart_hint,
+                }
+              : undefined,
+            comparison: it.computed.comparison
+              ? {
+                  v: it.computed.comparison.v,
+                  kind: it.computed.comparison.kind,
+                  unit: it.computed.comparison.unit,
+                  subdivision: it.computed.comparison.subdivision,
+                  axis: it.computed.comparison.axis,
+                  groups: it.computed.comparison.groups,
+                  reference_lines: it.computed.comparison.reference_lines,
+                  summary: it.computed.comparison.summary,
+                  chart_hint: it.computed.comparison.chart_hint,
                 }
               : undefined,
             computed_at: it.computed.computed_at,

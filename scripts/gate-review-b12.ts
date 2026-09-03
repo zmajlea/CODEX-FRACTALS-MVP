@@ -14,7 +14,14 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import type { Database, Json } from "../lib/database.types";
 import { scanEnvelope, scanEnvelopeFields } from "../lib/treasury/envelope-scan";
-import { previewMetricValue } from "../lib/treasury/metrics-eval";
+import { computeMetricValue, previewMetricValue } from "../lib/treasury/metrics-eval";
+import { createMetric } from "../lib/treasury/metrics-define";
+import {
+  assembleAnalyticsBoard,
+  sanitizeAssembledForClient,
+  type AnalyticsBoardItem,
+  type AnalyticsBoardRow,
+} from "../lib/treasury/analytics-assemble";
 import {
   resolveModuleThemeFromRpcPayload,
   type ClientModuleBrandingPayload,
@@ -208,6 +215,35 @@ function snapshotBlocksHaveSeries(snapshot: unknown): {
     ok: blocks.length > 0 && named === blocks.length && withSeries > 0,
     named,
     withSeries,
+    total: blocks.length,
+  };
+}
+
+function snapshotBlocksHaveComparison(snapshot: unknown): {
+  ok: boolean;
+  withComparison: number;
+  total: number;
+} {
+  const blocks =
+    (snapshot as { blocks?: SnapshotBlock[] } | null)?.blocks?.filter(
+      (b) => b.role === "exhibit" || b.role === "figure"
+    ) ?? [];
+  let withComparison = 0;
+  for (const b of blocks) {
+    const cmp = (
+      b.computed as { kind?: string; comparison?: { v?: number } } | null | undefined
+    )?.comparison;
+    if (
+      b.computed?.kind === "comparison" &&
+      cmp?.v === 3 &&
+      (cmp as { groups?: unknown[] }).groups?.length
+    ) {
+      withComparison += 1;
+    }
+  }
+  return {
+    ok: blocks.length > 0 && withComparison > 0,
+    withComparison,
     total: blocks.length,
   };
 }
@@ -969,7 +1005,182 @@ async function main() {
     );
   }
 
-  log("ALL 17/17 LIVE CHECKS PASSED");
+  // 18 — comparison exhibit publishes; client reads MetricComparison v:3 envelope
+  {
+    let b14ReviewId: string | null = null;
+    let b14MetricId: string | null = null;
+    try {
+      if (!r1TenantId) {
+        record(18, "comparison exhibit client envelope", false, "missing r1 tenant");
+      } else {
+        const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+        const cmpDef = {
+          of: "series_compare" as const,
+          source: { type: "category" as const, key: "Tax", direction: "out" as const },
+          subdivision: "month" as const,
+          bucket_op: "sum" as const,
+          window: { kind: "all" as const },
+          compare: { by: "year" as const, last_n_years: 3 },
+        };
+        const metric = await createMetric(admin, {
+          tenantId: r1TenantId,
+          operatorUserId: r1OperatorId,
+          scope: "client",
+          clientId: r1ClientId,
+          name: `gate_b14_review_${stamp}`,
+          description: "B14 review gate",
+          definition: cmpDef,
+          source: "platform",
+        });
+        b14MetricId = metric.id;
+        await computeMetricValue(admin, {
+          id: metric.id,
+          tenant_id: r1TenantId,
+          client_user_id: r1ClientId,
+          definition: cmpDef,
+        });
+
+        const { data: reviewRow, error: revErr } = await admin
+          .from("treasury_reviews")
+          .insert({
+            tenant_id: r1TenantId,
+            client_user_id: r1ClientId,
+            period_month: "2026-07-01",
+            label: `${label}-b14-cmp`,
+            title: "B14 Comparison Review",
+            status: "draft",
+            created_by: r1OperatorId,
+          })
+          .select("*")
+          .single();
+        if (revErr || !reviewRow) {
+          record(
+            18,
+            "comparison exhibit client envelope",
+            false,
+            revErr?.message ?? "review insert failed"
+          );
+        } else {
+          b14ReviewId = reviewRow.id;
+          const { data: blockRow, error: blockErr } = await admin
+            .from("treasury_review_blocks")
+            .insert({
+              review_id: b14ReviewId,
+              position: 1,
+              role: "exhibit",
+              metric_id: b14MetricId,
+              caption: "Tax spend by year",
+              body: "",
+              proposal_state: "none",
+              provenance: { author: "operator" },
+            })
+            .select("*")
+            .single();
+          if (blockErr || !blockRow) {
+            record(
+              18,
+              "comparison exhibit client envelope",
+              false,
+              blockErr?.message ?? "block insert failed"
+            );
+          } else {
+            const reviewedAsOf = new Date().toISOString().slice(0, 10);
+            const items: AnalyticsBoardItem[] = [
+              { metric_id: b14MetricId, note: "Tax spend by year" },
+            ];
+            const board: AnalyticsBoardRow = {
+              id: b14ReviewId,
+              tenant_id: r1TenantId,
+              client_user_id: r1ClientId,
+              title: "B14 Comparison Review",
+              description: "",
+              items,
+              status: "draft",
+              shared_at: null,
+              shared_by: null,
+              created_by: r1OperatorId,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            const assembled = await assembleAnalyticsBoard(admin, board);
+            const sanitized = sanitizeAssembledForClient(assembled);
+            const item = sanitized.items[0];
+            const snapshot = {
+              meta: {
+                title: "B14 Comparison Review",
+                period_month: "2026-07-01",
+                reviewed_as_of: reviewedAsOf,
+                version: 1,
+                change_note: "B14 comparison gate",
+              },
+              cover_figures: [],
+              live_strip: { enabled: false },
+              blocks: [
+                {
+                  role: "exhibit",
+                  name: item?.name ?? "Exhibit",
+                  caption: "Tax spend by year",
+                  computed: item?.computed ?? null,
+                },
+              ],
+              disclosures: { advisory: "", accuracy: "", review: "" },
+            };
+            const { error: verErr } = await admin
+              .from("treasury_review_versions")
+              .insert({
+                review_id: b14ReviewId,
+                version: 1,
+                reviewed_as_of: reviewedAsOf,
+                published_by: r1OperatorId,
+                change_note: "B14 comparison gate",
+                snapshot: snapshot as unknown as Json,
+              });
+            if (verErr) {
+              record(
+                18,
+                "comparison exhibit client envelope",
+                false,
+                verErr.message
+              );
+            } else {
+            await admin
+              .from("treasury_reviews")
+              .update({ status: "published", current_version: 1 })
+              .eq("id", b14ReviewId);
+
+            const { data: ver, error: clientVerErr } = await r1ClientSb
+              .from("treasury_review_versions")
+              .select("snapshot")
+              .eq("review_id", b14ReviewId)
+              .is("superseded_at", null)
+              .maybeSingle();
+            const check = snapshotBlocksHaveComparison(ver?.snapshot);
+            const ok = !clientVerErr && check.ok;
+            record(
+              18,
+              "comparison exhibit client envelope",
+              ok,
+              clientVerErr?.message ??
+                `blocks=${check.total} comparison=${check.withComparison}`
+            );
+            }
+          }
+        }
+      }
+    } finally {
+      if (b14ReviewId) {
+        await admin.from("treasury_reviews").delete().eq("id", b14ReviewId);
+      }
+      if (b14MetricId) {
+        await admin
+          .from("treasury_metrics")
+          .update({ status: "discarded" })
+          .eq("id", b14MetricId);
+      }
+    }
+  }
+
+  log("ALL 18/18 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

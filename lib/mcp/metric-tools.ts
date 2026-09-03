@@ -65,7 +65,11 @@ export async function mcpComputeMetric(
     value: out.kind === "value" ? out.value : out.value,
     computed_at: out.computed_at,
     definition: metric.definition,
-    ...(out.kind === "analytics" ? { series: out.series } : {}),
+    ...(out.kind === "analytics"
+      ? { series: out.series }
+      : out.kind === "comparison"
+        ? { comparison: out.comparison }
+        : {}),
   };
 }
 

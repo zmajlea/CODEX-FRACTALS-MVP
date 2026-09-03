@@ -5,7 +5,9 @@ import {
   kindFromDefinition,
   type MetricBucketOp,
   type MetricChartHint,
+  type MetricComparisonChartHint,
   type MetricDefinition,
+  type MetricKind,
   type MetricReferenceLine,
   type MetricSource,
   type MetricSubdivision,
@@ -50,7 +52,280 @@ export type MetricSeries = {
   chart_hint: MetricChartHint;
 };
 
-/** Optional account filter from metric source (B6). */
+export type MetricComparisonPoint = {
+  bucket_label: string;
+  value: number;
+  partial?: true;
+  breaches?: string[];
+};
+
+export type MetricComparison = {
+  v: 3;
+  kind: "comparison";
+  unit: string;
+  subdivision: MetricSubdivision;
+  axis: { labels: string[] };
+  groups: Array<{
+    key: string;
+    label: string;
+    points: MetricComparisonPoint[];
+  }>;
+  reference_lines: Array<{
+    id: string;
+    label: string;
+    value: number;
+    kind: MetricReferenceLine["kind"];
+    computed: boolean;
+  }>;
+  chart_hint: MetricComparisonChartHint;
+  summary?: { op: string; value: number; breach_count?: number };
+};
+
+const MONTH_AXIS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+const QUARTER_AXIS = ["Q1", "Q2", "Q3", "Q4"] as const;
+
+function isChartableKind(kind: MetricKind): boolean {
+  return kind === "analytics" || kind === "comparison";
+}
+
+async function scalarFromDefinition(
+  admin: Admin,
+  tenantId: string,
+  clientId: string,
+  definition: MetricDefinition,
+  depth: number
+): Promise<number> {
+  const kind = kindFromDefinition(definition);
+  if (kind === "value") {
+    return evalDefinitionScalar(admin, tenantId, clientId, definition, depth + 1);
+  }
+  if (kind === "analytics") {
+    const series = await buildSeries(admin, tenantId, clientId, definition, depth + 1);
+    return series.summary?.value ?? 0;
+  }
+  const comparison = await buildComparison(
+    admin,
+    tenantId,
+    clientId,
+    definition,
+    depth + 1
+  );
+  return comparison.summary?.value ?? 0;
+}
+
+function resolveCompareYears(
+  compare: NonNullable<MetricDefinition["compare"]>,
+  now = new Date()
+): number[] {
+  if (compare.by !== "year") return [];
+  if (compare.years?.length) {
+    return [...compare.years].sort((a, b) => a - b);
+  }
+  const n = compare.last_n_years ?? 3;
+  const y = now.getUTCFullYear();
+  return Array.from({ length: n }, (_, i) => y - (n - 1 - i));
+}
+
+function monthBucketStart(year: number, monthIndex: number): string {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-01`;
+}
+
+function quarterBucketStart(year: number, quarterIndex: number): string {
+  const month = quarterIndex * 3 + 1;
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+function isPartialBucket(bucketStart: string, subdivision: MetricSubdivision, now = new Date()): boolean {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const [by, bm] = bucketStart.split("-").map(Number);
+  if (by !== y) return false;
+  if (subdivision === "month") return bm === m + 1;
+  if (subdivision === "quarter") return Math.floor(m / 3) + 1 === Math.floor((bm - 1) / 3) + 1;
+  return false;
+}
+
+function finalizeComparison(
+  definition: MetricDefinition,
+  subdivision: MetricSubdivision,
+  axisLabels: string[],
+  groups: MetricComparison["groups"],
+  chartHint: MetricComparisonChartHint
+): MetricComparison {
+  const flatValues = groups.flatMap((g) => g.points.map((p) => p.value));
+  const resolvedLines: MetricComparison["reference_lines"] = [];
+
+  for (const line of definition.reference_lines ?? []) {
+    const computed = line.stat !== undefined;
+    const value =
+      line.value !== undefined ? line.value : computeStat(line.stat!, flatValues);
+    resolvedLines.push({
+      id: line.id,
+      label: line.label,
+      value,
+      kind: line.kind,
+      computed,
+    });
+  }
+
+  let breachCount = 0;
+  const annotatedGroups = groups.map((group) => ({
+    ...group,
+    points: group.points.map((p) => {
+      const breaches: string[] = [];
+      for (const line of definition.reference_lines ?? []) {
+        const resolved = resolvedLines.find((r) => r.id === line.id)!;
+        if (
+          pointBreachesLine(p.value, {
+            kind: line.kind,
+            value: resolved.value,
+            breach: line.breach,
+          })
+        ) {
+          breaches.push(line.id);
+        }
+      }
+      if (breaches.length) breachCount += 1;
+      return breaches.length ? { ...p, breaches } : p;
+    }),
+  }));
+
+  const summaryValue = flatValues.reduce((a, b) => a + b, 0);
+  const summary =
+    flatValues.length > 0
+      ? {
+          op: "sum",
+          value: summaryValue,
+          ...(breachCount ? { breach_count: breachCount } : {}),
+        }
+      : breachCount
+        ? { op: "count", value: 0, breach_count: breachCount }
+        : undefined;
+
+  return {
+    v: 3,
+    kind: "comparison",
+    unit: "amount",
+    subdivision,
+    axis: { labels: axisLabels },
+    groups: annotatedGroups,
+    reference_lines: resolvedLines,
+    chart_hint: chartHint,
+    ...(summary ? { summary } : {}),
+  };
+}
+
+/** Build multi-series comparison envelope (Spec B14). */
+export async function buildComparison(
+  admin: Admin,
+  tenantId: string,
+  clientId: string,
+  definition: MetricDefinition,
+  depth = 0
+): Promise<MetricComparison> {
+  if (depth > 8) throw new Error("metric evaluation depth exceeded");
+  if (!definition.compare) throw new Error("compare block required for series_compare");
+
+  const subdivision: MetricSubdivision = definition.subdivision ?? "month";
+  const bucketOp: MetricBucketOp = definition.bucket_op ?? "sum";
+  const chartHint: MetricComparisonChartHint =
+    definition.chart_hint === "multi_line" ? "multi_line" : "grouped_column";
+
+  if (definition.compare.by === "year") {
+    const years = resolveCompareYears(definition.compare);
+    if (!years.length) throw new Error("compare years required");
+
+    const axisLabels =
+      subdivision === "quarter" ? [...QUARTER_AXIS] : [...MONTH_AXIS];
+    const start = `${years[0]}-01-01`;
+    const end = `${years[years.length - 1]}-12-31`;
+
+    const rows = await loadBucketedByCategoryFlat(admin, clientId, {
+      accountId: accountFilterFromSource(definition.source),
+      from: start,
+      to: end,
+    });
+
+    const raw = new Map<string, number[]>();
+    for (const row of rows) {
+      if (!matchSource(row, definition.source)) continue;
+      const bucket = bucketStartForDate(row.posted_date, subdivision);
+      const list = raw.get(bucket) ?? [];
+      list.push(row.total);
+      raw.set(bucket, list);
+    }
+
+    const groups: MetricComparison["groups"] = years.map((year) => {
+      const points: MetricComparisonPoint[] = axisLabels.map((label, idx) => {
+        const bucketStart =
+          subdivision === "quarter"
+            ? quarterBucketStart(year, idx)
+            : monthBucketStart(year, idx);
+        const value = applyBucketOp(bucketOp, raw.get(bucketStart) ?? []);
+        const partial = isPartialBucket(bucketStart, subdivision) ? ({ partial: true as const }) : {};
+        return { bucket_label: label, value, ...partial };
+      });
+      return { key: String(year), label: String(year), points };
+    });
+
+    return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+  }
+
+  const keys = definition.compare.keys ?? [];
+  const bounds = calendarWindowBounds(definition.window);
+  let axisLabels: string[] = [];
+  const groups: MetricComparison["groups"] = [];
+
+  for (const key of keys) {
+    const source: MetricSource = {
+      ...definition.source,
+      type: "category",
+      key,
+    };
+    const raw = new Map<string, number[]>();
+    const rows = await loadBucketedByCategoryFlat(admin, clientId, {
+      accountId: accountFilterFromSource(source),
+      from: bounds.start,
+      to: bounds.end,
+    });
+    for (const row of rows) {
+      if (!matchSource(row, source)) continue;
+      const bucket = bucketStartForDate(row.posted_date, subdivision);
+      const list = raw.get(bucket) ?? [];
+      list.push(row.total);
+      raw.set(bucket, list);
+    }
+    const points = fillBuckets(raw, subdivision, bounds, bucketOp);
+    if (!axisLabels.length) {
+      axisLabels = points.map((p) => p.bucket_label);
+    }
+    groups.push({
+      key,
+      label: key,
+      points: points.map((p) => ({
+        bucket_label: p.bucket_label,
+        value: p.value,
+        ...(p.partial ? { partial: true as const } : {}),
+      })),
+    });
+  }
+
+  return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+}
+
 function accountFilterFromSource(source: MetricSource): string | null {
   if (source.type === "account" && source.key?.trim()) {
     return source.key.trim();
@@ -398,10 +673,7 @@ export async function buildSeries(
   const bucketOp: MetricBucketOp = definition.bucket_op ?? "sum";
   const bounds = calendarWindowBounds(definition.window);
   const chartHint: MetricChartHint =
-    definition.chart_hint ??
-    (definition.source.direction === "any" || !definition.source.direction
-      ? "column"
-      : "column");
+    definition.chart_hint === "line" ? "line" : "column";
 
   // v1: metric refs / composition consume scalar summary only — one fake point.
   if (definition.source.type === "metric") {
@@ -416,17 +688,9 @@ export async function buildSeries(
       .maybeSingle();
     if (!peer) throw new Error(`unresolved metric ref: ${ref}`);
     const nested = peer.definition as unknown as MetricDefinition;
-    // Scalar summary of nested (value path or nested analytics summary)
     let scalar: number;
-    if (kindFromDefinition(nested) === "analytics") {
-      const nestedSeries = await buildSeries(
-        admin,
-        tenantId,
-        clientId,
-        nested,
-        depth + 1
-      );
-      scalar = nestedSeries.summary?.value ?? 0;
+    if (isChartableKind(kindFromDefinition(nested))) {
+      scalar = await scalarFromDefinition(admin, tenantId, clientId, nested, depth);
     } else {
       scalar = await evalDefinitionScalar(admin, tenantId, clientId, nested, depth + 1);
     }
@@ -522,25 +786,13 @@ async function finalizeSeries(
   if (definition.op) {
     let of2: number | undefined;
     if (definition.of2) {
-      // v1: of2 is scalar only
-      if (kindFromDefinition(definition.of2) === "analytics") {
-        const s = await buildSeries(
-          admin,
-          tenantId,
-          clientId,
-          definition.of2,
-          depth + 1
-        );
-        of2 = s.summary?.value ?? 0;
-      } else {
-        of2 = await evalDefinitionScalar(
-          admin,
-          tenantId,
-          clientId,
-          definition.of2,
-          depth + 1
-        );
-      }
+      of2 = await scalarFromDefinition(
+        admin,
+        tenantId,
+        clientId,
+        definition.of2,
+        depth
+      );
     }
     summary = {
       op: definition.op,
@@ -578,7 +830,26 @@ export type ComputeMetricResult =
       series: MetricSeries;
       computed_at: string;
       value?: number;
+    }
+  | {
+      kind: "comparison";
+      comparison: MetricComparison;
+      computed_at: string;
+      value?: number;
     };
+
+async function persistComputedValue(
+  admin: Admin,
+  metricId: string,
+  computed_at: string,
+  payload: Json
+) {
+  const { error } = await admin
+    .from("treasury_metrics")
+    .update({ computed_value: payload, computed_at })
+    .eq("id", metricId);
+  if (error) throw new Error(error.message);
+}
 
 export async function computeMetricValue(
   admin: Admin,
@@ -603,15 +874,29 @@ export async function computeMetricValue(
       metric.client_user_id,
       definition
     );
-    const { error } = await admin
-      .from("treasury_metrics")
-      .update({
-        computed_value: { value } as Json,
-        computed_at,
-      })
-      .eq("id", metric.id);
-    if (error) throw new Error(error.message);
+    await persistComputedValue(admin, metric.id, computed_at, { value } as Json);
     return { kind: "value", value, computed_at };
+  }
+
+  if (kind === "comparison") {
+    const comparison = await buildComparison(
+      admin,
+      metric.tenant_id,
+      metric.client_user_id,
+      definition
+    );
+    await persistComputedValue(
+      admin,
+      metric.id,
+      computed_at,
+      comparison as unknown as Json
+    );
+    return {
+      kind: "comparison",
+      comparison,
+      computed_at,
+      value: comparison.summary?.value,
+    };
   }
 
   const series = await buildSeries(
@@ -620,14 +905,7 @@ export async function computeMetricValue(
     metric.client_user_id,
     definition
   );
-  const { error } = await admin
-    .from("treasury_metrics")
-    .update({
-      computed_value: series as unknown as Json,
-      computed_at,
-    })
-    .eq("id", metric.id);
-  if (error) throw new Error(error.message);
+  await persistComputedValue(admin, metric.id, computed_at, series as unknown as Json);
   return {
     kind: "analytics",
     series,
@@ -648,6 +926,7 @@ export async function previewMetricValue(
 ): Promise<
   | { ok: true; kind: "value"; value: number }
   | { ok: true; kind: "analytics"; series: MetricSeries; value?: number }
+  | { ok: true; kind: "comparison"; comparison: MetricComparison; value?: number }
   | { ok: false; errors: Array<{ path: string; message: string }> }
 > {
   const { validateMetricDefinition } = await import("@/lib/mcp/metrics-schema");
@@ -670,7 +949,8 @@ export async function previewMetricValue(
   }
 
   try {
-    if (kindFromDefinition(validated.definition) === "value") {
+    const kind = kindFromDefinition(validated.definition);
+    if (kind === "value") {
       const value = await evalDefinitionScalar(
         admin,
         tenantId,
@@ -678,6 +958,20 @@ export async function previewMetricValue(
         validated.definition
       );
       return { ok: true, kind: "value", value };
+    }
+    if (kind === "comparison") {
+      const comparison = await buildComparison(
+        admin,
+        tenantId,
+        clientId,
+        validated.definition
+      );
+      return {
+        ok: true,
+        kind: "comparison",
+        comparison,
+        value: comparison.summary?.value,
+      };
     }
     const series = await buildSeries(
       admin,

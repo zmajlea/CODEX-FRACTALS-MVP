@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReviewSnapshot } from "@/lib/treasury/review-assemble";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
+import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import type { MetricSeries } from "@/lib/treasury/metrics-eval";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
 import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
@@ -165,6 +167,7 @@ export function ClientReviewView({ tenantName }: Props) {
             const computed = block.computed as {
               kind?: string;
               series?: MetricSeries;
+              comparison?: MetricComparison;
               value?: number;
             } | null;
             return (
@@ -173,7 +176,9 @@ export function ClientReviewView({ tenantName }: Props) {
                 {block.caption ? (
                   <p className="treasury-meta text-sm mb-2">{String(block.caption)}</p>
                 ) : null}
-                {computed?.kind === "analytics" && computed.series ? (
+                {computed?.kind === "comparison" && computed.comparison ? (
+                  <MetricComparisonChart comparison={computed.comparison} />
+                ) : computed?.kind === "analytics" && computed.series ? (
                   <MetricChart
                     points={computed.series.points}
                     referenceLines={computed.series.reference_lines}

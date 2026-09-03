@@ -6,6 +6,8 @@ import {
   type MetricChartPoint,
   type MetricChartRefLine,
 } from "@/components/operator/treasury/analytics/MetricChart";
+import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 
 type MetricSeriesEnvelope = {
   v?: number;
@@ -27,7 +29,10 @@ type MetricRow = {
   source: string;
   kind?: string;
   definition: Record<string, unknown>;
-  computed_value: (MetricSeriesEnvelope & { value?: number }) | null;
+  computed_value:
+    | (MetricSeriesEnvelope & { value?: number })
+    | (MetricComparison & { value?: number })
+    | null;
   computed_at: string | null;
   version: number;
   client_user_id: string | null;
@@ -43,7 +48,7 @@ type RefLineDraft = {
 };
 
 type DefinitionDraft = {
-  of: "monthly_totals" | "series_totals";
+  of: "monthly_totals" | "series_totals" | "series_compare";
   source: {
     type: "bucket" | "category" | "account" | "metric";
     key?: string;
@@ -59,7 +64,10 @@ type DefinitionDraft = {
   subdivision?: "day" | "week" | "month" | "quarter" | "year";
   bucket_op?: "sum" | "count" | "avg" | "min" | "max";
   reference_lines?: RefLineDraft[];
-  chart_hint?: "column" | "line";
+  chart_hint?: "column" | "line" | "grouped_column" | "multi_line";
+  compareMode?: "none" | "years" | "categories";
+  compare_last_n_years?: number;
+  compare_keys?: string[];
 };
 
 type Props = {
@@ -86,8 +94,16 @@ function isAnalyticsEnvelope(
   return !!cv && cv.v === 2 && Array.isArray(cv.points);
 }
 
-function rowKind(row: MetricRow): "value" | "analytics" {
+function isComparisonEnvelope(
+  cv: MetricRow["computed_value"]
+): cv is MetricComparison & { value?: number } {
+  return !!cv && cv.v === 3 && Array.isArray((cv as MetricComparison).groups);
+}
+
+function rowKind(row: MetricRow): "value" | "analytics" | "comparison" {
+  if (row.kind === "comparison") return "comparison";
   if (row.kind === "analytics" || row.kind === "value") return row.kind;
+  if (row.definition?.of === "series_compare") return "comparison";
   return row.definition?.subdivision ? "analytics" : "value";
 }
 
@@ -96,6 +112,9 @@ function scalarFromRow(row: MetricRow): number | undefined {
   if (!cv) return undefined;
   if (typeof cv.value === "number") return cv.value;
   if (isAnalyticsEnvelope(cv) && typeof cv.summary?.value === "number") {
+    return cv.summary.value;
+  }
+  if (isComparisonEnvelope(cv) && typeof cv.summary?.value === "number") {
     return cv.summary.value;
   }
   return undefined;
@@ -133,6 +152,9 @@ function emptyGuided(kind: "value" | "analytics" = "value"): DefinitionDraft {
       bucket_op: "sum",
       chart_hint: "column",
       reference_lines: [],
+      compareMode: "none",
+      compare_last_n_years: 3,
+      compare_keys: [],
     };
   }
   return {
@@ -143,7 +165,10 @@ function emptyGuided(kind: "value" | "analytics" = "value"): DefinitionDraft {
   };
 }
 
-function definitionFromGuided(guided: DefinitionDraft, kind: "value" | "analytics"): unknown {
+function definitionFromGuided(
+  guided: DefinitionDraft,
+  kind: "value" | "analytics"
+): unknown {
   const d: DefinitionDraft = { ...guided };
   if (d.source.type === "metric") {
     d.source = { type: "metric", ref: d.source.ref, direction: d.source.direction };
@@ -161,13 +186,37 @@ function definitionFromGuided(guided: DefinitionDraft, kind: "value" | "analytic
     delete d.bucket_op;
     delete d.reference_lines;
     delete d.chart_hint;
+    delete d.compareMode;
+    delete d.compare_last_n_years;
+    delete d.compare_keys;
     d.of = "monthly_totals";
-  } else {
-    d.of = "series_totals";
-    if (!d.subdivision) d.subdivision = "day";
-    if (!d.bucket_op) d.bucket_op = "sum";
-    if (!d.chart_hint) d.chart_hint = "column";
+    return d;
   }
+  if (d.compareMode && d.compareMode !== "none") {
+    return {
+      of: "series_compare",
+      source: d.source,
+      window: d.window,
+      subdivision: d.subdivision ?? "month",
+      bucket_op: d.bucket_op ?? "sum",
+      chart_hint:
+        d.chart_hint === "multi_line" ? "multi_line" : "grouped_column",
+      reference_lines: d.reference_lines,
+      compare:
+        d.compareMode === "years"
+          ? { by: "year", last_n_years: d.compare_last_n_years ?? 3 }
+          : { by: "category", keys: d.compare_keys ?? [] },
+    };
+  }
+  d.of = "series_totals";
+  if (!d.subdivision) d.subdivision = "day";
+  if (!d.bucket_op) d.bucket_op = "sum";
+  if (!d.chart_hint || d.chart_hint === "grouped_column" || d.chart_hint === "multi_line") {
+    d.chart_hint = "column";
+  }
+  delete d.compareMode;
+  delete d.compare_last_n_years;
+  delete d.compare_keys;
   return d;
 }
 
@@ -190,6 +239,9 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   );
   const [previewLabel, setPreviewLabel] = useState<string | null>(null);
   const [previewSeries, setPreviewSeries] = useState<MetricSeriesEnvelope | null>(
+    null
+  );
+  const [previewComparison, setPreviewComparison] = useState<MetricComparison | null>(
     null
   );
   const [fieldErrors, setFieldErrors] = useState<string | null>(null);
@@ -233,6 +285,10 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     () => rows.filter((r) => rowKind(r) === "analytics"),
     [rows]
   );
+  const comparisonRows = useMemo(
+    () => rows.filter((r) => rowKind(r) === "comparison"),
+    [rows]
+  );
 
   function definitionFromUi(): unknown {
     if (mode === "advanced") {
@@ -253,6 +309,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     setJsonText(JSON.stringify(g, null, 2));
     setPreviewLabel(null);
     setPreviewSeries(null);
+    setPreviewComparison(null);
   }
 
   function openNew() {
@@ -267,6 +324,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     setJsonText(JSON.stringify(g, null, 2));
     setPreviewLabel(null);
     setPreviewSeries(null);
+    setPreviewComparison(null);
     setFieldErrors(null);
     setBuilderOpen(true);
   }
@@ -278,15 +336,27 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     setScopeGeneral(row.scope === "general");
     setMode("advanced");
     const k = rowKind(row);
-    setBuilderKind(k);
+    setBuilderKind(k === "comparison" ? "analytics" : k);
     setJsonText(JSON.stringify(row.definition ?? {}, null, 2));
     try {
-      setGuided({ ...emptyGuided(k), ...(row.definition as DefinitionDraft) });
+      const def = row.definition as DefinitionDraft;
+      const g = { ...emptyGuided(k === "comparison" ? "analytics" : k), ...def };
+      if (def.of === "series_compare") {
+        const cmp = def as DefinitionDraft & {
+          compare?: { by?: string; last_n_years?: number; keys?: string[] };
+        };
+        g.compareMode =
+          cmp.compare?.by === "category" ? "categories" : "years";
+        g.compare_last_n_years = cmp.compare?.last_n_years ?? 3;
+        g.compare_keys = cmp.compare?.keys ?? [];
+      }
+      setGuided(g);
     } catch {
-      setGuided(emptyGuided(k));
+      setGuided(emptyGuided(k === "comparison" ? "analytics" : k));
     }
     setPreviewLabel(null);
     setPreviewSeries(null);
+    setPreviewComparison(null);
     setFieldErrors(null);
     setBuilderOpen(true);
   }
@@ -295,6 +365,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     setFieldErrors(null);
     setPreviewLabel(null);
     setPreviewSeries(null);
+    setPreviewComparison(null);
     setBusy("preview");
     try {
       const definition = definitionFromUi();
@@ -306,20 +377,33 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
           body: JSON.stringify({ definition }),
         }
       );
-      const json = (await res.json()) as MetricSeriesEnvelope & {
-        errors?: Array<{ path: string; message: string }>;
-        error?: string;
-      };
+      const json = (await res.json()) as
+        | (MetricSeriesEnvelope & { value?: number })
+        | (MetricComparison & { value?: number })
+        | {
+            errors?: Array<{ path: string; message: string }>;
+            error?: string;
+            value?: number;
+          };
       if (!res.ok) {
+        const errJson = json as {
+          errors?: Array<{ path: string; message: string }>;
+          error?: string;
+        };
         setFieldErrors(
-          json.errors?.map((e) => `${e.path}: ${e.message}`).join("; ") ??
-            json.error ??
+          errJson.errors?.map((e) => `${e.path}: ${e.message}`).join("; ") ??
+            errJson.error ??
             "Preview failed"
         );
         return;
       }
-      if (json.v === 2 && Array.isArray(json.points)) {
-        setPreviewSeries(json);
+      if ("v" in json && json.v === 3 && "groups" in json && Array.isArray(json.groups)) {
+        setPreviewComparison(json as MetricComparison);
+        setPreviewLabel(
+          `${json.groups.length} groups · ${json.axis.labels.length} periods`
+        );
+      } else if ("v" in json && json.v === 2 && "points" in json && Array.isArray(json.points)) {
+        setPreviewSeries(json as MetricSeriesEnvelope & { points: MetricChartPoint[] });
         setPreviewLabel(
           json.summary
             ? `summary ${json.summary.op}=${formatValue(json.summary.value)}`
@@ -464,7 +548,8 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   }
 
   function toggleExpand(row: MetricRow) {
-    if (rowKind(row) !== "analytics") return;
+    const kind = rowKind(row);
+    if (kind !== "analytics" && kind !== "comparison") return;
     if (expandedId === row.id) {
       setExpandedId(null);
       return;
@@ -499,6 +584,9 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     const envelope = isAnalyticsEnvelope(row.computed_value)
       ? row.computed_value
       : null;
+    const comparison = isComparisonEnvelope(row.computed_value)
+      ? row.computed_value
+      : null;
     const points = expanded ? filteredPoints(row) : [];
     const calcLabel = row.computed_at ? "Recalculate" : "Calculate";
 
@@ -510,16 +598,16 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
         data-kind={kind}
       >
         <div
-          className={kind === "analytics" ? "cursor-pointer" : undefined}
+          className={kind === "analytics" || kind === "comparison" ? "cursor-pointer" : undefined}
           onClick={() => toggleExpand(row)}
           onKeyDown={(e) => {
-            if (kind === "analytics" && (e.key === "Enter" || e.key === " ")) {
+            if ((kind === "analytics" || kind === "comparison") && (e.key === "Enter" || e.key === " ")) {
               e.preventDefault();
               toggleExpand(row);
             }
           }}
-          role={kind === "analytics" ? "button" : undefined}
-          tabIndex={kind === "analytics" ? 0 : undefined}
+          role={kind === "analytics" || kind === "comparison" ? "button" : undefined}
+          tabIndex={kind === "analytics" || kind === "comparison" ? 0 : undefined}
         >
           <div className="flex flex-wrap items-baseline gap-2">
             <label
@@ -558,7 +646,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
             {row.computed_at
               ? ` · ${new Date(row.computed_at).toLocaleString()}`
               : " · not computed"}
-            {kind === "analytics" ? (
+            {kind === "analytics" || kind === "comparison" ? (
               <span className="treasury-meta-fine">
                 {" "}
                 · {expanded ? "collapse" : "expand"}
@@ -653,6 +741,16 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
                 </tfoot>
               </table>
             </div>
+          </div>
+        ) : null}
+
+        {expanded && comparison ? (
+          <div
+            className="space-y-3 pt-2"
+            style={{ borderTop: "1px solid var(--line)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MetricComparisonChart comparison={comparison} />
           </div>
         ) : null}
 
@@ -1037,6 +1135,66 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
 
               {builderKind === "analytics" ? (
                 <>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="treasury-meta">Compare across</span>
+                    <select
+                      className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                      value={guided.compareMode ?? "none"}
+                      onChange={(e) =>
+                        syncAdvancedFromGuided({
+                          ...guided,
+                          compareMode: e.target.value as DefinitionDraft["compareMode"],
+                          subdivision:
+                            e.target.value === "years"
+                              ? guided.subdivision === "day" || guided.subdivision === "week"
+                                ? "month"
+                                : guided.subdivision ?? "month"
+                              : guided.subdivision,
+                        })
+                      }
+                    >
+                      <option value="none">None (single series)</option>
+                      <option value="years">Years</option>
+                      <option value="categories">Categories</option>
+                    </select>
+                  </label>
+                  {guided.compareMode === "years" ? (
+                    <label className="block text-sm">
+                      <span className="treasury-meta">Last N years</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={5}
+                        className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                        value={guided.compare_last_n_years ?? 3}
+                        onChange={(e) =>
+                          syncAdvancedFromGuided({
+                            ...guided,
+                            compare_last_n_years: Number(e.target.value) || 3,
+                          })
+                        }
+                      />
+                    </label>
+                  ) : null}
+                  {guided.compareMode === "categories" ? (
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="treasury-meta">Categories (comma-separated)</span>
+                      <input
+                        className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
+                        value={(guided.compare_keys ?? []).join(", ")}
+                        onChange={(e) =>
+                          syncAdvancedFromGuided({
+                            ...guided,
+                            compare_keys: e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                        placeholder="Payroll, Software"
+                      />
+                    </label>
+                  ) : null}
                   <label className="block text-sm">
                     <span className="treasury-meta">Subdivision</span>
                     <select
@@ -1080,16 +1238,31 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
                     <span className="treasury-meta">Chart</span>
                     <select
                       className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                      value={guided.chart_hint ?? "column"}
+                      value={
+                        guided.compareMode && guided.compareMode !== "none"
+                          ? guided.chart_hint === "multi_line"
+                            ? "multi_line"
+                            : "grouped_column"
+                          : guided.chart_hint ?? "column"
+                      }
                       onChange={(e) =>
                         syncAdvancedFromGuided({
                           ...guided,
-                          chart_hint: e.target.value as "column" | "line",
+                          chart_hint: e.target.value as DefinitionDraft["chart_hint"],
                         })
                       }
                     >
-                      <option value="column">column</option>
-                      <option value="line">line</option>
+                      {guided.compareMode && guided.compareMode !== "none" ? (
+                        <>
+                          <option value="grouped_column">grouped columns</option>
+                          <option value="multi_line">multi line</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="column">column</option>
+                          <option value="line">line</option>
+                        </>
+                      )}
                     </select>
                   </label>
                   <div className="sm:col-span-2 space-y-2">
@@ -1289,6 +1462,11 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
               Preview: <strong>{previewLabel}</strong>
             </p>
           ) : null}
+          {previewComparison ? (
+            <div className="space-y-2">
+              <MetricComparisonChart comparison={previewComparison} />
+            </div>
+          ) : null}
           {previewSeries?.points ? (
             <div className="space-y-2">
               <MetricChart
@@ -1345,6 +1523,16 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
               <li className="treasury-meta text-sm">No analytics metrics.</li>
             ) : (
               analyticsRows.map(renderMetricCard)
+            )}
+          </ul>
+        </section>
+        <section>
+          <p className="sec-title mb-2">Comparison metrics</p>
+          <ul className="space-y-2">
+            {comparisonRows.length === 0 ? (
+              <li className="treasury-meta text-sm">No comparison metrics.</li>
+            ) : (
+              comparisonRows.map(renderMetricCard)
             )}
           </ul>
         </section>

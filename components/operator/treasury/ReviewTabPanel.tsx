@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
+import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 
 type ReviewItem = {
   id: string;
@@ -38,6 +40,7 @@ type BlockItem = {
       reference_lines?: { id: string; label: string; value: number; kind: string }[];
       chart_hint?: string;
     };
+    comparison?: MetricComparison;
   } | null;
 };
 
@@ -514,6 +517,15 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     <p className="rcx-note">{block.body}</p>
                   ) : null}
 
+                  {block.role === "exhibit" &&
+                  block.placed_snapshot?.comparison?.v === 3 ? (
+                    <div className="rcx-chart">
+                      <MetricComparisonChart
+                        comparison={block.placed_snapshot.comparison}
+                        height={210}
+                      />
+                    </div>
+                  ) : null}
                   {block.role === "exhibit" &&
                   block.placed_snapshot?.series?.points?.length ? (
                     <div className="rcx-chart">
