@@ -56,6 +56,7 @@ type PostBody = {
   title?: string;
   category?: string;
   why?: string;
+  kind?: "recommendation" | "question";
   impact_amount?: number | null;
   impact_unit?: string | null;
   impact_basis?: string | null;
@@ -116,6 +117,7 @@ export async function POST(request: Request, context: RouteContext) {
     title,
     category,
     why,
+    kind: body.kind === "question" ? "question" : "recommendation",
     impact_amount: body.impact_amount ?? null,
     impact_unit: body.impact_unit?.trim() || null,
     impact_basis: body.impact_basis ? (body.impact_basis as "per_month" | "per_year" | "one_time") : null,
