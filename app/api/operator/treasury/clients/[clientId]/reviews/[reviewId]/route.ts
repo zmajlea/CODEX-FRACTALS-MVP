@@ -83,11 +83,52 @@ export async function PATCH(request: Request, context: RouteContext) {
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
-  let body: { title?: string; period_month?: string };
+  let body: { title?: string; period_month?: string; action?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Spec B15-FIXES-2: restore must run BEFORE the draft-only edit gate.
+  if (body.action === "restore") {
+    const { data: row } = await guard.admin
+      .from("treasury_reviews")
+      .select("id, status")
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .maybeSingle();
+
+    if (!row) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (row.status !== "archived") {
+      return NextResponse.json(
+        { error: "Only archived issues can be restored to draft" },
+        { status: 409 }
+      );
+    }
+
+    const { data, error } = await guard.admin
+      .from("treasury_reviews")
+      .update({ status: "draft" })
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .eq("status", "archived")
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: error?.message ?? "Restore failed" },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({
+      review: normalizeReviewRow(data as Record<string, unknown>),
+    });
   }
 
   const update: Database["public"]["Tables"]["treasury_reviews"]["Update"] = {};
