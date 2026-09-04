@@ -58,7 +58,35 @@ export const summitResultsV1Schema = z.object({
   account_id: z.string().optional(),
 });
 
+/**
+ * Spec B16 — manual Study editor may be KPI-only (no timeline/scenarios).
+ * MCP submit_results still uses summitResultsV1Schema (scenarios required).
+ */
+export const summitManualResultsSchema = summitResultsV1Schema
+  .extend({
+    export_id: z.string().min(1).optional().default("manual"),
+    scenarios: z.array(summitScenarioSchema).default([]),
+  })
+  .superRefine((val, ctx) => {
+    if (val.kpis.length === 0 && val.scenarios.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide at least one KPI or a scenario timeline",
+        path: ["kpis"],
+      });
+    }
+  });
+
 export type SummitResultsV1 = z.infer<typeof summitResultsV1Schema>;
+export type SummitManualResults = z.infer<typeof summitManualResultsSchema>;
+
+export function parseSummitResults(raw: unknown) {
+  return summitResultsV1Schema.safeParse(raw);
+}
+
+export function parseManualStudyResults(raw: unknown) {
+  return summitManualResultsSchema.safeParse(raw);
+}
 
 export type ValidationIssue = {
   path: string;

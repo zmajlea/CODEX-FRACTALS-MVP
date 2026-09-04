@@ -52,6 +52,13 @@ export async function GET(_request: Request, context: RouteContext) {
           .eq("id", b.metric_id)
           .maybeSingle();
         metricName = m?.name ?? null;
+      } else if (b.study_id) {
+        const { data: s } = await guard.admin
+          .from("treasury_studies")
+          .select("name")
+          .eq("id", b.study_id)
+          .maybeSingle();
+        metricName = s?.name ?? null;
       }
       return { ...b, metric_name: metricName };
     })

@@ -9,7 +9,10 @@ import {
   MetricSeriesTable,
 } from "@/components/operator/treasury/analytics/MetricTable";
 import { ReviewDraftsPanel } from "@/components/operator/treasury/ReviewDraftsPanel";
+import { StudiesPanel } from "@/components/operator/treasury/StudiesPanel";
+import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
+import { isPlacedStudySnapshot } from "@/lib/treasury/study-assemble";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import {
@@ -34,6 +37,7 @@ type BlockItem = {
   role: string;
   metric_id: string | null;
   recommendation_id: string | null;
+  study_id?: string | null;
   caption: string;
   body: string;
   proposal_state: string;
@@ -41,22 +45,7 @@ type BlockItem = {
   suggested_caption?: string;
   pinned_window?: PinnedWindow | null;
   view_mode?: "chart" | "table";
-  placed_snapshot?: {
-    kind?: string;
-    value?: number | null;
-    series?: {
-      points?: {
-        bucket_start: string;
-        bucket_label: string;
-        value: number;
-        partial?: true;
-        breaches?: string[];
-      }[];
-      reference_lines?: { id: string; label: string; value: number; kind: string }[];
-      chart_hint?: string;
-    };
-    comparison?: MetricComparison;
-  } | null;
+  placed_snapshot?: Record<string, unknown> | null;
 };
 
 type Preflight = {
@@ -826,9 +815,13 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             {blocks.map((block) => {
               const isProposed = block.proposal_state === "proposed";
               const isStale = staleIds.includes(block.id);
+              const isStudy = block.role === "study";
               const hasMetric =
                 block.role === "figure" || block.role === "exhibit";
               const viewMode = block.view_mode === "table" ? "table" : "chart";
+              const studySnap = isPlacedStudySnapshot(block.placed_snapshot)
+                ? block.placed_snapshot
+                : null;
               return (
                 <article
                   key={block.id}
@@ -840,8 +833,10 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     <span className="rcx-chip" data-state={stateChip(block, staleIds, status)}>
                       {stateChip(block, staleIds, status)}
                     </span>
-                    {block.metric_name ? (
-                      <span className="rcx-src">{block.metric_name}</span>
+                    {block.metric_name || studySnap?.name ? (
+                      <span className="rcx-src">
+                        {block.metric_name ?? studySnap?.name}
+                      </span>
                     ) : (
                       <span className="rcx-src" />
                     )}
@@ -858,6 +853,62 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                         >
                           Confirm proposal
                         </button>
+                      ) : null}
+                      {(hasMetric || isStudy) && (block.role === "exhibit" || isStudy) ? (
+                        <div
+                          className="rcx-seg"
+                          role="group"
+                          aria-label="View mode"
+                          style={{
+                            display: "inline-flex",
+                            border: "1px solid var(--su-line, #DED9D1)",
+                            borderRadius: 4,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="rcx-tool"
+                            disabled={status !== "draft"}
+                            style={{
+                              borderRadius: 0,
+                              border: "none",
+                              background:
+                                viewMode === "chart"
+                                  ? "var(--su-line, #DED9D1)"
+                                  : "transparent",
+                            }}
+                            onClick={() =>
+                              void patchBlock(block.id, {
+                                action: "set_view_mode",
+                                view_mode: "chart",
+                              }).catch((e) => setError(String(e.message)))
+                            }
+                          >
+                            Chart
+                          </button>
+                          <button
+                            type="button"
+                            className="rcx-tool"
+                            disabled={status !== "draft"}
+                            style={{
+                              borderRadius: 0,
+                              border: "none",
+                              background:
+                                viewMode === "table"
+                                  ? "var(--su-line, #DED9D1)"
+                                  : "transparent",
+                            }}
+                            onClick={() =>
+                              void patchBlock(block.id, {
+                                action: "set_view_mode",
+                                view_mode: "table",
+                              }).catch((e) => setError(String(e.message)))
+                            }
+                          >
+                            Table
+                          </button>
+                        </div>
                       ) : null}
                       {hasMetric && block.role === "exhibit" ? (
                         <select
@@ -880,66 +931,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           ))}
                         </select>
                       ) : null}
-                      {hasMetric && block.role === "exhibit" ? (
-                        <div
-                          className="rcx-seg"
-                          role="group"
-                          aria-label="View mode"
-                          style={{
-                            display: "inline-flex",
-                            border: "1px solid var(--su-line, #DED9D1)",
-                            borderRadius: 4,
-                            overflow: "hidden",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="rcx-tool"
-                            disabled={status !== "draft"}
-                            aria-pressed={viewMode === "chart"}
-                            style={{
-                              border: 0,
-                              borderRadius: 0,
-                              fontWeight: viewMode === "chart" ? 600 : 400,
-                              background:
-                                viewMode === "chart"
-                                  ? "var(--su-line, #DED9D1)"
-                                  : "transparent",
-                            }}
-                            onClick={() =>
-                              void patchBlock(block.id, {
-                                action: "set_view_mode",
-                                view_mode: "chart",
-                              }).catch((e) => setError(String(e.message)))
-                            }
-                          >
-                            Chart
-                          </button>
-                          <button
-                            type="button"
-                            className="rcx-tool"
-                            disabled={status !== "draft"}
-                            aria-pressed={viewMode === "table"}
-                            style={{
-                              border: 0,
-                              borderRadius: 0,
-                              fontWeight: viewMode === "table" ? 600 : 400,
-                              background:
-                                viewMode === "table"
-                                  ? "var(--su-line, #DED9D1)"
-                                  : "transparent",
-                            }}
-                            onClick={() =>
-                              void patchBlock(block.id, {
-                                action: "set_view_mode",
-                                view_mode: "table",
-                              }).catch((e) => setError(String(e.message)))
-                            }
-                          >
-                            Table
-                          </button>
-                        </div>
-                      ) : null}
                       {hasMetric ? (
                         <button
                           type="button"
@@ -950,7 +941,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           ＋ Add to draft
                         </button>
                       ) : null}
-                      {hasMetric ? (
+                      {hasMetric || isStudy ? (
                         <button
                           type="button"
                           className={`rcx-tool${isStale ? " primary" : ""}`}
@@ -990,39 +981,122 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     <p className="rcx-note">{block.body}</p>
                   ) : null}
 
+                  {isStudy ? (
+                    <StudyBlockView
+                      snapshot={block.placed_snapshot}
+                      viewMode={viewMode}
+                      showProvenance
+                    />
+                  ) : null}
+
                   {block.role === "exhibit" &&
-                  block.placed_snapshot?.comparison?.v === 3 ? (
+                  (block.placed_snapshot as { comparison?: MetricComparison } | null)
+                    ?.comparison?.v === 3 ? (
                     <div className="rcx-chart">
                       {viewMode === "table" ? (
                         <MetricComparisonTable
-                          comparison={block.placed_snapshot.comparison}
+                          comparison={
+                            (block.placed_snapshot as { comparison: MetricComparison })
+                              .comparison
+                          }
                         />
                       ) : (
                         <MetricComparisonChart
-                          comparison={block.placed_snapshot.comparison}
+                          comparison={
+                            (block.placed_snapshot as { comparison: MetricComparison })
+                              .comparison
+                          }
                           height={210}
                         />
                       )}
                     </div>
                   ) : null}
                   {block.role === "exhibit" &&
-                  block.placed_snapshot?.series?.points?.length ? (
+                  (
+                    block.placed_snapshot as {
+                      series?: { points?: unknown[] };
+                    } | null
+                  )?.series?.points?.length ? (
                     <div className="rcx-chart">
                       {viewMode === "table" ? (
                         <MetricSeriesTable
-                          points={block.placed_snapshot.series.points}
+                          points={
+                            (
+                              block.placed_snapshot as {
+                                series: {
+                                  points: {
+                                    bucket_start: string;
+                                    bucket_label: string;
+                                    value: number;
+                                    partial?: true;
+                                  }[];
+                                  reference_lines?: {
+                                    id: string;
+                                    label: string;
+                                    value: number;
+                                    kind: string;
+                                  }[];
+                                };
+                              }
+                            ).series.points
+                          }
                           referenceLines={
-                            block.placed_snapshot.series.reference_lines ?? []
+                            (
+                              block.placed_snapshot as {
+                                series: {
+                                  reference_lines?: {
+                                    id: string;
+                                    label: string;
+                                    value: number;
+                                    kind: string;
+                                  }[];
+                                };
+                              }
+                            ).series.reference_lines ?? []
                           }
                         />
                       ) : (
                         <MetricChart
-                          points={block.placed_snapshot.series.points}
+                          points={
+                            (
+                              block.placed_snapshot as {
+                                series: {
+                                  points: {
+                                    bucket_start: string;
+                                    bucket_label: string;
+                                    value: number;
+                                  }[];
+                                  reference_lines?: {
+                                    id: string;
+                                    label: string;
+                                    value: number;
+                                    kind: string;
+                                  }[];
+                                  chart_hint?: string;
+                                };
+                              }
+                            ).series.points
+                          }
                           referenceLines={
-                            block.placed_snapshot.series.reference_lines ?? []
+                            (
+                              block.placed_snapshot as {
+                                series: {
+                                  reference_lines?: {
+                                    id: string;
+                                    label: string;
+                                    value: number;
+                                    kind: string;
+                                  }[];
+                                };
+                              }
+                            ).series.reference_lines ?? []
                           }
                           chartHint={
-                            block.placed_snapshot.series.chart_hint === "line"
+                            (
+                              block.placed_snapshot as {
+                                series: { chart_hint?: string };
+                              }
+                            ).series.chart_hint === "line"
                               ? "line"
                               : "column"
                           }
@@ -1032,16 +1106,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     </div>
                   ) : null}
                   {block.role === "figure" &&
-                  typeof block.placed_snapshot?.value === "number" ? (
+                  typeof (block.placed_snapshot as { value?: number } | null)
+                    ?.value === "number" ? (
                     <div className="rcx-figval">
-                      {block.placed_snapshot.value.toLocaleString(undefined, {
+                      {(
+                        block.placed_snapshot as { value: number }
+                      ).value.toLocaleString(undefined, {
                         style: "currency",
                         currency: "USD",
                         maximumFractionDigits: 0,
                       })}
                     </div>
                   ) : null}
-                  {hasMetric ? (
+                  {hasMetric || isStudy ? (
                     <div className="rcx-caprow">
                       <span className="rcx-caplbl">Caption</span>
                       <textarea
@@ -1132,6 +1209,21 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             >
               ›
             </button>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <StudiesPanel
+              clientUserId={clientUserId}
+              reviewId={activeId}
+              reviewStatus={status}
+              busy={busy}
+              onPlaced={() => {
+                if (activeId) void loadReview(activeId);
+              }}
+              onError={setError}
+            />
+          </div>
+          <div className="rcx-kick" style={{ marginTop: 8 }}>
+            Metrics
           </div>
           <div className="rcx-kick" style={{ margin: "8px 0 2px", fontSize: 10 }}>
             Metric library · {metrics.length}

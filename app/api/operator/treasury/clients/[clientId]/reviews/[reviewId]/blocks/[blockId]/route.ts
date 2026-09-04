@@ -73,15 +73,62 @@ export async function PATCH(request: Request, context: RouteContext) {
       confirmed_at: new Date().toISOString(),
     } as Json;
   } else if (action === "recalculate") {
-    const out = await computeBlockMetric(
-      guard.admin,
-      review.tenant_id,
-      review.client_user_id,
-      block
-    );
-    if (out) {
-      update.placed_snapshot = toPlacedSnapshot(out);
+    if (block.role === "study" && block.study_id) {
+      const { data: studyRow } = await guard.admin
+        .from("treasury_studies")
+        .select("*")
+        .eq("id", block.study_id)
+        .eq("client_user_id", clientId)
+        .maybeSingle();
+      if (!studyRow) {
+        return NextResponse.json({ error: "Study not found" }, { status: 404 });
+      }
+      const { isStudyPlaceable, placedStudyToJson } = await import(
+        "@/lib/treasury/study-assemble"
+      );
+      if (
+        !isStudyPlaceable({
+          type: String(studyRow.type),
+          status: studyRow.status != null ? String(studyRow.status) : null,
+        })
+      ) {
+        return NextResponse.json(
+          { error: "Study is not placeable" },
+          { status: 409 }
+        );
+      }
+      const { buildPlacedStudySnapshot } = await import(
+        "@/lib/treasury/study-assemble-server"
+      );
+      const placed = await buildPlacedStudySnapshot(
+        guard.admin,
+        clientId,
+        studyRow as Record<string, unknown>
+      );
+      if (!placed) {
+        return NextResponse.json(
+          { error: "Failed to rebuild study snapshot" },
+          { status: 500 }
+        );
+      }
+      update.placed_snapshot = placedStudyToJson(placed);
       update.proposal_state = "none";
+      update.provenance = {
+        ...(typeof block.provenance === "object" ? block.provenance : {}),
+        study_as_of: placed.as_of,
+        recomputed_at: new Date().toISOString(),
+      } as Json;
+    } else {
+      const out = await computeBlockMetric(
+        guard.admin,
+        review.tenant_id,
+        review.client_user_id,
+        block
+      );
+      if (out) {
+        update.placed_snapshot = toPlacedSnapshot(out);
+        update.proposal_state = "none";
+      }
     }
   } else if (action === "set_window") {
     const { isPinnedWindow } = await import("@/lib/treasury/pinned-window");
