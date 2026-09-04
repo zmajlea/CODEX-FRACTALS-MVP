@@ -79,9 +79,20 @@ type Props = {
   dataThrough?: string | null;
 };
 
-function stateChip(block: BlockItem, staleIds: string[]): string {
+type PendingAction =
+  | { kind: "archive"; review: ReviewItem }
+  | { kind: "delete"; review: ReviewItem };
+
+function stateChip(
+  block: BlockItem,
+  staleIds: string[],
+  reviewStatus: string
+): string {
   if (block.proposal_state === "proposed") return "PROPOSED · assistant";
-  if (staleIds.includes(block.id)) return "STALE · recompute";
+  // Spec B15-FIXES-2: frozen issues never read as STALE.
+  if (reviewStatus === "draft" && staleIds.includes(block.id)) {
+    return "STALE · recompute";
+  }
   if (block.proposal_state === "confirmed") return "CONFIRMED · was proposed";
   return "READY";
 }
@@ -103,8 +114,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [showArchived, setShowArchived] = useState(false);
   const [draftKindTarget, setDraftKindTarget] = useState<DraftKind>("recommendation");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [confirmTyped, setConfirmTyped] = useState("");
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
+  const lifecycleLocked = busy || pendingAction !== null;
 
   const base = `/api/operator/treasury/clients/${clientUserId}`;
 
@@ -151,7 +165,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         setBlocks(json.blocks);
         setPreflight(json.preflight);
         setLoadingId(null);
-        void loadPreflight(reviewId);
+        // Spec B15-FIXES-2: skip deferred stale scan on frozen issues.
+        if (json.review.status === "draft") void loadPreflight(reviewId);
       } catch (e) {
         if (activeIdRef.current !== reviewId) return;
         setLoadingId(null);
@@ -206,58 +221,97 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     void refreshRef.current(activeIdRef.current);
   }, [showArchived]);
 
-  async function archiveReview(reviewId: string) {
+  function requestArchive(review: ReviewItem) {
+    if (busy || pendingAction) return;
     setMenuOpenId(null);
-    if (
-      !confirm(
-        "Archive this issue? Published issues leave the client view; versions are retained."
-      )
-    ) {
-      return;
+    setConfirmTyped("");
+    setPendingAction({ kind: "archive", review });
+  }
+
+  function requestDelete(review: ReviewItem) {
+    if (busy || pendingAction) return;
+    setMenuOpenId(null);
+    setConfirmTyped("");
+    setPendingAction({ kind: "delete", review });
+  }
+
+  function cancelPendingAction() {
+    if (busy) return;
+    setPendingAction(null);
+    setConfirmTyped("");
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction || busy) return;
+    const action = pendingAction;
+    const review = action.review;
+    const label = (review.title || review.period_month).trim();
+
+    if (action.kind === "delete" && review.status === "published") {
+      if (confirmTyped.trim() !== label) {
+        setError("Delete cancelled — title did not match.");
+        return;
+      }
     }
+
     setBusy(true);
+    setPendingAction(null);
+    setConfirmTyped("");
     setError(null);
     try {
-      const res = await fetch(`${base}/reviews/${reviewId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const json = (await res.json()) as { error?: string };
-        throw new Error(json.error ?? "Archive failed");
+      if (action.kind === "archive") {
+        const res = await fetch(`${base}/reviews/${review.id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const json = (await res.json()) as { error?: string };
+          throw new Error(json.error ?? "Archive failed");
+        }
+        setError("Issue archived.");
+        await refresh(activeId === review.id ? null : activeId);
+      } else {
+        const res = await fetch(`${base}/reviews/${review.id}?hard=1`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const json = (await res.json()) as { error?: string };
+          throw new Error(json.error ?? "Delete failed");
+        }
+        setError("Issue deleted.");
+        await refresh(activeId === review.id ? null : activeId);
       }
-      await refresh(activeId === reviewId ? null : activeId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Archive failed");
+      setError(
+        e instanceof Error
+          ? e.message
+          : action.kind === "archive"
+            ? "Archive failed"
+            : "Delete failed"
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function hardDeleteReview(review: ReviewItem) {
+  async function restoreReview(reviewId: string) {
+    if (busy || pendingAction) return;
     setMenuOpenId(null);
-    const label = review.title || review.period_month;
-    if (review.status === "published") {
-      const typed = prompt(
-        `This issue is published — the client will lose it permanently.\nType the issue title to confirm delete:\n\n${label}`
-      );
-      if (typed !== label) {
-        if (typed != null) setError("Delete cancelled — title did not match.");
-        return;
-      }
-    } else if (!confirm(`Permanently delete “${label}”? This cannot be undone.`)) {
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${base}/reviews/${review.id}?hard=1`, {
-        method: "DELETE",
+      const res = await fetch(`${base}/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore" }),
       });
       if (!res.ok) {
         const json = (await res.json()) as { error?: string };
-        throw new Error(json.error ?? "Delete failed");
+        throw new Error(json.error ?? "Restore failed");
       }
-      await refresh(activeId === review.id ? null : activeId);
+      setError("Issue restored.");
+      await refresh(reviewId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : "Restore failed");
     } finally {
       setBusy(false);
     }
@@ -504,8 +558,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 
   const activeReview = reviews.find((r) => r.id === activeId);
   const nextVersion = (activeReview?.current_version ?? 0) + 1;
-  const staleIds = preflight?.stale_block_ids ?? [];
+  // Spec B15-FIXES-2: never surface stale ids on frozen issues.
+  const staleIds =
+    status === "draft" ? (preflight?.stale_block_ids ?? []) : [];
   const isLoadingIssue = Boolean(loadingId && loadingId === activeId);
+  const pendingLabel = pendingAction
+    ? (pendingAction.review.title || pendingAction.review.period_month).trim()
+    : "";
+  const publishedDeleteNeedsType =
+    pendingAction?.kind === "delete" &&
+    pendingAction.review.status === "published";
+  const pendingConfirmReady =
+    pendingAction != null &&
+    (!publishedDeleteNeedsType || confirmTyped.trim() === pendingLabel);
 
   const openShelfFor = (role: "figure" | "exhibit") => {
     setShelfOpen(true);
@@ -562,60 +627,74 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                 {r.reply_count ? ` · ${r.reply_count} replies` : ""}
               </div>
             </button>
-            {r.status !== "archived" ? (
-              <div style={{ position: "relative", alignSelf: "center" }}>
-                <button
-                  type="button"
-                  className="rcx-tool"
-                  title="Issue actions"
-                  disabled={busy}
-                  aria-expanded={menuOpenId === r.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpenId((cur) => (cur === r.id ? null : r.id));
+            <div style={{ position: "relative", alignSelf: "center" }}>
+              <button
+                type="button"
+                className="rcx-tool"
+                title="Issue actions"
+                disabled={lifecycleLocked}
+                aria-expanded={menuOpenId === r.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (lifecycleLocked) return;
+                  setMenuOpenId((cur) => (cur === r.id ? null : r.id));
+                }}
+              >
+                ⋯
+              </button>
+              {menuOpenId === r.id ? (
+                <div
+                  className="rcx-menu"
+                  role="menu"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    zIndex: 20,
+                    background: "var(--su-paper, #FCFBF9)",
+                    border: "1px solid var(--su-line, #DED9D1)",
+                    minWidth: 120,
+                    padding: 4,
+                    boxShadow: "0 4px 12px rgba(0,0,0,.08)",
                   }}
                 >
-                  ⋯
-                </button>
-                {menuOpenId === r.id ? (
-                  <div
-                    className="rcx-menu"
-                    role="menu"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: "100%",
-                      zIndex: 20,
-                      background: "var(--su-paper, #FCFBF9)",
-                      border: "1px solid var(--su-line, #DED9D1)",
-                      minWidth: 120,
-                      padding: 4,
-                      boxShadow: "0 4px 12px rgba(0,0,0,.08)",
-                    }}
-                  >
+                  {r.status === "archived" ? (
                     <button
                       type="button"
                       className="rcx-tool"
                       style={{ display: "block", width: "100%", textAlign: "left" }}
                       role="menuitem"
-                      onClick={() => void archiveReview(r.id)}
+                      disabled={lifecycleLocked}
+                      onClick={() => void restoreReview(r.id)}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rcx-tool"
+                      style={{ display: "block", width: "100%", textAlign: "left" }}
+                      role="menuitem"
+                      disabled={lifecycleLocked}
+                      onClick={() => requestArchive(r)}
                     >
                       Archive
                     </button>
-                    <button
-                      type="button"
-                      className="rcx-tool danger"
-                      style={{ display: "block", width: "100%", textAlign: "left" }}
-                      role="menuitem"
-                      onClick={() => void hardDeleteReview(r)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+                  )}
+                  <button
+                    type="button"
+                    className="rcx-tool danger"
+                    style={{ display: "block", width: "100%", textAlign: "left" }}
+                    role="menuitem"
+                    disabled={lifecycleLocked}
+                    onClick={() => requestDelete(r)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         ))}
         <button
@@ -758,8 +837,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                 >
                   <div className="rcx-bchrome">
                     <span className="rcx-chip rcx-role">{block.role}</span>
-                    <span className="rcx-chip" data-state={stateChip(block, staleIds)}>
-                      {stateChip(block, staleIds)}
+                    <span className="rcx-chip" data-state={stateChip(block, staleIds, status)}>
+                      {stateChip(block, staleIds, status)}
                     </span>
                     {block.metric_name ? (
                       <span className="rcx-src">{block.metric_name}</span>
@@ -875,12 +954,15 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                         <button
                           type="button"
                           className={`rcx-tool${isStale ? " primary" : ""}`}
+                          disabled={busy || status !== "draft"}
                           onClick={() =>
                             void patchBlock(block.id, {
                               action: "recalculate",
                             })
                               .then(() => {
-                                if (activeId) void loadPreflight(activeId);
+                                if (activeId && status === "draft") {
+                                  void loadPreflight(activeId);
+                                }
                               })
                               .catch((e) => setError(String(e.message)))
                           }
@@ -1160,6 +1242,70 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           </aside>
         </>
       ) : null}
+
+      {/* ── Lifecycle confirm (single-owner) ────────── */}
+      {pendingAction ? (
+        <>
+          <div
+            className="rcx-scrim"
+            onClick={() => cancelPendingAction()}
+          />
+          <div
+            className="rcx-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rcx-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rcx-kick" id="rcx-confirm-title">
+              {pendingAction.kind === "archive" ? "Archive issue" : "Delete issue"}
+            </div>
+            <p className="rcx-confirm-body">
+              {pendingAction.kind === "archive"
+                ? `Archive “${pendingLabel}”? Published issues leave the client view; versions are retained.`
+                : publishedDeleteNeedsType
+                  ? `This issue is published — the client will lose it permanently. Type the issue title to confirm.`
+                  : `Permanently delete “${pendingLabel}”? This cannot be undone.`}
+            </p>
+            {publishedDeleteNeedsType ? (
+              <label className="rcx-confirm-label">
+                <span className="rcx-muted" style={{ fontSize: 11 }}>
+                  Type “{pendingLabel}”
+                </span>
+                <input
+                  className="rcx-confirm-input"
+                  value={confirmTyped}
+                  autoFocus
+                  onChange={(e) => setConfirmTyped(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && pendingConfirmReady) {
+                      void confirmPendingAction();
+                    }
+                  }}
+                />
+              </label>
+            ) : null}
+            <div className="rcx-confirm-actions">
+              <button
+                type="button"
+                className="rcx-btn ghost sm"
+                disabled={busy}
+                onClick={() => cancelPendingAction()}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`rcx-btn sm${pendingAction.kind === "delete" ? " danger" : ""}`}
+                disabled={busy || !pendingConfirmReady}
+                onClick={() => void confirmPendingAction()}
+              >
+                {pendingAction.kind === "archive" ? "Archive" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1255,6 +1401,13 @@ const RCX_CSS = `
 .rcx-builder .bx{font-size:22px;line-height:1;border:none;background:transparent;cursor:pointer;color:var(--mute);padding:2px 8px}
 .rcx-builder .bx:hover{color:var(--ink)}
 .rcx-bbody{padding:18px 22px;overflow:auto;flex:1 1 auto}
+.rcx-confirm{position:fixed;left:50%;top:28%;transform:translateX(-50%);z-index:70;width:min(420px,92vw);background:var(--su-paper,#FCFBF9);border:1px solid var(--su-line,#DED9D1);border-radius:10px;box-shadow:0 12px 40px rgba(16,42,71,.18);padding:18px 20px;animation:rcxfade .16s ease}
+.rcx-confirm-body{font-size:13.5px;line-height:1.5;color:var(--ink);margin:8px 0 14px}
+.rcx-confirm-label{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.rcx-confirm-input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;color:var(--ink);background:#fff}
+.rcx-confirm-input:focus{outline:none;border-color:var(--brand)}
+.rcx-confirm-actions{display:flex;justify-content:flex-end;gap:8px}
+.rcx-btn.danger{background:var(--su-neg,#B42318);border-color:var(--su-neg,#B42318);color:#fff}
 @keyframes rcxslide{from{transform:translateX(40px);opacity:.4}to{transform:translateX(0);opacity:1}}
 @keyframes rcxfade{from{opacity:0}to{opacity:1}}
 `;
