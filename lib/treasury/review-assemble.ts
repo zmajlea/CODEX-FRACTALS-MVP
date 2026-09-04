@@ -27,9 +27,10 @@ export type ReviewBlockRow = {
   id: string;
   review_id: string;
   position: number;
-  role: "figure" | "exhibit" | "note" | "narrative";
+  role: "figure" | "exhibit" | "note" | "narrative" | "study";
   metric_id: string | null;
   recommendation_id: string | null;
+  study_id: string | null;
   pinned_window: Json | null;
   view_mode: ReviewBlockViewMode;
   placed_snapshot: Json | null;
@@ -104,6 +105,7 @@ export function normalizeBlockRow(row: Record<string, unknown>): ReviewBlockRow 
     role: row.role as ReviewBlockRow["role"],
     metric_id: (row.metric_id as string | null) ?? null,
     recommendation_id: (row.recommendation_id as string | null) ?? null,
+    study_id: (row.study_id as string | null) ?? null,
     pinned_window: (row.pinned_window as Json | null) ?? null,
     view_mode: viewMode,
     placed_snapshot: (row.placed_snapshot as Json | null) ?? null,
@@ -191,6 +193,26 @@ export async function isBlockStale(
   clientUserId: string,
   block: ReviewBlockRow
 ): Promise<boolean> {
+  if (block.role === "study" && block.study_id) {
+    const { buildPlacedStudySnapshot } = await import(
+      "@/lib/treasury/study-assemble-server"
+    );
+    const { studySnapshotDiffers } = await import("@/lib/treasury/study-assemble");
+    const { data: studyRow } = await admin
+      .from("treasury_studies")
+      .select("*")
+      .eq("id", block.study_id)
+      .eq("client_user_id", clientUserId)
+      .maybeSingle();
+    if (!studyRow) return true;
+    const fresh = await buildPlacedStudySnapshot(
+      admin,
+      clientUserId,
+      studyRow as Record<string, unknown>
+    );
+    if (!fresh) return true;
+    return studySnapshotDiffers(block.placed_snapshot, fresh);
+  }
   if (block.role !== "figure" && block.role !== "exhibit") return false;
   const current = await computeBlockMetric(admin, tenantId, clientUserId, block);
   if (!current) return true;
@@ -347,6 +369,16 @@ export async function buildReviewSnapshot(
               : undefined,
         });
       }
+    } else if (block.role === "study" && block.study_id) {
+      const placed = block.placed_snapshot as Record<string, unknown> | null;
+      snapshotBlocks.push({
+        role: "study",
+        study_id: block.study_id,
+        name: (placed?.name as string) ?? "Study",
+        caption: block.caption,
+        view_mode: block.view_mode ?? "chart",
+        computed: placed,
+      });
     }
   }
 

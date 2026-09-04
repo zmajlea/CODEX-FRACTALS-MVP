@@ -1986,6 +1986,7 @@ export type Database = {
           recommendation_id: string | null
           review_id: string
           role: string
+          study_id: string | null
           updated_at: string
           view_mode: string
         }
@@ -2003,6 +2004,7 @@ export type Database = {
           recommendation_id?: string | null
           review_id: string
           role: string
+          study_id?: string | null
           updated_at?: string
           view_mode?: string
         }
@@ -2020,6 +2022,7 @@ export type Database = {
           recommendation_id?: string | null
           review_id?: string
           role?: string
+          study_id?: string | null
           updated_at?: string
           view_mode?: string
         }
@@ -2043,6 +2046,13 @@ export type Database = {
             columns: ["review_id"]
             isOneToOne: false
             referencedRelation: "treasury_reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_review_blocks_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_studies"
             referencedColumns: ["id"]
           },
         ]

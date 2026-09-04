@@ -2271,7 +2271,427 @@ async function main() {
     );
   }
 
-  log("ALL 32/32 LIVE CHECKS PASSED");
+  log("ALL 32/32 LIVE CHECKS PASSED (through B15-FIXES-2); running B16…");
+
+  // 33 — manual external_model KPI-only + timeline; arithmetic reject; POST order
+  {
+    const routeSrc = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/studies/route.ts"
+      ),
+      "utf8"
+    );
+    const shortCircuit =
+      routeSrc.indexOf('body.type === "external_model"') >= 0 &&
+      routeSrc.indexOf('body.type === "external_model"') <
+        routeSrc.indexOf("scope.accountId required");
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let kpiId: string | null = null;
+    let timelineId: string | null = null;
+    try {
+      const { data: kpiStudy, error: kpiErr } = await admin
+        .from("treasury_studies")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          name: `B16 KPI ${stamp}`,
+          type: "external_model",
+          status: "confirmed",
+          source: "manual",
+          is_primary: false,
+          scope: { accountId: "manual", label: "Working Capital" } as unknown as Json,
+          params: {} as Json,
+          scenarios: [] as unknown as Json,
+          derived_snapshot: {
+            results: {
+              schema_version: "summit.results/v1",
+              export_id: "manual-kpi",
+              as_of: "2026-09-01",
+              headline: "WC KPI",
+              kpis: [{ label: "Current ratio", value: 1.4, unit: "x" }],
+              scenarios: [],
+              narrative: [],
+              recommendations: [],
+              actuals_check: [],
+            },
+            validationReport: { schemaOk: true, arithmeticOk: true, issues: [], warnings: [] },
+            engineBaseline: null,
+            submittedAt: new Date().toISOString(),
+          } as unknown as Json,
+        })
+        .select("id")
+        .single();
+      kpiId = kpiStudy?.id ?? null;
+
+      const { data: tlStudy } = await admin
+        .from("treasury_studies")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          name: `B16 Timeline ${stamp}`,
+          type: "external_model",
+          status: "confirmed",
+          source: "manual",
+          is_primary: false,
+          scope: { accountId: "manual", label: null } as unknown as Json,
+          params: {} as Json,
+          scenarios: [] as unknown as Json,
+          derived_snapshot: {
+            results: {
+              schema_version: "summit.results/v1",
+              export_id: "manual-tl",
+              as_of: "2026-09-01",
+              headline: "Runway hand",
+              opening_balance: 100000,
+              kpis: [{ label: "Opening", value: 100000, unit: "usd" }],
+              scenarios: [
+                {
+                  id: "base",
+                  name: "Base",
+                  timeline: [
+                    { month: "2026-09", beginning: 100000, net: -10000, ending: 90000 },
+                    { month: "2026-10", beginning: 90000, net: -10000, ending: 80000 },
+                  ],
+                  breach_month: null,
+                  runway_months: 9,
+                },
+              ],
+              narrative: [],
+              recommendations: [],
+              actuals_check: [],
+            },
+            validationReport: { schemaOk: true, arithmeticOk: true, issues: [], warnings: [] },
+            engineBaseline: null,
+            submittedAt: new Date().toISOString(),
+          } as unknown as Json,
+        })
+        .select("id")
+        .single();
+      timelineId = tlStudy?.id ?? null;
+
+      const { parseManualStudyResults, validateSummitArithmetic } = await import(
+        "../lib/mcp/results-schema"
+      );
+      const bad = parseManualStudyResults({
+        export_id: "bad",
+        as_of: "2026-09-01",
+        headline: "Bad math",
+        kpis: [],
+        scenarios: [
+          {
+            id: "base",
+            name: "Base",
+            timeline: [
+              { month: "2026-09", beginning: 100, net: 10, ending: 999 },
+            ],
+          },
+        ],
+      });
+      const arith =
+        bad.success && !validateSummitArithmetic(bad.data).ok;
+
+      record(
+        33,
+        "manual study KPI+timeline + arith reject + POST order",
+        shortCircuit && Boolean(kpiId) && Boolean(timelineId) && !kpiErr && arith,
+        `order=${shortCircuit} kpi=${kpiId ?? "?"} tl=${timelineId ?? "?"} arith=${arith}`
+      );
+    } finally {
+      if (kpiId) await admin.from("treasury_studies").delete().eq("id", kpiId);
+      if (timelineId) await admin.from("treasury_studies").delete().eq("id", timelineId);
+    }
+  }
+
+  // 34 — pending not placeable; confirm then place freezes snapshot
+  {
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let pendingId: string | null = null;
+    let reviewId: string | null = null;
+    let blockId: string | null = null;
+    try {
+      const { data: pending } = await admin
+        .from("treasury_studies")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          name: `B16 Pending ${stamp}`,
+          type: "external_model",
+          status: "pending",
+          source: "mcp",
+          is_primary: false,
+          scope: { accountId: "manual", label: null } as unknown as Json,
+          params: {} as Json,
+          scenarios: [] as unknown as Json,
+          derived_snapshot: {
+            results: {
+              schema_version: "summit.results/v1",
+              export_id: "pend",
+              as_of: "2026-09-01",
+              headline: "Pending",
+              kpis: [{ label: "A", value: 1 }],
+              scenarios: [],
+              narrative: [],
+              recommendations: [],
+              actuals_check: [],
+            },
+            validationReport: { schemaOk: true, arithmeticOk: true, issues: [], warnings: [] },
+            engineBaseline: null,
+            submittedAt: new Date().toISOString(),
+          } as unknown as Json,
+        })
+        .select("id")
+        .single();
+      pendingId = pending?.id ?? null;
+
+      const { isStudyPlaceable, placedStudyFromExternal, placedStudyHasAccountLeak } =
+        await import("../lib/treasury/study-assemble");
+      const pendingBlocked = !isStudyPlaceable({
+        type: "external_model",
+        status: "pending",
+      });
+
+      await admin
+        .from("treasury_studies")
+        .update({ status: "confirmed" })
+        .eq("id", pendingId!);
+
+      const { data: review } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: r1TenantId!,
+          client_user_id: r1ClientId,
+          period_month: "2026-05-01",
+          label: `${label}-b16-place`,
+          title: "B16 Place Study",
+          status: "draft",
+          created_by: r1OperatorId,
+        })
+        .select("id")
+        .single();
+      reviewId = review?.id ?? null;
+
+      const { data: studyRow } = await admin
+        .from("treasury_studies")
+        .select("*")
+        .eq("id", pendingId!)
+        .single();
+      const placed = placedStudyFromExternal({
+        id: studyRow!.id,
+        name: studyRow!.name,
+        derived_snapshot: studyRow!.derived_snapshot,
+      });
+      const { data: block } = await admin
+        .from("treasury_review_blocks")
+        .insert({
+          review_id: reviewId!,
+          position: 1,
+          role: "study",
+          study_id: pendingId!,
+          metric_id: null,
+          recommendation_id: null,
+          caption: placed.name,
+          body: "",
+          placed_snapshot: placed as unknown as Json,
+          proposal_state: "none",
+          provenance: { study_as_of: placed.as_of },
+        })
+        .select("id, placed_snapshot")
+        .single();
+      blockId = block?.id ?? null;
+
+      // Mutate source study KPIs — placed snapshot must stay frozen
+      const snap = studyRow!.derived_snapshot as {
+        results: { kpis: Array<{ label: string; value: number }> };
+      };
+      snap.results.kpis = [{ label: "A", value: 999 }];
+      await admin
+        .from("treasury_studies")
+        .update({ derived_snapshot: snap as unknown as Json })
+        .eq("id", pendingId!);
+
+      const { data: frozen } = await admin
+        .from("treasury_review_blocks")
+        .select("placed_snapshot")
+        .eq("id", blockId!)
+        .single();
+      const frozenKpi = (
+        frozen?.placed_snapshot as { kpis?: Array<{ value: number }> } | null
+      )?.kpis?.[0]?.value;
+
+      const blocksRoute = readFileSync(
+        join(
+          ROOT,
+          "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/blocks/route.ts"
+        ),
+        "utf8"
+      );
+      const serverGuard =
+        blocksRoute.includes("isStudyPlaceable") &&
+        blocksRoute.includes("pending/discarded rejected");
+
+      record(
+        34,
+        "pending blocked + confirm place freezes + server guard",
+        pendingBlocked &&
+          serverGuard &&
+          Boolean(blockId) &&
+          frozenKpi === 1 &&
+          !placedStudyHasAccountLeak(placed),
+        `pendingBlocked=${pendingBlocked} guard=${serverGuard} frozen=${frozenKpi}`
+      );
+    } finally {
+      if (reviewId) await admin.from("treasury_reviews").delete().eq("id", reviewId);
+      if (pendingId) await admin.from("treasury_studies").delete().eq("id", pendingId);
+    }
+  }
+
+  // 35 — cash_model placed snapshot has timeline KPIs + scrub strips accountId
+  {
+    const { placedStudyFromCashModelCompute, placedStudyHasAccountLeak, scrubPlacedStudySnapshot } =
+      await import("../lib/treasury/study-assemble");
+    const { defaultCashModelParams, defaultCashModelScenarios, emptyCashModelDerivedSnapshot } =
+      await import("../lib/treasury/cash-model-types");
+    const params = defaultCashModelParams();
+    const scenarios = defaultCashModelScenarios(50_000);
+    const derived = emptyCashModelDerivedSnapshot("2026-09-01");
+    // Realistic cash-model-shaped output (same mapper used by placement), not an empty snap.
+    const raw = placedStudyFromCashModelCompute({
+      studyId: "00000000-0000-4000-8000-000000000001",
+      name: "Cash model",
+      asOf: "2026-09-01",
+      openingBalanceRaw: 250000,
+      openingBalanceSource: "manual",
+      timeline: [
+        { month: "2026-07", ending: 250000, kind: "actual" },
+        { month: "2026-08", ending: 240000, kind: "actual" },
+        { month: "2026-09", ending: 230000, kind: "projected" },
+        { month: "2026-10", ending: 210000, kind: "projected" },
+        { month: "2026-11", ending: 180000, kind: "projected" },
+      ],
+      summaries: [
+        {
+          scenarioId: "base",
+          scenarioName: "Base",
+          runwayMonths: 12,
+          breachMonth: null,
+          minEnding: { month: "2026-11", value: 180000 },
+        },
+      ],
+      params,
+      scenarios,
+      derived: {
+        ...derived,
+        bucketMap: { "acct-secret-uuid": "payroll" as never },
+        openingBalance: 250000,
+      },
+    });
+    const withLeak = {
+      ...raw,
+      accountId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      account_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    } as typeof raw & { accountId: string; account_id: string };
+    const scrubbed = scrubPlacedStudySnapshot(withLeak as typeof raw);
+    // Mapper must not embed accountId; scrub must strip injected leaks.
+    const ok =
+      (raw.timeline?.points.length ?? 0) >= 5 &&
+      raw.kpis.length >= 2 &&
+      raw.opening_balance_source === "manual" &&
+      !placedStudyHasAccountLeak(raw) &&
+      !placedStudyHasAccountLeak(scrubbed) &&
+      !("accountId" in (scrubbed as object)) &&
+      !("account_id" in (scrubbed as object)) &&
+      !("bucketMap" in (scrubbed as object));
+
+    record(
+      35,
+      "cash_model snapshot + scrub (no account leak)",
+      ok,
+      `pts=${raw.timeline?.points.length} kpis=${raw.kpis.length} scrubOk=${ok}`
+    );
+  }
+
+  // 36 — study staleness + client render source
+  {
+    const { studySnapshotDiffers, placedStudyFromExternal } = await import(
+      "../lib/treasury/study-assemble"
+    );
+    const a = placedStudyFromExternal({
+      id: "1",
+      name: "S",
+      derived_snapshot: {
+        results: {
+          as_of: "2026-01-01",
+          headline: "S",
+          kpis: [{ label: "A", value: 1 }],
+          scenarios: [],
+        },
+        validationReport: {},
+        engineBaseline: null,
+        submittedAt: "2026-01-01",
+      },
+    });
+    const b = placedStudyFromExternal({
+      id: "1",
+      name: "S",
+      derived_snapshot: {
+        results: {
+          as_of: "2026-02-01",
+          headline: "S",
+          kpis: [{ label: "A", value: 2 }],
+          scenarios: [],
+        },
+        validationReport: {},
+        engineBaseline: null,
+        submittedAt: "2026-02-01",
+      },
+    });
+    const stale = studySnapshotDiffers(a, b);
+    const panel = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
+      "utf8"
+    );
+    const client = readFileSync(
+      join(ROOT, "components/treasury/ClientReviewView.tsx"),
+      "utf8"
+    );
+    const wired =
+      panel.includes("StudiesPanel") &&
+      panel.includes("StudyBlockView") &&
+      client.includes('role === "study"') &&
+      client.includes("StudyBlockView");
+    const assemble = readFileSync(
+      join(ROOT, "lib/treasury/review-assemble.ts"),
+      "utf8"
+    );
+    const stalePath = assemble.includes('block.role === "study"');
+    record(
+      36,
+      "study stale detect + operator/client render wired",
+      stale && wired && stalePath,
+      `stale=${stale} wired=${wired} assemble=${stalePath}`
+    );
+  }
+
+  // 37 — source: get_studies registered; migration study role
+  {
+    const reg = readFileSync(join(ROOT, "lib/mcp/register-tools.ts"), "utf8");
+    const mig = readFileSync(
+      join(ROOT, "supabase/migrations/20260904120000_b16_review_block_study.sql"),
+      "utf8"
+    );
+    const ok =
+      reg.includes('"get_studies"') &&
+      reg.includes("mcpGetStudies") &&
+      mig.includes("study_id") &&
+      mig.includes("role = 'study'");
+    record(37, "get_studies + migration study role", ok, `ok=${ok}`);
+  }
+
+  log("ALL 37/37 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

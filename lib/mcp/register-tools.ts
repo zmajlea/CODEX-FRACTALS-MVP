@@ -11,6 +11,7 @@ import {
   mcpGetRecommendations,
   mcpGetReview,
   mcpGetRules,
+  mcpGetStudies,
   mcpGetTransactions,
   mcpListClients,
 } from "@/lib/mcp/read-tools";
@@ -555,11 +556,38 @@ export function registerMcpTools(server: McpServer) {
   );
 
   server.registerTool(
+    "get_studies",
+    {
+      title: "Get studies",
+      description:
+        "List a client's studies (cash_model + external_model) with status, KPIs, and as_of (Spec B16).",
+      inputSchema: clientIdSchema,
+    },
+    async ({ client_id }, sdkCtx) => {
+      const auth = authContextFromInfo(sdkCtx.http?.authInfo);
+      if (!auth) return mcpError("Unauthorized");
+      const scopeErr = requireMcpScope(auth, "treasury:read");
+      if (scopeErr) return scopeErr;
+      const ctx: McpToolContext = {
+        auth,
+        admin: createSupabaseAdminClient(),
+        request: httpRequest(sdkCtx),
+        ip: clientIp(httpRequest(sdkCtx)),
+      };
+      const denied = await requireClient(ctx, client_id);
+      if ("isError" in denied) return denied;
+      return withTool(ctx, "get_studies", client_id, () =>
+        mcpGetStudies(ctx.admin, ctx.auth, client_id)
+      );
+    }
+  );
+
+  server.registerTool(
     "get_review",
     {
       title: "Get review",
       description:
-        "Read draft review blocks with envelope aggregates and suggested captions (Spec B12).",
+        "Read draft review blocks (including study blocks) with envelope aggregates and suggested captions (Spec B12/B16).",
       inputSchema: clientIdSchema.extend({
         review_id: z.string().uuid().optional(),
         refresh: z.boolean().optional(),

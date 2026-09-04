@@ -316,16 +316,62 @@ export async function mcpGetCashModelBaseline(
 export const DESCRIBE_WORKFLOW = `Summit Treasury MCP round-trip:
 1. list_clients → pick a client_id you are granted for.
 2. get_transactions / get_monthly_by_category / get_rules — read categorized ledger data (amounts: positive = money in).
-3. Model externally in your Claude session; emit summit.results/v1.
-4. submit_results — lands as pending; confirm in the operator app.
-5. propose_recommendation — draft only, never auto-sent.
-6. Review document loop (Spec B12): get_review → read envelope aggregates for the draft issue → propose_narrative → lands PROPOSED on draft blocks → operator confirms + publishes.
-7. preview_metric — try a grammar definition without persisting (read-only eval).
+3. Studies (Spec B16): get_studies → see existing cash_model / external studies.
+   Or model externally and submit_results (summit.results/v1) → lands pending → operator confirms in Studies panel → place on issue.
+   Manual KPI-only studies can also be authored in the operator Studies panel (confirmed on save).
+4. propose_recommendation — draft only, never auto-sent.
+5. Review document loop: get_review (includes study blocks) → propose_narrative on captions/notes → operator confirms + publishes.
+6. preview_metric — try a grammar definition without persisting (read-only eval).
    Comparison charts (Spec B14): use of:"series_compare" with subdivision + compare block.
    Year-over-year: { of:"series_compare", source:{type:"category",key:"Software",direction:"out"},
      subdivision:"month", bucket_op:"sum", window:{kind:"all"},
      compare:{by:"year",last_n_years:3}, reference_lines:[{id:"avg",label:"3-yr avg",kind:"avg",stat:"avg"}] }
    → MetricComparison v:3 (grouped_column / multi_line). Category compare: compare:{by:"category",keys:["Payroll","Software"]}.`;
+
+export async function mcpGetStudies(
+  admin: AdminClient,
+  auth: McpAuthContext,
+  clientId: string
+) {
+  const { data, error } = await admin
+    .from("treasury_studies")
+    .select("id, name, type, status, source, is_primary, derived_snapshot, updated_at")
+    .eq("client_user_id", clientId)
+    .eq("operator_tenant_id", auth.tenantId)
+    .order("updated_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return {
+    studies: (data ?? []).map((row) => {
+      const derived = row.derived_snapshot as Record<string, unknown> | null;
+      let as_of: string | null = null;
+      let kpis: unknown[] = [];
+      if (row.type === "cash_model") {
+        as_of = typeof derived?.asOf === "string" ? derived.asOf : null;
+        const rs = derived?.runwayStatus as { label?: string } | undefined;
+        if (rs?.label) kpis = [{ label: "Status", value: rs.label }];
+      } else if (row.type === "external_model") {
+        const results = derived?.results as {
+          as_of?: string;
+          kpis?: unknown[];
+        } | undefined;
+        as_of = results?.as_of ?? null;
+        kpis = results?.kpis ?? [];
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        status: row.status,
+        source: row.source,
+        is_primary: row.is_primary,
+        as_of,
+        kpis,
+      };
+    }),
+  };
+}
 
 export async function mcpGetReview(
   admin: AdminClient,
@@ -379,16 +425,38 @@ export async function mcpGetReview(
         );
         computed = out;
       }
-      const suggested_caption = await suggestedCaptionForBlock(
-        admin,
-        review.tenant_id,
-        review.client_user_id,
-        block
-      );
+      if (refresh && block.role === "study" && block.study_id) {
+        const { buildPlacedStudySnapshot } = await import(
+          "@/lib/treasury/study-assemble-server"
+        );
+        const { data: studyRow } = await admin
+          .from("treasury_studies")
+          .select("*")
+          .eq("id", block.study_id)
+          .maybeSingle();
+        if (studyRow) {
+          computed = await buildPlacedStudySnapshot(
+            admin,
+            clientId,
+            studyRow as Record<string, unknown>
+          );
+        }
+      }
+      const suggested_caption =
+        block.role === "study"
+          ? ""
+          : await suggestedCaptionForBlock(
+              admin,
+              review.tenant_id,
+              review.client_user_id,
+              block
+            );
       return {
+        id: block.id,
         role: block.role,
         position: block.position,
         metric_id: block.metric_id,
+        study_id: block.study_id,
         window: block.pinned_window,
         computed,
         current_caption: block.caption || block.body,

@@ -11,6 +11,7 @@ import {
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import type { MetricSeries } from "@/lib/treasury/metrics-eval";
 import { TreasuryClientRecommendations } from "@/components/treasury/TreasuryClientRecommendations";
+import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
 
 type ReviewListItem = {
@@ -224,6 +225,22 @@ export function ClientReviewView({ tenantName }: Props) {
                 <TreasuryClientRecommendations
                   filterIds={[String(block.recommendation_id)]}
                   inline
+                />
+              </section>
+            );
+          }
+          if (role === "study") {
+            const viewMode = block.view_mode === "table" ? "table" : "chart";
+            return (
+              <section key={i} className="panel p-4">
+                <h2 className="sec-title">{String(block.name ?? "Study")}</h2>
+                {block.caption ? (
+                  <p className="treasury-meta text-sm mb-2">{String(block.caption)}</p>
+                ) : null}
+                <StudyBlockView
+                  snapshot={block.computed ?? block}
+                  viewMode={viewMode}
+                  showProvenance={false}
                 />
               </section>
             );
