@@ -34,6 +34,16 @@ import {
 
 type StudyDateWindow = { from: string; to: string };
 
+type EditionMeta = {
+  id: string;
+  version: number;
+  reviewed_as_of?: string;
+  published_at: string | null;
+  change_note?: string | null;
+  label: string | null;
+  window: StudyDateWindow | null;
+};
+
 function defaultStudyWindow(now = new Date()): StudyDateWindow {
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
@@ -41,6 +51,29 @@ function defaultStudyWindow(now = new Date()): StudyDateWindow {
   const end = new Date(Date.UTC(y, m, day)).toISOString().slice(0, 10);
   const start = new Date(Date.UTC(y, m - 11, 1)).toISOString().slice(0, 10);
   return { from: start, to: end };
+}
+
+function fmtMoney(n: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+/** Spec B19-C2 — read-only OB from a placed Model block snapshot. */
+function openingBalanceFromBlocks(
+  blocks: Array<{ role: string; placed_snapshot?: Record<string, unknown> | null }>
+): { value: number; source: string } | null {
+  for (const b of blocks) {
+    if (b.role !== "study" || !b.placed_snapshot) continue;
+    const ob = b.placed_snapshot.opening_balance;
+    if (typeof ob === "number" && Number.isFinite(ob)) {
+      const src = String(b.placed_snapshot.opening_balance_source ?? "ledger");
+      return { value: ob, source: src };
+    }
+  }
+  return null;
 }
 
 type ReviewItem = {
@@ -144,6 +177,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [editionLabel, setEditionLabel] = useState("");
   const [publishFrom, setPublishFrom] = useState("");
   const [publishTo, setPublishTo] = useState("");
+  /** Spec B19-C2 — published Editions for the selected Study (latest first). */
+  const [editions, setEditions] = useState<EditionMeta[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -180,6 +215,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       setLoadingId(reviewId);
       setBlocks([]);
       setPreflight(null);
+      setEditions([]);
       setClientPreview(null);
       if (optimisticTitle !== undefined) setTitle(optimisticTitle);
       setError(null);
@@ -192,15 +228,18 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             title: string;
             status: string;
             window?: StudyDateWindow | null;
+            label?: string;
           };
           blocks: BlockItem[];
           preflight: Preflight;
+          editions?: EditionMeta[];
         };
         if (activeIdRef.current !== reviewId) return;
         setTitle(json.review.title);
         setStatus(json.review.status);
         setBlocks(json.blocks);
         setPreflight(json.preflight);
+        setEditions(json.editions ?? []);
         const w = json.review.window;
         setWindowFrom(w?.from ?? "");
         setWindowTo(w?.to ?? "");
@@ -240,6 +279,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           setLoadingId(null);
           setBlocks([]);
           setPreflight(null);
+          setEditions([]);
         }
         await loadMetrics();
       } catch (e) {
@@ -1086,27 +1126,103 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           </div>
         ) : (
           <div className="rcx-paper">
-            <div className="rcx-cover">
-              <input
-                className="ct"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => {
-                  void saveTitle().catch((e) =>
-                    setError(e instanceof Error ? e.message : "Title save failed")
-                  );
-                }}
-              />
-              <div className="cs">
-                {status === "draft" ? "Draft" : status.toUpperCase()}
-                {activeReview?.current_version
-                  ? ` · v${activeReview.current_version}`
-                  : ""}
-                {windowFrom && windowTo
-                  ? ` · ${windowFrom} → ${windowTo}`
-                  : " · trailing 12 (default)"}
+            <header className="rcx-shead" data-testid="study-header">
+              <div className="rcx-shead-main">
+                <div className="rcx-kicker">
+                  Study ·{" "}
+                  <span className="tl">
+                    {status === "draft" ? "draft" : status}
+                  </span>
+                </div>
+                <input
+                  className="rcx-stitle"
+                  value={title}
+                  placeholder="Name this study"
+                  disabled={status !== "draft"}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onBlur={() => {
+                    void saveTitle().catch((e) =>
+                      setError(e instanceof Error ? e.message : "Title save failed")
+                    );
+                  }}
+                />
+                <div className="rcx-smeta">
+                  {status === "draft" ? "Draft" : status.toUpperCase()}
+                  {activeReview?.current_version
+                    ? ` · Edition v${activeReview.current_version}`
+                    : ""}
+                  {windowFrom && windowTo
+                    ? ` · ${windowFrom} → ${windowTo}`
+                    : " · trailing 12 (default)"}
+                  {` · ${blocks.length} block${blocks.length === 1 ? "" : "s"}`}
+                </div>
               </div>
-            </div>
+              {(() => {
+                const ob = openingBalanceFromBlocks(blocks);
+                if (!ob) return null;
+                return (
+                  <div className="rcx-ob" data-testid="opening-balance-card">
+                    <div className="ob-l">
+                      Opening balance
+                      <span
+                        className={`chip${ob.source === "manual" ? " on" : ""}`}
+                      >
+                        {ob.source === "manual"
+                          ? "manual"
+                          : ob.source === "unknown"
+                            ? "unknown"
+                            : "from ledger"}
+                      </span>
+                    </div>
+                    <div className="ob-f">
+                      <span className="cur">$</span>
+                      <span className="ob-v">{fmtMoney(ob.value).replace(/^\$/, "")}</span>
+                    </div>
+                    <div className="ob-s">
+                      From placed Model snapshot · edit via cash-model / B18 flow.
+                    </div>
+                  </div>
+                );
+              })()}
+            </header>
+
+            {editions.length > 0 ? (
+              <div className="rcx-editions" data-testid="editions-strip">
+                <span className="ed-k">Editions</span>
+                <ul className="ed-list">
+                  {editions.map((ed) => {
+                    const name =
+                      (ed.label ?? "").trim() || `Edition ${ed.version}`;
+                    const win =
+                      ed.window?.from && ed.window?.to
+                        ? `${ed.window.from} → ${ed.window.to}`
+                        : "—";
+                    const when = ed.published_at
+                      ? ed.published_at.slice(0, 10)
+                      : ed.reviewed_as_of?.slice(0, 10) ?? "";
+                    return (
+                      <li key={ed.id} className="ed-item">
+                        <span className="ed-n">{name}</span>
+                        <span className="ed-m">
+                          {win}
+                          {when ? ` · ${when}` : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {canPublish ? (
+                  <button
+                    type="button"
+                    className="rcx-tool"
+                    disabled={busy || publishBlocked}
+                    onClick={() => openPublishDialog()}
+                  >
+                    Re-publish
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             {previewAsClient && clientPreview ? (
               <div className="rcx-client-prev" data-testid="preview-as-client">
@@ -1149,34 +1265,41 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             ) : null}
 
             {status === "draft" && blocks.length === 0 && !previewAsClient ? (
-              <div className="rcx-empty">
-                <div className="et">Nothing placed yet</div>
-                <div className="eh">Start your {title || "review"}</div>
+              <div className="rcx-empty" data-testid="study-empty-state">
+                <div className="et">Nothing on the page yet</div>
+                <div className="eh">Build this study like a page</div>
                 <div className="ep">
-                  Add a Figure, an Exhibit, or a Note. Everything you place stays on
-                  this side until you publish.
+                  Add a metric from the shelf — narrow cards read as figures, wide
+                  cards draw as charts. Write text between them. Everything stays on
+                  this side until you publish an Edition.
                 </div>
                 <div className="rcx-ecards">
                   <button
                     type="button"
                     className="rcx-ecard"
-                    onClick={() => openShelfFor("figure")}
+                    onClick={() => {
+                      setShelfOpen(true);
+                      setBuilderOpen(true);
+                    }}
                   >
-                    Add a Figure
-                  </button>
-                  <button
-                    type="button"
-                    className="rcx-ecard"
-                    onClick={() => openShelfFor("exhibit")}
-                  >
-                    Add an Exhibit
+                    <b>Compose a metric</b>
+                    <span>“sum of checks, by week” — opens the wizard</span>
                   </button>
                   <button
                     type="button"
                     className="rcx-ecard"
                     onClick={() => void addNote()}
                   >
-                    Write a Note
+                    <b>Write text</b>
+                    <span>Inline note on the page</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="rcx-ecard"
+                    onClick={() => openShelfFor("figure")}
+                  >
+                    <b>Add a figure</b>
+                    <span>Place a headline number from the shelf</span>
                   </button>
                 </div>
               </div>
@@ -1214,7 +1337,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               return (
                 <article
                   key={block.id}
-                  className={`rcx-block${dragId === block.id ? " ghost" : ""}${dropCls}`}
+                  className={`rcx-block blk${asChart ? " ex" : hasMetric ? " fig" : ""}${dragId === block.id ? " ghost" : ""}${dropCls}`}
                   data-block-id={block.id}
                   data-gate={isProposed ? "proposed" : isStale ? "stale" : undefined}
                   data-role={asChart ? "exhibit" : hasMetric ? "figure" : block.role}
@@ -1681,7 +1804,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       {shelfOpen ? (
         <>
           <div className="rcx-shelf-scrim" onClick={() => setShelfOpen(false)} />
-          <aside className="rcx-shelf">
+          <aside className="rcx-shelf" data-wiz={builderOpen ? "1" : undefined}>
           <div className="sh">
             <span className="st">The Shelf</span>
             <button
@@ -1711,16 +1834,42 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           <div className="rcx-kick" style={{ margin: "8px 0 2px", fontSize: 10 }}>
             Metric library · {metrics.length}
           </div>
+          {builderOpen ? (
+            <div className="rcx-inline-wiz" data-testid="shelf-metric-wizard">
+              <div className="sh" style={{ marginBottom: 8 }}>
+                <span className="st">New metric</span>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  onClick={() => {
+                    setBuilderOpen(false);
+                    void loadMetrics();
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+              <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
+            </div>
+          ) : (
+            <>
           <div className="rcx-slist">
             {metrics.map((m) => (
               <div key={m.id} className="rcx-sitem">
-                <div className="sn">{m.name}</div>
+                <div className="sn">
+                  {m.name}
+                  <span className="chip">
+                    {m.kind === "value"
+                      ? "Value"
+                      : m.kind === "comparison"
+                        ? "Compare"
+                        : "Series"}
+                  </span>
+                </div>
                 <div className="sk">
-                  {m.kind === "value"
-                    ? "Value"
-                    : m.kind === "comparison"
-                      ? "Comparison"
-                      : "Analytics"}
+                  {m.computed_at
+                    ? `Computed ${m.computed_at.slice(0, 10)}`
+                    : "Not computed yet"}
                 </div>
                 <div className="sb">
                   <button
@@ -1766,7 +1915,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             ))}
             {metrics.length === 0 ? (
               <p className="rcx-muted" style={{ fontSize: 12 }}>
-                No metrics yet. Build one below.
+                No metrics yet. Compose one below.
               </p>
             ) : null}
           </div>
@@ -1780,40 +1929,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               + New metric
             </button>
             <p className="rcx-muted" style={{ fontSize: 11, marginTop: 6 }}>
-              Opens the builder full-width. Never client-visible.
+              Opens the sentence wizard inline. Never client-visible.
             </p>
           </div>
-          </aside>
-        </>
-      ) : null}
-
-      {/* ── Metric builder (slide-over) ─────────────── */}
-      {builderOpen ? (
-        <>
-          <div className="rcx-scrim" onClick={() => setBuilderOpen(false)} />
-          <aside
-            className="rcx-builder"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Metric builder"
-          >
-            <div className="bh">
-              <div>
-                <div className="bk">The Shelf · Metric builder</div>
-                <div className="bt">New metric</div>
-              </div>
-              <button
-                type="button"
-                className="bx"
-                aria-label="Close builder"
-                onClick={() => setBuilderOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="rcx-bbody">
-              <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
-            </div>
+            </>
+          )}
           </aside>
         </>
       ) : null}
@@ -1991,6 +2111,27 @@ const RCX_CSS = `
 /* paper */
 .rcx-doc{min-width:0}
 .rcx-paper{max-width:960px;margin:0 auto;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:12px;box-shadow:var(--paper-shadow);padding:28px 36px}
+/* B19-C2 study header (mockup .s-head / .ob) */
+.rcx-shead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 24px;align-items:start;padding-bottom:16px;border-bottom:1px solid var(--paper-edge);margin-bottom:16px}
+.rcx-kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;display:flex;align-items:center;gap:8px}
+.rcx-kicker .tl{text-transform:none;letter-spacing:0;font-weight:600;color:var(--slate,#364657)}
+.rcx-stitle{display:block;font-size:26px;font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:2px 0;margin:6px 0 4px}
+.rcx-stitle:disabled{opacity:.85}
+.rcx-smeta{font-size:12.5px;color:var(--mute);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rcx-ob{background:color-mix(in srgb,var(--canvas-2,#eef3f9) 80%,#fff);border:1px solid var(--paper-edge);border-radius:8px;padding:12px 14px;min-width:240px}
+.rcx-ob .ob-l{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rcx-ob .ob-f{display:flex;align-items:baseline;gap:4px;margin:8px 0 6px}
+.rcx-ob .cur{font-size:18px;color:var(--mute);font-weight:600}
+.rcx-ob .ob-v{font-size:24px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.rcx-ob .ob-s{font-size:11.5px;color:var(--mute)}
+.rcx-ob .chip{font-size:10.5px;font-weight:700;color:var(--mute);background:#fff;border:1px solid var(--paper-edge);border-radius:999px;padding:2px 8px}
+.rcx-ob .chip.on{color:var(--su-accept,#174a7a);border-color:color-mix(in srgb,var(--su-accept,#174a7a) 30%,var(--line));background:color-mix(in srgb,var(--su-accept,#174a7a) 8%,#fff)}
+.rcx-editions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 0 14px;margin-bottom:8px;border-bottom:1px solid var(--paper-edge)}
+.rcx-editions .ed-k{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--mute)}
+.rcx-editions .ed-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;flex:1}
+.rcx-editions .ed-item{font-size:12px;border:1px solid var(--paper-edge);border-radius:8px;padding:5px 10px;background:color-mix(in srgb,var(--canvas-2) 40%,#fff)}
+.rcx-editions .ed-n{font-weight:600;margin-right:6px}
+.rcx-editions .ed-m{color:var(--mute)}
 .rcx-cover .ct{font-size:26px;font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:0}
 .rcx-cover .cs{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-top:5px}
 /* B17 canvas */
@@ -2043,10 +2184,22 @@ const RCX_CSS = `
 .rcx-btn.sm{padding:6px 12px;font-size:12.5px}
 .rcx-btn:disabled{opacity:.5;cursor:not-allowed}
 /* empty */
-.rcx-empty{border:1px dashed var(--canvas-2);border-radius:11px;background:color-mix(in srgb,var(--canvas,#eef3f9) 50%,transparent);padding:30px 24px;text-align:center;margin-top:20px}
+.rcx-empty{border:2px dashed #c9d8ec;border-radius:11px;background:color-mix(in srgb,var(--canvas,#eef3f9) 55%,transparent);padding:44px 30px;text-align:center;margin-top:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .rcx-empty .et{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
-.rcx-empty .eh{font-size:20px;font-weight:700;margin:7px 0 7px;color:var(--ink)}
-.rcx-empty .ep{font-size:13px;color:var(--slate);max-width:440px;margin:0 auto 18px;line-height:1.5}
+.rcx-empty .eh{font-size:20px;font-weight:700;margin:8px 0 6px;color:var(--ink)}
+.rcx-empty .ep{font-size:13px;color:var(--slate);max-width:470px;margin:0 auto 16px;line-height:1.55}
+.rcx-ecards{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.rcx-ecard{background:#fff;border:1px solid var(--paper-edge);border-radius:10px;padding:12px 16px;cursor:pointer;text-align:left;min-width:190px;font:inherit;transition:border-color .15s,transform .12s,box-shadow .15s}
+.rcx-ecard:hover{border-color:var(--accent,#1fc5d9);transform:translateY(-1px);box-shadow:var(--paper-shadow)}
+.rcx-ecard b{display:block;color:var(--su-accept,#174a7a);font-size:13.5px;margin-bottom:4px}
+.rcx-ecard span{font-size:12px;color:var(--mute)}
+.rcx-sitem{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;border:1px solid var(--paper-edge);border-radius:9px;padding:9px 10px;background:#fff;transition:border-color .15s,box-shadow .15s}
+.rcx-sitem:hover{border-color:var(--accent,#1fc5d9);box-shadow:var(--paper-shadow)}
+.rcx-sitem .sn{font-size:13px;font-weight:700;line-height:1.2;display:flex;gap:6px;align-items:center;overflow:hidden}
+.rcx-sitem .sn .chip{margin-left:auto;flex:0 0 auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--mute);border:1px solid var(--paper-edge);border-radius:999px;padding:1px 7px}
+.rcx-sitem .sk{font-size:11.5px;color:var(--mute);margin-top:2px}
+.rcx-sitem .sb{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.rcx-inline-wiz{border:1px solid var(--paper-edge);border-radius:10px;padding:10px;margin-bottom:12px;background:color-mix(in srgb,var(--canvas-2) 35%,#fff);max-height:70vh;overflow:auto}
 .rcx-ecards{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
 .rcx-ecard{border:1px solid var(--paper-edge);background:#fff;border-radius:9px;padding:12px 20px;font-weight:600;font-size:13px;color:var(--brand);cursor:pointer}
 .rcx-ecard:hover{border-color:var(--brand);box-shadow:var(--paper-shadow)}
@@ -2055,24 +2208,13 @@ const RCX_CSS = `
 /* shelf */
 .rcx-shelf-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 28%,transparent);z-index:60;animation:rcxfade .18s ease}
 .rcx-shelf{position:fixed;top:0;right:0;bottom:0;width:min(348px,92vw);z-index:61;background:var(--rail,#fff);border-left:1px solid var(--paper-edge);box-shadow:-18px 0 54px rgba(16,42,71,.18);padding:16px 16px;display:flex;flex-direction:column;overflow:auto;animation:rcxslide .2s ease}
+.rcx-shelf[data-wiz="1"]{width:min(520px,96vw)}
 .rcx-shelf .sh{display:flex;align-items:center;justify-content:space-between}
 .rcx-shelf .st{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
 .rcx-slist{overflow:auto;margin:6px -2px;padding:2px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto}
-.rcx-sitem{border:1px solid var(--paper-edge);border-radius:9px;padding:9px 10px;background:#fff}
-.rcx-sitem .sn{font-size:13px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rcx-sitem .sk{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-top:2px}
-.rcx-sitem .sb{display:flex;gap:6px;margin-top:9px}
 .rcx-sfoot{margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
 .rcx-shelf-mini{writing-mode:vertical-rl;transform:rotate(180deg);cursor:pointer;background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:10px;box-shadow:var(--paper-shadow);padding:16px 10px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--slate);height:220px;align-self:start}
-/* builder slide-over */
 .rcx-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 35%,transparent);z-index:60;animation:rcxfade .18s ease}
-.rcx-builder{position:fixed;top:0;right:0;bottom:0;width:min(860px,94vw);background:var(--paper,#fff);box-shadow:-18px 0 54px rgba(16,42,71,.20);z-index:61;display:flex;flex-direction:column;overflow:hidden;animation:rcxslide .22s ease}
-.rcx-builder .bh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--paper,#fff);flex:0 0 auto}
-.rcx-builder .bh .bt{font-size:17px;font-weight:700;color:var(--ink)}
-.rcx-builder .bh .bk{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700}
-.rcx-builder .bx{font-size:22px;line-height:1;border:none;background:transparent;cursor:pointer;color:var(--mute);padding:2px 8px}
-.rcx-builder .bx:hover{color:var(--ink)}
-.rcx-bbody{padding:18px 22px;overflow:auto;flex:1 1 auto}
 .rcx-confirm{position:fixed;left:50%;top:28%;transform:translateX(-50%);z-index:70;width:min(420px,92vw);background:var(--su-paper,#FCFBF9);border:1px solid var(--su-line,#DED9D1);border-radius:10px;box-shadow:0 12px 40px rgba(16,42,71,.18);padding:18px 20px;animation:rcxfade .16s ease}
 .rcx-confirm-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}
 .rcx-confirm-body{font-size:13.5px;line-height:1.5;color:var(--ink);margin:8px 0 14px}

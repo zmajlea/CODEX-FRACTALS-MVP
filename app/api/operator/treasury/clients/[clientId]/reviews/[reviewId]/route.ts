@@ -83,11 +83,19 @@ export async function GET(_request: Request, context: RouteContext) {
     proposed_block_ids,
   };
 
+  // Spec B19-C2 — additive Editions list (latest first). Existing review/blocks/preflight unchanged.
+  const { data: editionRows } = await guard.admin
+    .from("treasury_review_versions")
+    .select("id, version, reviewed_as_of, published_at, change_note, label, window")
+    .eq("review_id", reviewId)
+    .order("version", { ascending: false });
+
   return NextResponse.json({
     review,
     blocks: blocksWithMeta,
     preflight: lightPreflight,
     publish_blocked: lightPreflight.proposed_count > 0,
+    editions: editionRows ?? [],
   });
 }
 
