@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
@@ -21,6 +21,14 @@ import {
   type PinnedWindowPreset,
   isPinnedWindow,
 } from "@/lib/treasury/pinned-window";
+import {
+  LAYOUT_PRESETS,
+  gridColumnSpan,
+  renderMetricAsChart,
+  resolveLayout,
+  snapshotHasSeries,
+  type ReviewBlockLayout,
+} from "@/lib/treasury/review-block-layout";
 
 type ReviewItem = {
   id: string;
@@ -45,6 +53,7 @@ type BlockItem = {
   suggested_caption?: string;
   pinned_window?: PinnedWindow | null;
   view_mode?: "chart" | "table";
+  layout?: ReviewBlockLayout | null;
   placed_snapshot?: Record<string, unknown> | null;
 };
 
@@ -105,6 +114,12 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmTyped, setConfirmTyped] = useState("");
+  const [canvasBp, setCanvasBp] = useState<"desktop" | "tablet" | "phone">(
+    "desktop"
+  );
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
   const lifecycleLocked = busy || pendingAction !== null;
@@ -502,6 +517,117 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     await loadReview(activeId);
   }
 
+  /** B17 — layout write only; optimistic, no recompute / no full reload. */
+  async function setBlockLayout(blockId: string, layout: ReviewBlockLayout) {
+    if (!activeId || status !== "draft") return;
+    const prev = blocks.find((b) => b.id === blockId)?.layout ?? null;
+    setBlocks((list) =>
+      list.map((b) => (b.id === blockId ? { ...b, layout } : b))
+    );
+    try {
+      const res = await fetch(`${base}/reviews/${activeId}/blocks/${blockId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_layout", layout }),
+      });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Layout update failed");
+      }
+    } catch (e) {
+      setBlocks((list) =>
+        list.map((b) => (b.id === blockId ? { ...b, layout: prev } : b))
+      );
+      setError(e instanceof Error ? e.message : "Layout update failed");
+    }
+  }
+
+  async function persistBlockOrder(next: BlockItem[]) {
+    if (!activeId || status !== "draft") return;
+    const order = next.map((b) => b.id);
+    const res = await fetch(`${base}/reviews/${activeId}/blocks`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order }),
+    });
+    if (!res.ok) {
+      const json = (await res.json()) as { error?: string };
+      throw new Error(json.error ?? "Reorder failed");
+    }
+  }
+
+  function applyReorder(fromId: string, beforeId: string | null) {
+    if (fromId === beforeId) return;
+    const fromIdx = blocks.findIndex((b) => b.id === fromId);
+    if (fromIdx < 0) return;
+    const next = [...blocks];
+    const [moved] = next.splice(fromIdx, 1);
+    if (!moved) return;
+    let toIdx =
+      beforeId == null
+        ? next.length
+        : next.findIndex((b) => b.id === beforeId);
+    if (toIdx < 0) toIdx = next.length;
+    next.splice(toIdx, 0, moved);
+    const withPos = next.map((b, i) => ({ ...b, position: i + 1 }));
+    setBlocks(withPos);
+    void persistBlockOrder(withPos).catch((e) => {
+      setError(e instanceof Error ? e.message : "Reorder failed");
+      if (activeId) void loadReview(activeId);
+    });
+  }
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? el.clientWidth;
+      if (w < 520) setCanvasBp("phone");
+      else if (w < 860) setCanvasBp("tablet");
+      else setCanvasBp("desktop");
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [activeId]);
+
+  function onBlockPointerDown(e: PointerEvent, blockId: string) {
+    if (status !== "draft") return;
+    const handle = (e.target as HTMLElement).closest("[data-drag-handle]");
+    if (!handle) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDragId(blockId);
+  }
+
+  function onBlockPointerMove(e: PointerEvent) {
+    if (!dragId) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const article = el?.closest?.("[data-block-id]") as HTMLElement | null;
+    if (!article) return;
+    const id = article.getAttribute("data-block-id");
+    if (!id || id === dragId) return;
+    const rect = article.getBoundingClientRect();
+    const mid =
+      canvasBp === "phone"
+        ? rect.top + rect.height / 2
+        : rect.left + rect.width / 2;
+    const coord = canvasBp === "phone" ? e.clientY : e.clientX;
+    const ids = blocks.map((b) => b.id);
+    const idx = ids.indexOf(id);
+    if (idx < 0) return;
+    if (coord < mid) setDropBeforeId(id);
+    else setDropBeforeId(idx < ids.length - 1 ? ids[idx + 1]! : "__end__");
+  }
+
+  function onBlockPointerUp() {
+    if (!dragId) return;
+    const from = dragId;
+    const before = dropBeforeId === "__end__" ? null : dropBeforeId;
+    setDragId(null);
+    setDropBeforeId(null);
+    applyReorder(from, before);
+  }
+
   async function publish() {
     if (!activeId) return;
     if (!confirm("Publish this review to the client?")) return;
@@ -812,6 +938,12 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               </div>
             ) : null}
 
+            <div
+              className={`rcx-canvas${dragId ? " dragging" : ""}`}
+              ref={canvasRef}
+              data-bp={canvasBp}
+            >
+            <div className="rcx-grid">
             {blocks.map((block) => {
               const isProposed = block.proposal_state === "proposed";
               const isStale = staleIds.includes(block.id);
@@ -819,16 +951,49 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               const hasMetric =
                 block.role === "figure" || block.role === "exhibit";
               const viewMode = block.view_mode === "table" ? "table" : "chart";
+              const layout = resolveLayout(block.layout);
+              const asChart =
+                hasMetric && renderMetricAsChart(layout, block.placed_snapshot);
+              const hasSeries = snapshotHasSeries(block.placed_snapshot);
+              const colSpan = gridColumnSpan(layout, canvasBp);
               const studySnap = isPlacedStudySnapshot(block.placed_snapshot)
                 ? block.placed_snapshot
                 : null;
+              const dropCls =
+                dropBeforeId === block.id
+                  ? " drop-before"
+                  : dropBeforeId === "__end__" &&
+                      blocks[blocks.length - 1]?.id === block.id
+                    ? " drop-after"
+                    : "";
               return (
                 <article
                   key={block.id}
-                  className="rcx-block"
+                  className={`rcx-block${dragId === block.id ? " ghost" : ""}${dropCls}`}
+                  data-block-id={block.id}
                   data-gate={isProposed ? "proposed" : isStale ? "stale" : undefined}
+                  data-role={asChart ? "exhibit" : hasMetric ? "figure" : block.role}
+                  style={{
+                    gridColumn: `span ${colSpan}`,
+                    gridRow: canvasBp === "phone" ? undefined : `span ${layout.h}`,
+                  }}
+                  onPointerDown={(e) => onBlockPointerDown(e, block.id)}
+                  onPointerMove={onBlockPointerMove}
+                  onPointerUp={onBlockPointerUp}
+                  onPointerCancel={onBlockPointerUp}
                 >
                   <div className="rcx-bchrome">
+                    {status === "draft" ? (
+                      <button
+                        type="button"
+                        className="rcx-drag"
+                        data-drag-handle
+                        aria-label="Reorder block"
+                        style={{ touchAction: "none" }}
+                      >
+                        ⠿
+                      </button>
+                    ) : null}
                     <span className="rcx-chip rcx-role">{block.role}</span>
                     <span className="rcx-chip" data-state={stateChip(block, staleIds, status)}>
                       {stateChip(block, staleIds, status)}
@@ -840,6 +1005,22 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     ) : (
                       <span className="rcx-src" />
                     )}
+                    {status === "draft" ? (
+                      <span className="rcx-sz" role="group" aria-label="Block size">
+                        {LAYOUT_PRESETS.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`rcx-tool${layout.w === p.w ? " primary" : ""}`}
+                            onClick={() =>
+                              void setBlockLayout(block.id, { w: p.w, h: p.h })
+                            }
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
                     <div className="rcx-tools">
                       {isProposed ? (
                         <button
@@ -854,7 +1035,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           Confirm proposal
                         </button>
                       ) : null}
-                      {(hasMetric || isStudy) && (block.role === "exhibit" || isStudy) ? (
+                      {(hasMetric || isStudy) && (asChart || isStudy || block.role === "exhibit") ? (
                         <div
                           className="rcx-seg"
                           role="group"
@@ -910,7 +1091,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           </button>
                         </div>
                       ) : null}
-                      {hasMetric && block.role === "exhibit" ? (
+                      {hasMetric && (block.role === "exhibit" || asChart) ? (
                         <select
                           className="rcx-tool"
                           disabled={status !== "draft"}
@@ -989,7 +1170,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                     />
                   ) : null}
 
-                  {block.role === "exhibit" &&
+                  {/* B17: chart only when series exists in cache AND w≥6; value-only stays tile. */}
+                  {hasMetric && asChart &&
                   (block.placed_snapshot as { comparison?: MetricComparison } | null)
                     ?.comparison?.v === 3 ? (
                     <div className="rcx-chart">
@@ -1011,7 +1193,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                       )}
                     </div>
                   ) : null}
-                  {block.role === "exhibit" &&
+                  {hasMetric && asChart &&
                   (
                     block.placed_snapshot as {
                       series?: { points?: unknown[] };
@@ -1105,7 +1287,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                       )}
                     </div>
                   ) : null}
-                  {block.role === "figure" &&
+                  {hasMetric && !asChart &&
                   typeof (block.placed_snapshot as { value?: number } | null)
                     ?.value === "number" ? (
                     <div className="rcx-figval">
@@ -1116,6 +1298,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                         currency: "USD",
                         maximumFractionDigits: 0,
                       })}
+                      {hasSeries && layout.w <= 3 ? (
+                        <span className="rcx-fighint"> · summary</span>
+                      ) : null}
                     </div>
                   ) : null}
                   {hasMetric || isStudy ? (
@@ -1143,9 +1328,53 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                       />
                     </div>
                   ) : null}
+                  {status === "draft" && canvasBp === "desktop" ? (
+                    <button
+                      type="button"
+                      className="rcx-rz"
+                      aria-label="Resize block"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startW = layout.w;
+                        const target = e.currentTarget;
+                        target.setPointerCapture(e.pointerId);
+                        const onMove = (ev: globalThis.PointerEvent) => {
+                          const grid = canvasRef.current?.querySelector(".rcx-grid");
+                          const gw = grid?.clientWidth ?? 720;
+                          const colW = gw / 12;
+                          const dw = Math.round((ev.clientX - startX) / colW);
+                          const nextW = Math.min(12, Math.max(1, startW + dw));
+                          setBlocks((list) =>
+                            list.map((b) =>
+                              b.id === block.id
+                                ? { ...b, layout: { w: nextW, h: layout.h } }
+                                : b
+                            )
+                          );
+                        };
+                        const onUp = (ev: globalThis.PointerEvent) => {
+                          target.releasePointerCapture(ev.pointerId);
+                          target.removeEventListener("pointermove", onMove);
+                          target.removeEventListener("pointerup", onUp);
+                          const grid = canvasRef.current?.querySelector(".rcx-grid");
+                          const gw = grid?.clientWidth ?? 720;
+                          const colW = gw / 12;
+                          const dw = Math.round((ev.clientX - startX) / colW);
+                          const nextW = Math.min(12, Math.max(1, startW + dw));
+                          void setBlockLayout(block.id, { w: nextW, h: layout.h });
+                        };
+                        target.addEventListener("pointermove", onMove);
+                        target.addEventListener("pointerup", onUp);
+                      }}
+                    />
+                  ) : null}
                 </article>
               );
             })}
+            </div>
+            </div>
 
             {status === "draft" ? (
               <div className="rcx-drafts-wrap" style={{ marginTop: 16 }}>
@@ -1433,19 +1662,39 @@ const RCX_CSS = `
 .rcx-paper{max-width:960px;margin:0 auto;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:12px;box-shadow:var(--paper-shadow);padding:28px 36px}
 .rcx-cover .ct{font-size:26px;font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:0}
 .rcx-cover .cs{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-top:5px}
-.rcx-block{border-top:1px dashed var(--canvas-2);padding:18px 0 2px;margin-top:20px}
+/* B17 canvas */
+.rcx-canvas{position:relative;min-height:120px;margin-top:12px}
+.rcx-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:minmax(112px,auto);gap:12px;align-items:stretch}
+.rcx-canvas[data-bp="tablet"] .rcx-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(124px,auto)}
+.rcx-canvas[data-bp="phone"] .rcx-grid{display:flex;flex-direction:column;gap:10px}
+.rcx-canvas.dragging .rcx-grid{background:color-mix(in srgb,var(--accent,#3e6e8e) 6%,transparent);border-radius:8px}
+.rcx-block{position:relative;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:10px;padding:12px 14px 10px;min-width:0;display:flex;flex-direction:column;margin:0}
+.rcx-block.ghost{opacity:.4}
+.rcx-block.drop-before::before,.rcx-block.drop-after::after{content:"";position:absolute;top:0;bottom:0;width:3px;background:var(--accent,#3e6e8e);border-radius:2px;z-index:3}
+.rcx-block.drop-before::before{left:-7px}.rcx-block.drop-after::after{right:-7px}
+.rcx-canvas[data-bp="phone"] .rcx-block.drop-before::before,.rcx-canvas[data-bp="phone"] .rcx-block.drop-after::after{left:0;right:0;width:auto;height:3px;top:auto;bottom:auto}
+.rcx-canvas[data-bp="phone"] .rcx-block.drop-before::before{top:-6px}.rcx-canvas[data-bp="phone"] .rcx-block.drop-after::after{bottom:-6px}
 .rcx-block[data-gate="proposed"] .rcx-cap{background:color-mix(in srgb,var(--su-await,#3e6e8e) 7%,#fff);border-color:color-mix(in srgb,var(--su-await,#3e6e8e) 30%,var(--line))}
-.rcx-bchrome{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:10px}
-.rcx-src{font-size:12px;color:var(--mute);flex:1 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-bchrome{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:8px}
+.rcx-drag{font:inherit;border:0;background:var(--canvas,#eef3f9);color:var(--mute);border-radius:6px;padding:2px 8px;cursor:grab;line-height:1.2;touch-action:none}
+.rcx-drag:active{cursor:grabbing}
+.rcx-sz{display:inline-flex;gap:2px;flex-wrap:wrap}
+.rcx-rz{position:absolute;right:2px;bottom:2px;width:16px;height:16px;padding:0;border:0;background:transparent;cursor:nwse-resize;opacity:0;color:var(--mute)}
+.rcx-block:hover .rcx-rz,.rcx-block:focus-within .rcx-rz{opacity:1}
+.rcx-rz::before{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor}
+.rcx-canvas[data-bp="phone"] .rcx-rz,.rcx-canvas[data-bp="tablet"] .rcx-rz{display:none}
+.rcx-canvas[data-bp="phone"] .rcx-bchrome,.rcx-canvas[data-bp="tablet"] .rcx-bchrome{opacity:1}
+.rcx-src{font-size:12px;color:var(--mute);flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-tools{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px}
 .rcx-caprow{margin-top:2px}
 .rcx-caplbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:700;display:block;margin-bottom:5px}
 .rcx-cap{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:13.5px;line-height:1.5;color:var(--ink);background:color-mix(in srgb,var(--canvas,#eef3f9) 40%,#fff);resize:vertical;min-height:54px}
 .rcx-cap:focus{outline:none;border-color:var(--brand);background:#fff}
 .rcx-note{font-size:14px;line-height:1.55;white-space:pre-wrap;color:var(--slate)}
-.rcx-chart{margin:6px 0 12px;max-width:660px}
+.rcx-chart{margin:6px 0 12px;max-width:100%;flex:1;min-height:0}
 .rcx-chart svg{max-width:100%;height:auto}
-.rcx-figval{font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin:2px 0 8px}
+.rcx-figval{font-size:clamp(22px,2.4vw,30px);font-weight:700;color:var(--ink);letter-spacing:-.01em;margin:2px 0 8px}
+.rcx-fighint{font-size:12px;font-weight:600;color:var(--mute);letter-spacing:0}
 /* chips + buttons */
 .rcx-chip{display:inline-flex;align-items:center;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:3px 9px;background:var(--canvas-2);color:var(--slate);border:none}
 .rcx-role{background:var(--brand);color:#fff}
