@@ -9,6 +9,7 @@ import type {
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
 import type { SpendPlanScenario, SeasonalIndexResult } from "@/lib/treasury/spend-plan";
+import type { StudyPageComposite } from "@/lib/treasury/study-page-composite";
 
 export type StudyType = "spend_plan" | "cash_model" | "external_model";
 
@@ -94,6 +95,8 @@ export type CashModelStudyRow = TreasuryStudyRowBase & {
 
 export type ExternalModelDerivedSnapshot = {
   results: Record<string, unknown>;
+  /** B17 M2 — page arrangement (exhibits/notes/kpiLayouts); sibling of results. */
+  composite?: StudyPageComposite;
   validationReport: Record<string, unknown>;
   engineBaseline: Record<string, unknown> | null;
   submittedAt: string;

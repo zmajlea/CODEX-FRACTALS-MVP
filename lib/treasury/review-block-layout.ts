@@ -73,6 +73,30 @@ export function renderMetricAsChart(
   return layout.w >= 6;
 }
 
+/** B17 M2 Part D — summary scalar from envelope for S-width series tiles. */
+export function summaryValueFromSnapshot(snap: unknown): number | null {
+  if (!snap || typeof snap !== "object") return null;
+  const s = snap as {
+    value?: unknown;
+    series?: { summary?: { value?: unknown } };
+    comparison?: { summary?: { value?: unknown } };
+  };
+  if (typeof s.value === "number" && Number.isFinite(s.value)) return s.value;
+  const seriesVal = s.series?.summary?.value;
+  if (typeof seriesVal === "number" && Number.isFinite(seriesVal)) return seriesVal;
+  const cmpVal = s.comparison?.summary?.value;
+  if (typeof cmpVal === "number" && Number.isFinite(cmpVal)) return cmpVal;
+  return null;
+}
+
+/** True when UI should show Chart|Table (wide series block). */
+export function showChartTableToggle(
+  layout: ReviewBlockLayout,
+  snap: unknown
+): boolean {
+  return renderMetricAsChart(layout, snap);
+}
+
 export function gridColumnSpan(
   layout: ReviewBlockLayout,
   bp: "desktop" | "tablet" | "phone"

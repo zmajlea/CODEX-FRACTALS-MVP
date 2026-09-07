@@ -20,6 +20,8 @@ type Props = {
   /** When set, only render these recommendation ids (inline under review narrative blocks). */
   filterIds?: string[];
   inline?: boolean;
+  /** Spec B17 M2 — status chips only; no accept/decline/reply. */
+  readOnly?: boolean;
 };
 
 function ClientRecCard({
@@ -27,11 +29,13 @@ function ClientRecCard({
   onAccept,
   onDecline,
   onAnswer,
+  readOnly = false,
 }: {
   rec: TreasuryRecommendationRow;
   onAccept: () => void;
   onDecline: () => void;
   onAnswer: () => void;
+  readOnly?: boolean;
 }) {
   const isQuestion = rec.kind === "question";
   const pending = rec.status === "sent";
@@ -82,7 +86,7 @@ function ClientRecCard({
           <b>Your answer:</b> {rec.client_response}
         </div>
       ) : null}
-      {pending && !isQuestion ? (
+      {!readOnly && pending && !isQuestion ? (
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button type="button" className="btn" style={{ padding: "9px 16px" }} onClick={onAccept}>
             Accept
@@ -92,7 +96,7 @@ function ClientRecCard({
           </button>
         </div>
       ) : null}
-      {pending && isQuestion ? (
+      {!readOnly && pending && isQuestion ? (
         <button type="button" className="btn" style={{ padding: "9px 16px", marginTop: 8 }} onClick={onAnswer}>
           Answer
         </button>
@@ -105,6 +109,7 @@ export function TreasuryClientRecommendations({
   onUnreadChange,
   filterIds,
   inline = false,
+  readOnly = false,
 }: Props) {
   const [recommendations, setRecommendations] = useState<TreasuryRecommendationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,6 +281,7 @@ export function TreasuryClientRecommendations({
                 <ClientRecCard
                   key={rec.id}
                   rec={rec}
+                  readOnly={readOnly}
                   onAccept={() => setAcceptId(rec.id)}
                   onDecline={() => {
                     setDeclineReason(DECLINE_REASONS[0]!);
@@ -297,6 +303,7 @@ export function TreasuryClientRecommendations({
                 <ClientRecCard
                   key={rec.id}
                   rec={rec}
+                  readOnly={readOnly}
                   onAccept={() => setAcceptId(rec.id)}
                   onDecline={() => {
                     setDeclineReason(DECLINE_REASONS[0]!);
@@ -318,6 +325,7 @@ export function TreasuryClientRecommendations({
                 <ClientRecCard
                   key={rec.id}
                   rec={rec}
+                  readOnly={readOnly}
                   onAccept={() => setAcceptId(rec.id)}
                   onDecline={() => {
                     setDeclineReason(DECLINE_REASONS[0]!);

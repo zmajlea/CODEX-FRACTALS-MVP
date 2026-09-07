@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isStudyPlaceable } from "@/lib/treasury/study-assemble";
+import {
+  StudyAuthorCanvas,
+  buildStudySavePayload,
+  type StudyCanvasState,
+} from "@/components/operator/treasury/StudyAuthorCanvas";
+import { newCompositeId } from "@/lib/treasury/study-page-composite";
 
 type StudyListItem = {
   id: string;
@@ -23,9 +29,23 @@ type Props = {
   onError: (msg: string) => void;
 };
 
-type EditorKpi = { label: string; value: string; unit: string };
+function emptyCanvas(): StudyCanvasState {
+  return {
+    kpis: [
+      {
+        id: newCompositeId("kpi"),
+        label: "",
+        value: "",
+        unit: "",
+        layout: { w: 3, h: 1 },
+      },
+    ],
+    exhibits: [],
+    notes: [],
+  };
+}
 
-/** Spec B16 — Studies panel inside Review (list + confirm + manual editor + place). */
+/** Spec B16/B17 M2 — Studies panel (list + confirm + page canvas + place). */
 export function StudiesPanel({
   clientUserId,
   reviewId,
@@ -41,10 +61,8 @@ export function StudiesPanel({
   const [editorOpen, setEditorOpen] = useState(false);
   const [name, setName] = useState("");
   const [typeLabel, setTypeLabel] = useState("Custom");
-  const [kpis, setKpis] = useState<EditorKpi[]>([
-    { label: "", value: "", unit: "" },
-  ]);
   const [openingBalance, setOpeningBalance] = useState("");
+  const [canvas, setCanvas] = useState<StudyCanvasState>(emptyCanvas);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,9 +70,7 @@ export function StudiesPanel({
       const res = await fetch(`${base}/studies`);
       if (!res.ok) return;
       const json = (await res.json()) as { studies?: StudyListItem[] };
-      setStudies(
-        (json.studies ?? []).filter((s) => s.type !== "spend_plan")
-      );
+      setStudies((json.studies ?? []).filter((s) => s.type !== "spend_plan"));
     } finally {
       setLoading(false);
     }
@@ -143,37 +159,23 @@ export function StudiesPanel({
   }
 
   async function saveManual() {
-    const cleaned = kpis
-      .map((k) => ({
-        label: k.label.trim(),
-        value: Number.isFinite(Number(k.value)) ? Number(k.value) : k.value.trim(),
-        unit: k.unit.trim() || undefined,
-      }))
-      .filter((k) => k.label);
     if (!name.trim()) {
       onError("Study name required");
       return;
     }
-    if (!cleaned.length) {
-      onError("Add at least one KPI");
+    const { results, composite } = buildStudySavePayload({
+      name,
+      openingBalance,
+      canvas,
+    });
+    const kpiCount = (results.kpis as unknown[])?.length ?? 0;
+    const exhibitCount = composite.exhibits.length;
+    if (!kpiCount && !exhibitCount) {
+      onError("Add at least one KPI or exhibit");
       return;
     }
     setLocalBusy("manual");
     try {
-      const results: Record<string, unknown> = {
-        schema_version: "summit.results/v1",
-        export_id: `manual-${Date.now()}`,
-        as_of: new Date().toISOString().slice(0, 10),
-        headline: name.trim(),
-        kpis: cleaned,
-        scenarios: [],
-        narrative: [],
-        recommendations: [],
-        actuals_check: [],
-      };
-      if (openingBalance.trim() && Number.isFinite(Number(openingBalance))) {
-        results.opening_balance = Number(openingBalance);
-      }
       const res = await fetch(`${base}/studies`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,6 +184,7 @@ export function StudiesPanel({
           type: "external_model",
           type_label: typeLabel.trim() || "Custom",
           results,
+          composite,
         }),
       });
       const j = (await res.json()) as { error?: string; issues?: unknown };
@@ -190,8 +193,9 @@ export function StudiesPanel({
       }
       setEditorOpen(false);
       setName("");
-      setKpis([{ label: "", value: "", unit: "" }]);
+      setTypeLabel("Custom");
       setOpeningBalance("");
+      setCanvas(emptyCanvas());
       await load();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Save study failed");
@@ -206,7 +210,8 @@ export function StudiesPanel({
     <div className="studies-panel" data-testid="studies-panel">
       <div className="rcx-kick">Studies</div>
       <p className="rcx-muted" style={{ fontSize: 11, marginBottom: 8 }}>
-        Computed cash model or manual/AI studies. Confirm pending before placing.
+        Build a study as a page — arrange KPIs, exhibits, and notes. Confirm
+        pending before placing.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         <button
@@ -221,7 +226,10 @@ export function StudiesPanel({
           type="button"
           className="rcx-tool"
           disabled={locked}
-          onClick={() => setEditorOpen((v) => !v)}
+          onClick={() => {
+            setEditorOpen((v) => !v);
+            if (!editorOpen) setCanvas(emptyCanvas());
+          }}
         >
           {editorOpen ? "Close editor" : "New study"}
         </button>
@@ -237,87 +245,18 @@ export function StudiesPanel({
             background: "#fff",
           }}
         >
-          <label className="rcx-muted" style={{ display: "block", fontSize: 11 }}>
-            Name
-            <input
-              className="rcx-confirm-input"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label
-            className="rcx-muted"
-            style={{ display: "block", fontSize: 11, marginTop: 8 }}
-          >
-            Type label
-            <input
-              className="rcx-confirm-input"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
-              value={typeLabel}
-              onChange={(e) => setTypeLabel(e.target.value)}
-              placeholder="Working Capital, PE Diligence…"
-            />
-          </label>
-          <label
-            className="rcx-muted"
-            style={{ display: "block", fontSize: 11, marginTop: 8 }}
-          >
-            Opening balance (optional)
-            <input
-              className="rcx-confirm-input"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
-              value={openingBalance}
-              onChange={(e) => setOpeningBalance(e.target.value)}
-            />
-          </label>
-          <div className="rcx-muted" style={{ fontSize: 11, marginTop: 10 }}>
-            KPIs
-          </div>
-          {kpis.map((k, i) => (
-            <div key={i} style={{ display: "flex", gap: 4, marginTop: 4 }}>
-              <input
-                placeholder="Label"
-                value={k.label}
-                onChange={(e) => {
-                  const next = [...kpis];
-                  next[i] = { ...k, label: e.target.value };
-                  setKpis(next);
-                }}
-                style={{ flex: 2, fontSize: 12, padding: 6 }}
-              />
-              <input
-                placeholder="Value"
-                value={k.value}
-                onChange={(e) => {
-                  const next = [...kpis];
-                  next[i] = { ...k, value: e.target.value };
-                  setKpis(next);
-                }}
-                style={{ flex: 1, fontSize: 12, padding: 6 }}
-              />
-              <input
-                placeholder="Unit"
-                value={k.unit}
-                onChange={(e) => {
-                  const next = [...kpis];
-                  next[i] = { ...k, unit: e.target.value };
-                  setKpis(next);
-                }}
-                style={{ width: 56, fontSize: 12, padding: 6 }}
-              />
-            </div>
-          ))}
-          <button
-            type="button"
-            className="rcx-tool"
-            style={{ marginTop: 6 }}
-            onClick={() =>
-              setKpis((prev) => [...prev, { label: "", value: "", unit: "" }])
-            }
-          >
-            + KPI
-          </button>
+          <StudyAuthorCanvas
+            clientUserId={clientUserId}
+            name={name}
+            typeLabel={typeLabel}
+            openingBalance={openingBalance}
+            onNameChange={setName}
+            onTypeLabelChange={setTypeLabel}
+            onOpeningBalanceChange={setOpeningBalance}
+            value={canvas}
+            onChange={setCanvas}
+            disabled={locked}
+          />
           <button
             type="button"
             className="rcx-btn sm"
@@ -348,40 +287,26 @@ export function StudiesPanel({
             <li
               key={s.id}
               style={{
-                border: "1px solid var(--su-line, #DED9D1)",
-                borderRadius: 8,
-                padding: 8,
-                marginBottom: 8,
-                background: "#fff",
+                borderTop: "1px solid var(--su-line, #DED9D1)",
+                padding: "8px 0",
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
               <div className="rcx-muted" style={{ fontSize: 11 }}>
                 {s.type}
-                {s.is_primary ? " · primary" : ""}
                 {s.status ? ` · ${s.status}` : ""}
                 {s.source ? ` · ${s.source}` : ""}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
                 {pending ? (
-                  <>
-                    <button
-                      type="button"
-                      className="rcx-tool primary"
-                      disabled={locked}
-                      onClick={() => void confirmStudy(s.id)}
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      type="button"
-                      className="rcx-tool danger"
-                      disabled={locked}
-                      onClick={() => void discardStudy(s.id)}
-                    >
-                      Discard
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    className="rcx-tool primary"
+                    disabled={locked}
+                    onClick={() => void confirmStudy(s.id)}
+                  >
+                    Confirm
+                  </button>
                 ) : null}
                 {placeable ? (
                   <button
@@ -393,16 +318,21 @@ export function StudiesPanel({
                     Add to issue
                   </button>
                 ) : null}
+                {s.type === "external_model" ? (
+                  <button
+                    type="button"
+                    className="rcx-tool danger"
+                    disabled={locked}
+                    onClick={() => void discardStudy(s.id)}
+                  >
+                    Discard
+                  </button>
+                ) : null}
               </div>
             </li>
           );
         })}
       </ul>
-      {!loading && studies.length === 0 ? (
-        <p className="rcx-muted" style={{ fontSize: 12 }}>
-          No studies yet. Ensure the cash model or author one manually.
-        </p>
-      ) : null}
     </div>
   );
 }
