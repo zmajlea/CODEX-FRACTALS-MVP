@@ -3490,7 +3490,51 @@ async function main() {
     }
   }
 
-  log("ALL 43/43 LIVE CHECKS PASSED");
+  log("ALL 43/43 LIVE CHECKS PASSED; running B19-C2…");
+
+  // 44 — B19-C2: empty-state + editions GET + overlay retired from StudiesPanel
+  {
+    const panel = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
+      "utf8"
+    );
+    const studiesPanel = readFileSync(
+      join(ROOT, "components/operator/treasury/StudiesPanel.tsx"),
+      "utf8"
+    );
+    const reviewGet = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/route.ts"
+      ),
+      "utf8"
+    );
+    const emptyOk =
+      panel.includes('data-testid="study-empty-state"') &&
+      panel.includes("Build this study like a page") &&
+      panel.includes("Compose a metric");
+    const editionsOk =
+      panel.includes('data-testid="editions-strip"') &&
+      reviewGet.includes("editions: editionRows") &&
+      reviewGet.includes("blocks: blocksWithMeta") &&
+      reviewGet.includes("preflight: lightPreflight");
+    const overlayGone =
+      !studiesPanel.includes("StudyAuthorCanvas") &&
+      studiesPanel.includes("Models") &&
+      studiesPanel.includes("Add Model");
+    const headerOk =
+      panel.includes('data-testid="study-header"') &&
+      panel.includes('data-testid="opening-balance-card"') &&
+      panel.includes("shelf-metric-wizard");
+    record(
+      44,
+      "B19-C2 landing fidelity: empty + editions + no overlay",
+      emptyOk && editionsOk && overlayGone && headerOk,
+      `empty=${emptyOk} editions=${editionsOk} overlayGone=${overlayGone} header=${headerOk}`
+    );
+  }
+
+  log("ALL 44/44 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

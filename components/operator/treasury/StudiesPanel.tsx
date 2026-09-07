@@ -2,11 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isStudyPlaceable } from "@/lib/treasury/study-assemble";
-import {
-  StudyAuthorCanvas,
-  buildStudySavePayload,
-  type StudyCanvasState,
-} from "@/components/operator/treasury/StudyAuthorCanvas";
 
 type StudyListItem = {
   id: string;
@@ -28,13 +23,10 @@ type Props = {
   onError: (msg: string) => void;
 };
 
-function emptyCanvas(): StudyCanvasState {
-  // Start truly empty so the builder shows its "Build this study like a page"
-  // empty state (B17F2); the operator adds blocks from the shelf.
-  return { kpis: [], exhibits: [], notes: [] };
-}
-
-/** Spec B16/B17 M2 — Studies panel (list + confirm + page canvas + place). */
+/**
+ * Spec B19-C2 — Models shelf (was B16 "Studies" panel).
+ * Lists placeable Models; overlay StudyAuthorCanvas retired (composer is ReviewTabPanel).
+ */
 export function StudiesPanel({
   clientUserId,
   reviewId,
@@ -47,11 +39,6 @@ export function StudiesPanel({
   const [studies, setStudies] = useState<StudyListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [localBusy, setLocalBusy] = useState<string | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [typeLabel, setTypeLabel] = useState("Custom");
-  const [openingBalance, setOpeningBalance] = useState("");
-  const [canvas, setCanvas] = useState<StudyCanvasState>(emptyCanvas);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,7 +114,7 @@ export function StudiesPanel({
 
   async function placeStudy(id: string) {
     if (!reviewId || reviewStatus !== "draft") {
-      onError("Open a draft issue to place a study.");
+      onError("Open a draft Study to place a Model.");
       return;
     }
     setLocalBusy(`place-${id}`);
@@ -147,60 +134,13 @@ export function StudiesPanel({
     }
   }
 
-  async function saveManual() {
-    if (!name.trim()) {
-      onError("Study name required");
-      return;
-    }
-    const { results, composite } = buildStudySavePayload({
-      name,
-      openingBalance,
-      canvas,
-    });
-    const kpiCount = (results.kpis as unknown[])?.length ?? 0;
-    const exhibitCount = composite.exhibits.length;
-    if (!kpiCount && !exhibitCount) {
-      onError("Add at least one KPI or exhibit");
-      return;
-    }
-    setLocalBusy("manual");
-    try {
-      const res = await fetch(`${base}/studies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          type: "external_model",
-          type_label: typeLabel.trim() || "Custom",
-          results,
-          composite,
-        }),
-      });
-      const j = (await res.json()) as { error?: string; issues?: unknown };
-      if (!res.ok) {
-        throw new Error(j.error ?? "Save study failed");
-      }
-      setEditorOpen(false);
-      setName("");
-      setTypeLabel("Custom");
-      setOpeningBalance("");
-      setCanvas(emptyCanvas());
-      await load();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Save study failed");
-    } finally {
-      setLocalBusy(null);
-    }
-  }
-
   const locked = busy || localBusy != null;
 
   return (
     <div className="studies-panel" data-testid="studies-panel">
-      <div className="rcx-kick">Studies</div>
+      <div className="rcx-kick">Models</div>
       <p className="rcx-muted" style={{ fontSize: 11, marginBottom: 8 }}>
-        Build a study as a page — arrange KPIs, exhibits, and notes. Confirm
-        pending before placing.
+        Cash models and confirmed analyses — place on the Study canvas.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
         <button
@@ -211,44 +151,15 @@ export function StudiesPanel({
         >
           Ensure primary cash model
         </button>
-        <button
-          type="button"
-          className="rcx-tool"
-          disabled={locked}
-          onClick={() => {
-            setEditorOpen((v) => !v);
-            if (!editorOpen) setCanvas(emptyCanvas());
-          }}
-        >
-          {editorOpen ? "Close editor" : "New study"}
-        </button>
       </div>
-
-      {editorOpen ? (
-        <StudyAuthorCanvas
-          clientUserId={clientUserId}
-          name={name}
-          typeLabel={typeLabel}
-          openingBalance={openingBalance}
-          onNameChange={setName}
-          onTypeLabelChange={setTypeLabel}
-          onOpeningBalanceChange={setOpeningBalance}
-          value={canvas}
-          onChange={setCanvas}
-          disabled={locked}
-          saving={localBusy === "manual"}
-          onSave={() => void saveManual()}
-          onClose={() => setEditorOpen(false)}
-        />
-      ) : null}
 
       {loading ? (
         <p className="rcx-muted" style={{ fontSize: 12 }}>
-          Loading studies…
+          Loading models…
         </p>
       ) : null}
 
-      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+      <ul className="rcx-slist" style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {studies.map((s) => {
           const placeable = isStudyPlaceable({
             type: s.type,
@@ -257,20 +168,17 @@ export function StudiesPanel({
           const pending =
             s.type === "external_model" && s.status === "pending";
           return (
-            <li
-              key={s.id}
-              style={{
-                borderTop: "1px solid var(--su-line, #DED9D1)",
-                padding: "8px 0",
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
-              <div className="rcx-muted" style={{ fontSize: 11 }}>
-                {s.type}
-                {s.status ? ` · ${s.status}` : ""}
-                {s.source ? ` · ${s.source}` : ""}
+            <li key={s.id} className="rcx-sitem model">
+              <div className="sn">
+                {s.name}
+                <span className="chip">{s.type === "cash_model" ? "cash" : "model"}</span>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              <div className="sk">
+                {s.status ?? "ready"}
+                {s.source ? ` · ${s.source}` : ""}
+                {s.is_primary ? " · primary" : ""}
+              </div>
+              <div className="sb">
                 {pending ? (
                   <button
                     type="button"
@@ -288,7 +196,7 @@ export function StudiesPanel({
                     disabled={locked || reviewStatus !== "draft" || !reviewId}
                     onClick={() => void placeStudy(s.id)}
                   >
-                    Add to issue
+                    Add Model
                   </button>
                 ) : null}
                 {s.type === "external_model" ? (
