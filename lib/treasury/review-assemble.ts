@@ -57,10 +57,37 @@ export type ReviewRow = {
   title: string;
   status: string;
   current_version: number;
+  /** Spec B19 — Study live from–to `{from,to}`; null = default/all. */
+  window: StudyDateWindow | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Spec B19 — Study / Edition date window (YYYY-MM-DD). */
+export type StudyDateWindow = {
+  from: string;
+  to: string;
+};
+
+export function isStudyDateWindow(value: unknown): value is StudyDateWindow {
+  if (!value || typeof value !== "object") return false;
+  const w = value as Record<string, unknown>;
+  const from = typeof w.from === "string" ? w.from.slice(0, 10) : "";
+  const to = typeof w.to === "string" ? w.to.slice(0, 10) : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return false;
+  }
+  return to >= from;
+}
+
+export function parseStudyDateWindow(value: unknown): StudyDateWindow | null {
+  if (!isStudyDateWindow(value)) return null;
+  return {
+    from: value.from.slice(0, 10),
+    to: value.to.slice(0, 10),
+  };
+}
 
 export type ReviewSnapshot = {
   meta: {
@@ -96,6 +123,7 @@ export function normalizeReviewRow(row: Record<string, unknown>): ReviewRow {
     title: String(row.title ?? ""),
     status: String(row.status ?? "draft"),
     current_version: Number(row.current_version ?? 0),
+    window: parseStudyDateWindow(row.window),
     created_by: (row.created_by as string | null) ?? null,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),

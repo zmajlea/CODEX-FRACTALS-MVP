@@ -354,11 +354,12 @@ async function publishReview(
   admin: ReturnType<typeof adminClient>,
   reviewId: string,
   operatorId: string,
-  changeNote = ""
+  changeNote = "",
+  opts?: { label?: string; window?: { from: string; to: string } }
 ) {
   const { data: reviewRow, error: revErr } = await admin
     .from("treasury_reviews")
-    .select("id, title, period_month, current_version, status")
+    .select("id, title, period_month, label, current_version, status")
     .eq("id", reviewId)
     .eq("status", "draft")
     .maybeSingle();
@@ -390,6 +391,14 @@ async function publishReview(
     blocks
   );
 
+  const editionLabel =
+    opts?.label?.trim() ||
+    String(reviewRow.title ?? "").trim() ||
+    String(reviewRow.label ?? "").trim() ||
+    String(reviewRow.period_month).slice(0, 7) ||
+    `Edition ${newVersion}`;
+  const editionWindow = opts?.window ?? null;
+
   const { data: versionRow, error: verErr } = await admin
     .from("treasury_review_versions")
     .insert({
@@ -399,8 +408,10 @@ async function publishReview(
       published_by: operatorId,
       change_note: changeNote || snapshot.meta.change_note,
       snapshot: snapshot as unknown as Json,
+      label: editionLabel,
+      window: (editionWindow as unknown as Json) ?? null,
     })
-    .select("id, version")
+    .select("id, version, label, window")
     .single();
 
   if (verErr || !versionRow) throw new Error(verErr?.message ?? "version insert");
@@ -414,7 +425,14 @@ async function publishReview(
     })
     .eq("id", reviewId);
 
-  return { ok: true as const, status: 200, version: newVersion, versionId: versionRow.id };
+  return {
+    ok: true as const,
+    status: 200,
+    version: newVersion,
+    versionId: versionRow.id,
+    label: versionRow.label as string | null,
+    window: versionRow.window as { from?: string; to?: string } | null,
+  };
 }
 
 /** Minimal mirror of mcpProposeNarrative note path (draft-only + envelope scan). */
@@ -3180,7 +3198,85 @@ async function main() {
     );
   }
 
-  log("ALL 41/41 LIVE CHECKS PASSED");
+  // 42 — B19 Phase A: Edition label + window on publish; backfilled editions readable
+  {
+    const stamp = Date.now();
+    const period = `2026-11-01`;
+    let rid: string | null = null;
+    try {
+      const { data: review, error: insErr } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: tim.tenantId,
+          client_user_id: clientA.id,
+          period_month: period,
+          label: `gate-b19-a-${stamp}`,
+          title: `B19A Gate Study ${stamp}`,
+          status: "draft",
+          created_by: tim.operatorId,
+        })
+        .select("id")
+        .single();
+      if (insErr || !review) throw new Error(insErr?.message ?? "insert study");
+      rid = review.id;
+
+      await admin.from("treasury_review_blocks").insert({
+        review_id: rid,
+        position: 0,
+        role: "note",
+        caption: "",
+        body: "Phase A edition metadata gate.",
+        proposal_state: "none",
+        provenance: {},
+      });
+
+      const win = { from: "2026-01-01", to: "2026-06-30" };
+      const pub = await publishReview(admin, rid, tim.operatorId, "B19A publish", {
+        label: "Q1–Q2 2026 Edition",
+        window: win,
+      });
+      if (!pub.ok) throw new Error("publish blocked");
+
+      const { data: edition } = await admin
+        .from("treasury_review_versions")
+        .select("id, label, window, version, snapshot")
+        .eq("id", pub.versionId)
+        .maybeSingle();
+
+      const winObj = edition?.window as { from?: string; to?: string } | null;
+      const writeOk =
+        edition?.label === "Q1–Q2 2026 Edition" &&
+        winObj?.from === win.from &&
+        winObj?.to === win.to &&
+        edition?.version === 1 &&
+        !!edition?.snapshot;
+
+      // Existing / prior editions: label column readable (backfill or explicit)
+      const { data: anyEdition } = await admin
+        .from("treasury_review_versions")
+        .select("id, label")
+        .not("label", "is", null)
+        .limit(1)
+        .maybeSingle();
+      const backfillReadable = !!anyEdition?.label;
+
+      // Freeze path unchanged: snapshot still present; change_note-only publish still works
+      // (covered by earlier checks; here assert snapshot shape meta exists)
+      const snap = edition?.snapshot as { meta?: { version?: number } } | null;
+      const freezeOk = snap?.meta?.version === 1;
+
+      record(
+        42,
+        "B19A Edition label+window on publish; editions readable",
+        writeOk && backfillReadable && freezeOk,
+        `write=${writeOk} readable=${backfillReadable} freeze=${freezeOk} label=${edition?.label}`
+      );
+    } finally {
+      if (rid) await admin.from("treasury_reviews").delete().eq("id", rid);
+    }
+  }
+
+  log("ALL 42/42 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

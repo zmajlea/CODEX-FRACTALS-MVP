@@ -2064,6 +2064,7 @@ export type Database = {
         Row: {
           change_note: string
           id: string
+          label: string | null
           published_at: string
           published_by: string | null
           review_id: string
@@ -2071,10 +2072,12 @@ export type Database = {
           snapshot: Json
           superseded_at: string | null
           version: number
+          window: Json | null
         }
         Insert: {
           change_note?: string
           id?: string
+          label?: string | null
           published_at?: string
           published_by?: string | null
           review_id: string
@@ -2082,10 +2085,12 @@ export type Database = {
           snapshot: Json
           superseded_at?: string | null
           version: number
+          window?: Json | null
         }
         Update: {
           change_note?: string
           id?: string
+          label?: string | null
           published_at?: string
           published_by?: string | null
           review_id?: string
@@ -2093,6 +2098,7 @@ export type Database = {
           snapshot?: Json
           superseded_at?: string | null
           version?: number
+          window?: Json | null
         }
         Relationships: [
           {
@@ -2117,6 +2123,7 @@ export type Database = {
           tenant_id: string
           title: string
           updated_at: string
+          window: Json | null
         }
         Insert: {
           client_user_id: string
@@ -2130,6 +2137,7 @@ export type Database = {
           tenant_id: string
           title?: string
           updated_at?: string
+          window?: Json | null
         }
         Update: {
           client_user_id?: string
@@ -2143,6 +2151,7 @@ export type Database = {
           tenant_id?: string
           title?: string
           updated_at?: string
+          window?: Json | null
         }
         Relationships: [
           {
