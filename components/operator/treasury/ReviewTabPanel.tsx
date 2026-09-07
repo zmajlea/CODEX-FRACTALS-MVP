@@ -565,7 +565,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   }
 
   function openPublishDialog() {
-    if (!activeId || status !== "draft") return;
+    // Spec B19-B1 — re-publish allowed while published (Edition N+1).
+    if (!activeId || (status !== "draft" && status !== "published")) return;
     const ver =
       (reviews.find((r) => r.id === activeId)?.current_version ?? 0) + 1;
     setEditionLabel(title.trim() || `Edition ${ver}`);
@@ -798,24 +799,28 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     applyReorder(from, before);
   }
 
+  const canPublish = status === "draft" || status === "published";
   const publishBlocked =
     !preflight ||
     preflight.proposed_count > 0 ||
-    preflight.stale_count > 0 ||
-    preflight.envelope_violations.length > 0;
+    preflight.envelope_violations.length > 0 ||
+    // Stale is an authoring concern (recompute is draft-only); publish recomputes fresh.
+    (status === "draft" && preflight.stale_count > 0);
 
   const gateLevel =
-    status !== "draft"
+    status === "archived"
       ? "ready"
-      : blocks.length === 0
-        ? "quiet"
-        : publishBlocked
-          ? "blocked"
-          : "ready";
+      : !canPublish
+        ? "ready"
+        : blocks.length === 0
+          ? "quiet"
+          : publishBlocked
+            ? "blocked"
+            : "ready";
 
   const activeReview = reviews.find((r) => r.id === activeId);
   const nextVersion = (activeReview?.current_version ?? 0) + 1;
-  // Spec B15-FIXES-2: never surface stale ids on frozen issues.
+  // Spec B15-FIXES-2: never surface stale ids on frozen issues (display).
   const staleIds =
     status === "draft" ? (preflight?.stale_block_ids ?? []) : [];
   const isLoadingIssue = Boolean(loadingId && loadingId === activeId);
@@ -983,9 +988,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                 ? "Clean the preflight to publish"
                 : status === "draft"
                   ? `Preflight clean · freezes ${blocks.length} blocks`
-                  : "Published"}
+                  : status === "published"
+                    ? `Publish next Edition · v${nextVersion}`
+                    : "Published"}
           </span>
-          {status === "draft" && activeId ? (
+          {canPublish && activeId ? (
             <>
               <label className="rcx-win">
                 From
@@ -995,7 +1002,14 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                   disabled={busy}
                   onChange={(e) => setWindowFrom(e.target.value)}
                   onBlur={() => {
-                    if (windowFrom && windowTo && windowTo >= windowFrom) {
+                    // Persist Study.window only while drafting; published uses local
+                    // window for preview + publish body (PATCH remains draft-only).
+                    if (
+                      status === "draft" &&
+                      windowFrom &&
+                      windowTo &&
+                      windowTo >= windowFrom
+                    ) {
                       void saveStudyWindow(windowFrom, windowTo);
                     }
                   }}
@@ -1009,7 +1023,12 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                   disabled={busy}
                   onChange={(e) => setWindowTo(e.target.value)}
                   onBlur={() => {
-                    if (windowFrom && windowTo && windowTo >= windowFrom) {
+                    if (
+                      status === "draft" &&
+                      windowFrom &&
+                      windowTo &&
+                      windowTo >= windowFrom
+                    ) {
                       void saveStudyWindow(windowFrom, windowTo);
                     }
                   }}
@@ -1027,11 +1046,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           ) : null}
           <button
             type="button"
-            className={`rcx-btn sm${gateLevel === "ready" && status === "draft" ? "" : " ghost"}`}
-            disabled={busy || status !== "draft" || publishBlocked}
+            className={`rcx-btn sm${gateLevel === "ready" && canPublish ? "" : " ghost"}`}
+            disabled={busy || !canPublish || publishBlocked}
             onClick={() => openPublishDialog()}
           >
-            {status === "draft" ? `Publish v${nextVersion}` : "Published"}
+            {canPublish ? `Publish v${nextVersion}` : "Published"}
           </button>
         </div>
 

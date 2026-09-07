@@ -33,7 +33,9 @@ type PublishBody = {
   window?: StudyDateWindow;
 };
 
-/** Spec B12 / B19 — publish draft Study → immutable Edition (THE human gate). */
+/** Spec B12 / B19-B1 — publish Study → immutable Edition (THE human gate).
+ * Re-publish allowed while status is "published" — creates Edition N+1.
+ */
 export async function POST(request: Request, context: RouteContext) {
   const { clientId, reviewId } = await context.params;
   const guard = await requireOperatorTreasuryGrant(clientId);
@@ -60,23 +62,31 @@ export async function POST(request: Request, context: RouteContext) {
     /* optional body — back-compat with change_note-only / empty */
   }
 
+  // Spec B19-B1 — lookup by id/tenant/client only (no draft gate).
   const { data: reviewRow, error: revErr } = await guard.admin
     .from("treasury_reviews")
     .select("*")
     .eq("id", reviewId)
     .eq("tenant_id", guard.grant.tenantId)
     .eq("client_user_id", clientId)
-    .eq("status", "draft")
     .maybeSingle();
 
   if (revErr || !reviewRow) {
-    return NextResponse.json({ error: "Draft review not found" }, { status: 404 });
+    return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
 
   const review = normalizeReviewRow(reviewRow as Record<string, unknown>);
   const preflight = await computeReviewPreflight(guard.admin, reviewId);
 
-  if (preflightBlocked(preflight)) {
+  // Spec B19-B1 — re-publish recomputes fresh over editionWindow; stale preview
+  // cache must not block Edition N+1 (block recompute remains draft-only).
+  const blocked =
+    review.status === "published"
+      ? preflight.proposed_count > 0 ||
+        preflight.envelope_violations.length > 0
+      : preflightBlocked(preflight);
+
+  if (blocked) {
     return NextResponse.json(
       { error: "Publish blocked", preflight },
       { status: 422 }
