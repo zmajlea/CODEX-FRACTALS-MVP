@@ -217,8 +217,17 @@ async function main() {
     "period preview page !== predicate count"
   );
   assert(periodWill <= month.count, "period will_suggest exceeds bar count");
+  // Spec B16F2: new_count on same filtered bucket as count
+  assert(
+    typeof month.new_count === "number",
+    "by_month.new_count missing — run B16F2 migration"
+  );
+  assert(
+    month.new_count === periodWill,
+    `new_count ${month.new_count} !== label-null period will ${periodWill}`
+  );
   log(
-    `6 period filter month=${month.period} bar=${month.count} will=${periodWill} page=${periodPage.length} from=${from} to=${to}`
+    `6 period filter month=${month.period} bar=${month.count} new=${month.new_count} will=${periodWill} page=${periodPage.length} from=${from} to=${to}`
   );
 
   const { data: cxDates } = await admin

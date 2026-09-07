@@ -125,7 +125,15 @@ async function main() {
   assert(popupSrc.includes("Δ "), "capital Δ missing from popup");
   assert(popupSrc.includes("busy-indeterminate"), "progress indicator missing");
   assert(popupSrc.includes("will be suggested"), "live will-suggest copy missing");
-  log("1 UI source: presets gone, Δ present, progress + live list markup OK");
+  // Spec B16F2 clarity: period panel shows new/already-categorized split
+  assert(
+    popupSrc.includes("already categorized"),
+    "B16F2 already-categorized panel copy missing"
+  );
+  assert(popupSrc.includes("is-categorized"), "B16F2 categorized row class missing");
+  assert(!popupSrc.includes('labeled", "false"') && !popupSrc.includes("labeled=false"),
+    "B16F2 panel still forces labeled=false");
+  log("1 UI source: presets gone, Δ present, progress + live list + B16F2 clarity OK");
 
   // Empty-band parity on 500+ payee
   const willEmpty = await countRuleMatches(

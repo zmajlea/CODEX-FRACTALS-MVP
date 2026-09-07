@@ -1135,9 +1135,13 @@
 [data-r1] .preview-basis{ font-size:var(--t-meta); color:var(--mute); }
 [data-r1] .preview-list{ list-style:none; margin:2px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
 [data-r1] .preview-list li{ display:flex; gap:12px; font-size:var(--t-meta); color:var(--slate); }
+[data-r1] .preview-list li.is-categorized{ opacity:.55; color:var(--mute); }
+[data-r1] .preview-list li.is-categorized .pl-a{ color:var(--mute); }
 [data-r1] .preview-list .pl-d{ color:var(--mute); flex:0 0 92px; }
 [data-r1] .preview-list .pl-p{ flex:1 1 auto; }
 [data-r1] .preview-list .pl-a{ font-variant-numeric:tabular-nums; color:var(--ink); }
+[data-r1] .preview-list .pl-chip{ color:var(--mute); font-weight:500; }
+[data-r1] .rule-analyze-new-muted{ opacity:.55; }
 [data-r1] .composer-create{ display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
 [data-r1] .composer-create .cc-reason{ font-size:var(--t-meta); color:var(--mute); }
 /* the shared category picker (reuse a label or type a new one) */

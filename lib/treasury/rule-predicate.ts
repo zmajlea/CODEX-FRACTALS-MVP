@@ -30,6 +30,8 @@ export type RulePayeePeriodStat = {
   from?: string;
   to?: string;
   count: number;
+  /** Spec B16F2 — matches in bucket with label is null (same filters as count). */
+  new_count?: number;
   min: number;
   max: number;
   mean: number;
