@@ -96,6 +96,7 @@ export function RuleAmountAnalyzePopup({
   const [dateTo, setDateTo] = useState(initial.dateTo);
   const [willSuggest, setWillSuggest] = useState<number | null>(null);
   const [periodWillSuggest, setPeriodWillSuggest] = useState<number | null>(null);
+  const [periodTotal, setPeriodTotal] = useState<number | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<RulePayeePeriodStat | null>(
     null
   );
@@ -164,7 +165,8 @@ export function RuleAmountAnalyzePopup({
       const periodDates = previewDatesForPeriod(scope, period);
       if (periodDates.dateFrom) params.set("date_from", periodDates.dateFrom);
       if (periodDates.dateTo) params.set("date_to", periodDates.dateTo);
-      params.set("labeled", "false");
+      // Spec B16F2: fetch ALL matches so already-categorized rows are visible.
+      // will_suggest remains uncategorized-only (API still returns both).
       params.set("limit", String(LIVE_LIST_LIMIT));
 
       const previewRes = await fetch(
@@ -172,21 +174,27 @@ export function RuleAmountAnalyzePopup({
       );
       if (previewRes.ok) {
         const prev = (await previewRes.json()) as {
+          total?: number;
           will_suggest?: number;
           willSuggest?: number;
           transactions?: TreasuryTransactionRow[];
         };
-        const ws = prev.will_suggest ?? prev.willSuggest ?? null;
+        const ws = prev.will_suggest ?? null;
+        const tot = prev.total ?? (prev.transactions?.length ?? 0);
         if (period) {
           setPeriodWillSuggest(ws);
+          setPeriodTotal(tot);
         } else {
           setWillSuggest(ws);
           setPeriodWillSuggest(null);
+          setPeriodTotal(null);
         }
         setSamples(sortTxNewestFirst(prev.transactions ?? []));
       } else {
-        if (period) setPeriodWillSuggest(null);
-        else setWillSuggest(null);
+        if (period) {
+          setPeriodWillSuggest(null);
+          setPeriodTotal(null);
+        } else setWillSuggest(null);
         setSamples([]);
       }
     },
@@ -239,12 +247,14 @@ export function RuleAmountAnalyzePopup({
     setDateFrom(initial.dateFrom);
     setDateTo(initial.dateTo);
     setSelectedPeriod(null);
+    setPeriodTotal(null);
     setError(null);
     if (!payeeQueryProp.trim()) {
       setStats(null);
       setSamples([]);
       setWillSuggest(null);
       setPeriodWillSuggest(null);
+      setPeriodTotal(null);
       return;
     }
     const scope: AnalyzeBandState = {
@@ -375,6 +385,12 @@ export function RuleAmountAnalyzePopup({
   const listSuggestN = selectedPeriod
     ? (periodWillSuggest ?? 0)
     : suggestN;
+  const listTotalN = selectedPeriod
+    ? (periodTotal ?? selectedPeriod.count)
+    : (stats?.total ?? samples.length);
+  const listAlreadyN = Math.max(0, listTotalN - listSuggestN);
+  const newSamples = samples.filter((tx) => tx.label == null);
+  const categorizedSamples = samples.filter((tx) => tx.label != null);
   const degenerate = !stats || (stats.total === 0 && suggestN === 0);
 
   if (!open || !mounted) return null;
@@ -618,9 +634,19 @@ export function RuleAmountAnalyzePopup({
                         style={{ width: `${(p.count / maxCount) * 100}%` }}
                       />
                       <span className="meta">
-                        {p.count} · {Number(p.min).toFixed(0)}–
-                        {Number(p.max).toFixed(0)} · Δ{" "}
-                        {Number(p.stddev).toFixed(0)}
+                        {p.count}
+                        <span
+                          className={
+                            (p.new_count ?? 0) === 0
+                              ? "rule-analyze-new-muted"
+                              : undefined
+                          }
+                        >
+                          {" "}
+                          · {p.new_count ?? 0} new
+                        </span>{" "}
+                        · {Number(p.min).toFixed(0)}–
+                        {Number(p.max).toFixed(0)} · Δ {Number(p.stddev).toFixed(0)}
                       </span>
                     </button>
                   </li>
@@ -641,7 +667,7 @@ export function RuleAmountAnalyzePopup({
               <div className="flex items-center justify-between gap-2 mb-1">
                 <p className="text-xs text-codex-muted">
                   {stats
-                    ? `${samples.length.toLocaleString()} of ${listSuggestN.toLocaleString()} will be suggested${
+                    ? `${listSuggestN.toLocaleString()} new of ${listTotalN.toLocaleString()} matches · ${listAlreadyN.toLocaleString()} already categorized${
                         selectedPeriod ? ` · ${selectedPeriod.period}` : ""
                       }`
                     : "Matching transactions appear here after Review."}
@@ -658,7 +684,7 @@ export function RuleAmountAnalyzePopup({
               </div>
               {samples.length > 0 ? (
                 <ul className="preview-list">
-                  {samples.map((tx) => (
+                  {newSamples.map((tx) => (
                     <li key={tx.id}>
                       <span className="pl-d">{tx.posted_date ?? "—"}</span>
                       <span className="pl-p">
@@ -669,10 +695,26 @@ export function RuleAmountAnalyzePopup({
                       </span>
                     </li>
                   ))}
+                  {categorizedSamples.map((tx) => (
+                    <li key={tx.id} className="is-categorized">
+                      <span className="pl-d">{tx.posted_date ?? "—"}</span>
+                      <span className="pl-p">
+                        {tx.merchant_name ?? tx.normalized_merchant ?? "—"}
+                      </span>
+                      <span className="pl-a">
+                        {formatTreasuryMoney(Number(tx.amount), "USD")}
+                        {tx.label ? (
+                          <span className="pl-chip"> · {tx.label}</span>
+                        ) : null}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               ) : stats ? (
                 <p className="text-xs text-codex-muted">
-                  No uncategorized matches for these conditions.
+                  {listTotalN > 0 && listSuggestN === 0
+                    ? `All ${listTotalN.toLocaleString()} matches here are already categorized`
+                    : "No uncategorized matches for these conditions."}
                 </p>
               ) : null}
             </div>
