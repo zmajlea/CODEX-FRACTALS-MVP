@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import {
   LAYOUT_PRESETS,
@@ -88,6 +89,7 @@ export function StudyAuthorCanvas({
   const [bp, setBp] = useState<"desktop" | "tablet" | "phone">("desktop");
   const [adding, setAdding] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [mounted, setMounted] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const base = `/api/operator/treasury/clients/${clientUserId}`;
   const empty = BLOCK_COUNT(value) === 0;
@@ -111,6 +113,8 @@ export function StudyAuthorCanvas({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -262,7 +266,9 @@ export function StudyAuthorCanvas({
     search.trim() ? m.name.toLowerCase().includes(search.trim().toLowerCase()) : true
   );
 
-  return (
+  if (!mounted || typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="sb-root" data-bp={bp} role="dialog" aria-modal="true" aria-label="Study builder">
       <style>{SB_CSS}</style>
       <div className="sb-scrim" onClick={onClose} />
@@ -636,12 +642,13 @@ export function StudyAuthorCanvas({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 const SB_CSS = `
-.sb-root{position:fixed;inset:0;z-index:120;--sb-canvas:#eef3f9;--sb-paper:#fff;--sb-edge:#dde7f3;--sb-ink:#102a47;--sb-slate:#364657;--sb-mute:#546480;--sb-line:#dde7f3;--sb-brand:#174a7a;--sb-accent:#1fc5d9;--sb-shadow:0 8px 26px rgba(16,42,71,.08);--sb-row:20px;--sb-gap:12px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--sb-ink)}
+.sb-root{position:fixed;inset:0;z-index:1000;--sb-canvas:#eef3f9;--sb-paper:#fff;--sb-edge:#dde7f3;--sb-ink:#102a47;--sb-slate:#364657;--sb-mute:#546480;--sb-line:#dde7f3;--sb-brand:#174a7a;--sb-accent:#1fc5d9;--sb-shadow:0 8px 26px rgba(16,42,71,.08);--sb-row:20px;--sb-gap:12px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--sb-ink)}
 .sb-root .sb-scrim{position:absolute;inset:0;background:rgba(16,42,71,.34)}
 .sb-root .sb-stage{position:absolute;inset:0;overflow:auto;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;max-width:1560px;margin:0 auto;padding:18px 22px 60px;align-items:start;background:var(--sb-canvas)}
 .sb-root[data-bp="tablet"] .sb-stage{grid-template-columns:minmax(0,1fr) 280px}
