@@ -158,7 +158,8 @@ export async function createTreasuryClient(
     const { error: roleErr } = await admin.from("user_roles").insert({
       user_id: clientId,
       role: "client",
-      tenant_id: null,
+      // Spec B16F1: client role must carry tenant (user_roles_tenant_required).
+      tenant_id: input.tenantId,
       granted_by: input.operatorUserId,
     });
     if (roleErr) throw new Error(`user_roles: ${roleErr.message}`);
