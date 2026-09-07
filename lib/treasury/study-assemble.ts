@@ -36,6 +36,16 @@ export type PlacedStudyTimelinePoint = {
   projected?: boolean;
 };
 
+/** Analytics exhibit point — kept distinct from cash timeline. */
+export type PlacedStudyAnalyticsPoint = {
+  label: string;
+  value: number;
+};
+
+export type PlacedStudyExhibitPoint =
+  | PlacedStudyTimelinePoint
+  | PlacedStudyAnalyticsPoint;
+
 export type PlacedStudyTimeline = {
   points: PlacedStudyTimelinePoint[];
   reference_lines: Array<{ label: string; value: number; breach?: boolean }>;
@@ -48,7 +58,8 @@ export type PlacedStudyExhibit = {
   id: string;
   title: string;
   chart_hint: "line" | "column";
-  points: PlacedStudyTimelinePoint[];
+  series_kind?: "cash" | "analytics";
+  points: PlacedStudyExhibitPoint[];
   reference_lines: Array<{ label: string; value: number; breach?: boolean }>;
   layout: ReviewBlockLayout;
   breach_month?: string | null;
@@ -199,7 +210,7 @@ export function normalizePlacedStudy(snap: PlacedStudySnapshot): PlacedStudySnap
   const first = next.exhibits[0];
   if (first) {
     next.timeline = {
-      points: first.points,
+      points: first.points.filter(isCashPoint),
       reference_lines: first.reference_lines,
       breach_month: first.breach_month ?? null,
       runway_months: first.runway_months ?? null,
@@ -212,11 +223,18 @@ export function normalizePlacedStudy(snap: PlacedStudySnapshot): PlacedStudySnap
   return next;
 }
 
+function isCashPoint(
+  p: PlacedStudyExhibitPoint
+): p is PlacedStudyTimelinePoint {
+  return "month" in p && "ending" in p;
+}
+
 function exhibitFromComposite(e: StudyCompositeExhibit): PlacedStudyExhibit {
   return {
     id: e.id,
     title: e.title,
     chart_hint: e.chart_hint,
+    series_kind: e.series_kind ?? "cash",
     points: e.points,
     reference_lines: e.reference_lines,
     layout: resolveLayout(e.layout),
@@ -224,8 +242,9 @@ function exhibitFromComposite(e: StudyCompositeExhibit): PlacedStudyExhibit {
 }
 
 function timelineFromExhibit(e: PlacedStudyExhibit): PlacedStudyTimeline {
+  const cashPoints = e.points.filter(isCashPoint);
   return {
-    points: e.points,
+    points: cashPoints,
     reference_lines: e.reference_lines,
     breach_month: e.breach_month ?? null,
     runway_months: e.runway_months ?? null,
@@ -283,6 +302,7 @@ export function placedStudyFromExternal(study: {
         id: s.id || `scenario-${i}`,
         title: s.name || `Scenario ${i + 1}`,
         chart_hint: "line",
+        series_kind: "cash",
         points: s.timeline.map((row) => ({
           month: row.month.slice(0, 7),
           ending: row.ending,
@@ -438,6 +458,7 @@ export function placedStudyFromCashModelCompute(input: {
       id: "timeline-0",
       title: "Ending cash",
       chart_hint: "line",
+      series_kind: "cash",
       points: timeline.points,
       reference_lines: timeline.reference_lines,
       layout: { w: 12, h: 2 },

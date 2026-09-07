@@ -11,7 +11,7 @@ const WINDOW_KINDS = [
   "range",
 ] as const;
 const OF_KINDS = ["monthly_totals", "series_totals", "series_compare"] as const;
-const SUBDIVISIONS = ["day", "week", "month", "quarter", "year"] as const;
+const SUBDIVISIONS = ["day", "week", "biweek", "month", "quarter", "year"] as const;
 const BUCKET_OPS = ["sum", "count", "avg", "min", "max"] as const;
 const REF_KINDS = ["avg", "min", "max", "target", "threshold"] as const;
 const REF_STATS = ["avg", "min", "max", "median"] as const;
@@ -74,10 +74,13 @@ const windowSchema = z
 
 const compareSchema = z
   .object({
-    by: z.enum(["year", "category"]),
+    by: z.enum(["year", "category", "previous", "range"]),
     last_n_years: z.number().int().min(2).max(5).optional(),
     years: z.array(z.number().int().min(2000).max(2100)).min(1).optional(),
     keys: z.array(z.string().min(1)).optional(),
+    /** Fixed reference span for by:"range" (YYYY-MM-DD). */
+    ref_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    ref_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   })
   .superRefine((c, ctx) => {
     if (c.by === "year") {
@@ -97,6 +100,21 @@ const compareSchema = z
           code: "custom",
           path: ["keys"],
           message: "compare.keys requires at least two categories",
+        });
+      }
+    }
+    if (c.by === "range") {
+      if (!c.ref_start || !c.ref_end) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ref_start"],
+          message: "compare by range requires ref_start and ref_end (YYYY-MM-DD)",
+        });
+      } else if (c.ref_end < c.ref_start) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ref_end"],
+          message: "compare ref_end must be on or after ref_start",
         });
       }
     }
@@ -181,6 +199,8 @@ export function estimateBucketCount(
       return Math.ceil(monthsSpan * 31);
     case "week":
       return Math.ceil(monthsSpan * (52 / 12));
+    case "biweek":
+      return Math.ceil(monthsSpan * (26 / 12));
     case "month":
       return monthsSpan;
     case "quarter":
@@ -201,8 +221,21 @@ export function estimateComparisonBucketCount(
       definition.compare.last_n_years ??
       definition.compare.years?.length ??
       3;
-    const perAxis = definition.subdivision === "quarter" ? 4 : 12;
+    const sub = definition.subdivision;
+    const perAxis =
+      sub === "quarter"
+        ? 4
+        : sub === "week" || sub === "biweek"
+          ? 53
+          : 12;
     return nYears * perAxis;
+  }
+  if (
+    definition.compare?.by === "previous" ||
+    definition.compare?.by === "range"
+  ) {
+    if (!definition.subdivision) return METRIC_POINT_CAP + 1;
+    return estimateBucketCount(definition.subdivision, definition.window) * 2;
   }
   if (!definition.subdivision) return METRIC_POINT_CAP + 1;
   return estimateBucketCount(definition.subdivision, definition.window);
@@ -293,11 +326,17 @@ const metricDefinitionSchema: z.ZodType<MetricDefinition> = z.lazy(() =>
             message: "subdivision required for comparison metrics",
           });
         } else if (d.compare?.by === "year") {
-          if (d.subdivision !== "month" && d.subdivision !== "quarter") {
+          if (
+            d.subdivision !== "month" &&
+            d.subdivision !== "quarter" &&
+            d.subdivision !== "week" &&
+            d.subdivision !== "biweek"
+          ) {
             ctx.addIssue({
               code: "custom",
               path: ["subdivision"],
-              message: "year compare requires subdivision month or quarter",
+              message:
+                "year compare requires subdivision week, biweek, month, or quarter",
             });
           }
         }

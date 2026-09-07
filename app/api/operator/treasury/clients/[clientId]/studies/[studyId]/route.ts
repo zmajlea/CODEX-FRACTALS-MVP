@@ -8,14 +8,15 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import { asTreasuryStudyRow } from "@/lib/server/treasury-study-mapper";
+import { computeTreasuryCashModel } from "@/lib/server/treasury-cash-model";
 import {
-  defaultCashModelParams,
-  defaultCashModelScenarios,
-  emptyCashModelDerivedSnapshot,
   isCashModelDerivedSnapshot,
   isCashModelParams,
   isCashModelScenarioArray,
+  type CashModelParams,
+  type CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
+import { buildRunwayStatus } from "@/lib/treasury/cash-model-status";
 import type {
   DerivedSnapshot,
   StudyParams,
@@ -28,21 +29,6 @@ import type { Database, Json } from "@/lib/database.types";
 type RouteContext = {
   params: Promise<{ clientId: string; studyId: string }>;
 };
-
-function validateStudyPayload(
-  type: StudyType,
-  params: unknown,
-  scenarios: unknown,
-  derived_snapshot: unknown
-): string | null {
-  if (type === "spend_plan") return null;
-  if (!isCashModelParams(params)) return "Invalid cash_model params";
-  if (!isCashModelScenarioArray(scenarios)) return "Invalid cash_model scenarios";
-  if (!isCashModelDerivedSnapshot(derived_snapshot)) {
-    return "Invalid cash_model derived_snapshot";
-  }
-  return null;
-}
 
 export async function GET(_request: Request, context: RouteContext) {
   const { clientId, studyId } = await context.params;
@@ -97,7 +83,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { data: existing, error: loadErr } = await guard.admin
     .from("treasury_studies")
-    .select("type")
+    .select("*")
     .eq("id", studyId)
     .eq("client_user_id", clientId)
     .maybeSingle();
@@ -169,6 +155,46 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (body.derived_snapshot !== undefined) {
     update.derived_snapshot = body.derived_snapshot as unknown as Json;
+  }
+
+  // Spec B18 — recompute derived_snapshot when params/scenarios change so
+  // params.openingBalance moves runway (store-only left baseline stale).
+  if (
+    studyType === "cash_model" &&
+    (body.params !== undefined || body.scenarios !== undefined) &&
+    body.derived_snapshot === undefined
+  ) {
+    const nextParams = (body.params ?? existing.params) as CashModelParams;
+    const nextScenarios = (body.scenarios ??
+      existing.scenarios) as CashModelScenario[];
+    if (isCashModelParams(nextParams) && isCashModelScenarioArray(nextScenarios)) {
+      const scope = (body.scope ?? existing.scope) as {
+        accountId?: string;
+      } | null;
+      const accountId =
+        scope?.accountId && scope.accountId !== "__all__"
+          ? scope.accountId
+          : null;
+      try {
+        const composed = await computeTreasuryCashModel(guard.admin, clientId, {
+          accountId,
+          params: nextParams,
+          scenarios: nextScenarios,
+        });
+        update.derived_snapshot = {
+          ...composed.derived_snapshot,
+          runwayStatus: buildRunwayStatus(composed.summaries, nextParams),
+        } as unknown as Json;
+      } catch (e) {
+        return NextResponse.json(
+          {
+            error:
+              e instanceof Error ? e.message : "Cash model recompute failed",
+          },
+          { status: 500 }
+        );
+      }
+    }
   }
 
   if (Object.keys(update).length === 0) {

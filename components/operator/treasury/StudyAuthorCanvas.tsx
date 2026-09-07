@@ -219,10 +219,10 @@ export function StudyAuthorCanvas({
         id: newCompositeId("exhibit"),
         title,
         chart_hint: chartHint === "line" ? "line" : "column",
+        series_kind: "analytics",
         points: points.map((p) => ({
-          month: (p.bucket_label || p.bucket_start || "").slice(0, 7),
-          ending: p.value,
-          projected: p.partial ? true : undefined,
+          label: p.bucket_label || p.bucket_start || "point",
+          value: p.value,
         })),
         reference_lines: refs.map((r) => ({
           label: r.label,
@@ -380,11 +380,20 @@ export function StudyAuthorCanvas({
               const layout = resolveLayout(e.layout);
               const span = gridColumnSpan(layout, bp);
               const asChart = layout.w >= 6;
-              const points = e.points.map((p) => ({
-                bucket_start: `${p.month}-01`,
-                bucket_label: p.month,
-                value: p.ending,
-              }));
+              const points = e.points.map((p) => {
+                if ("label" in p && "value" in p) {
+                  return {
+                    bucket_start: p.label,
+                    bucket_label: p.label,
+                    value: p.value,
+                  };
+                }
+                return {
+                  bucket_start: `${p.month}-01`,
+                  bucket_label: p.month,
+                  value: p.ending,
+                };
+              });
               return (
                 <article
                   key={e.id}
@@ -582,23 +591,30 @@ export function buildStudySavePayload(input: {
     }))
     .filter((n) => n.body);
 
-  const scenarios = exhibits.map((e, i) => ({
-    id: e.id,
-    name: e.title || `Scenario ${i + 1}`,
-    timeline: e.points.map((p, pi) => {
-      const prevEnding = pi > 0 ? e.points[pi - 1]!.ending : p.ending;
-      const beginning = pi === 0 ? p.ending : prevEnding;
-      const net = p.ending - beginning;
-      return {
-        month: p.month.length === 7 ? `${p.month}-01` : p.month,
-        beginning,
-        net,
-        ending: p.ending,
-      };
-    }),
-    runway_months: null as number | null,
-    breach_month: null as string | null,
-  }));
+  const scenarios = exhibits
+    .filter((e) => e.series_kind !== "analytics")
+    .map((e, i) => ({
+      id: e.id,
+      name: e.title || `Scenario ${i + 1}`,
+      timeline: e.points
+        .filter(
+          (p): p is { month: string; ending: number; projected?: boolean } =>
+            "month" in p && "ending" in p
+        )
+        .map((p, pi, pts) => {
+          const prevEnding = pi > 0 ? pts[pi - 1]!.ending : p.ending;
+          const beginning = pi === 0 ? p.ending : prevEnding;
+          const net = p.ending - beginning;
+          return {
+            month: p.month.length === 7 ? `${p.month}-01` : p.month,
+            beginning,
+            net,
+            ending: p.ending,
+          };
+        }),
+      runway_months: null as number | null,
+      breach_month: null as string | null,
+    }));
 
   const results: Record<string, unknown> = {
     schema_version: "summit.results/v1",

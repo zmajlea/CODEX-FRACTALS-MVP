@@ -36,6 +36,12 @@ export type CashModelParams = {
   bucketMap: Record<string, CashModelBucketKey>;
   driverSpec: Partial<Record<CashModelBucketKey, CashModelDriverSpec>>;
   excludedMonths: Array<{ month: string; reason: string }>;
+  /**
+   * Spec B18 — optional manual opening-balance override (per primary account).
+   * When set (finite number), wins over ledger buffer in loadCashModelInputs.
+   * Canonical field; do not use manualOpeningBalance.
+   */
+  openingBalance?: number | null;
 };
 
 export type CashModelRunwayStatus = {
@@ -127,12 +133,36 @@ export function emptyCashModelDerivedSnapshot(asOf?: string): CashModelDerivedSn
 export function isCashModelParams(value: unknown): value is CashModelParams {
   if (!value || typeof value !== "object") return false;
   const p = value as CashModelParams;
-  return (
-    typeof p.horizon === "number" &&
-    typeof p.selectedScenarioId === "string" &&
-    typeof p.bucketMap === "object" &&
-    Array.isArray(p.excludedMonths)
-  );
+  if (
+    typeof p.horizon !== "number" ||
+    typeof p.selectedScenarioId !== "string" ||
+    typeof p.bucketMap !== "object" ||
+    !Array.isArray(p.excludedMonths)
+  ) {
+    return false;
+  }
+  if (
+    p.openingBalance !== undefined &&
+    p.openingBalance !== null &&
+    typeof p.openingBalance !== "number"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Resolve canonical opening-balance override from params (migrates legacy manualOpeningBalance). */
+export function resolveOpeningBalanceOverride(
+  params: CashModelParams | null | undefined
+): number | null {
+  if (!params) return null;
+  if (typeof params.openingBalance === "number" && Number.isFinite(params.openingBalance)) {
+    return params.openingBalance;
+  }
+  const legacy = (params as CashModelParams & { manualOpeningBalance?: number })
+    .manualOpeningBalance;
+  if (typeof legacy === "number" && Number.isFinite(legacy)) return legacy;
+  return null;
 }
 
 export function isCashModelScenarioArray(value: unknown): value is CashModelScenario[] {

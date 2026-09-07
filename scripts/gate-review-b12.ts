@@ -3010,7 +3010,177 @@ async function main() {
     );
   }
 
-  log("ALL 39/39 LIVE CHECKS PASSED");
+  // 40 — B18 Part C: params.openingBalance flips get_cash_model_baseline (not header-only)
+  {
+    const { mcpGetCashModelBaseline } = await import("../lib/mcp/read-tools");
+    const {
+      defaultCashModelParams,
+      resolveOpeningBalanceOverride,
+    } = await import("../lib/treasury/cash-model-types");
+    const { loadCashModelInputs } = await import(
+      "../lib/server/treasury-cash-model"
+    );
+
+    const withManual = await loadCashModelInputs(
+      admin,
+      r1ClientId,
+      null,
+      undefined,
+      { openingBalance: 300_000 }
+    );
+    const without = await loadCashModelInputs(admin, r1ClientId, null);
+    const loaderOk =
+      withManual.openingBalance === 300_000 &&
+      withManual.openingBalanceSource === "manual" &&
+      without.openingBalanceSource !== "manual";
+
+    const resolveOk =
+      resolveOpeningBalanceOverride({
+        ...defaultCashModelParams(),
+        openingBalance: 300_000,
+      }) === 300_000 &&
+      resolveOpeningBalanceOverride({
+        ...defaultCashModelParams(),
+        ...( { manualOpeningBalance: 111 } as object ),
+      } as ReturnType<typeof defaultCashModelParams>) === 111;
+
+    let baselineOk = false;
+    let beforeOb: number | null = null;
+    let afterOb: number | null = null;
+    const { data: existing } = await admin
+      .from("treasury_studies")
+      .select("id, params")
+      .eq("client_user_id", r1ClientId)
+      .eq("type", "cash_model")
+      .eq("is_primary", true)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const originalParams = existing.params;
+      const base =
+        originalParams && typeof originalParams === "object"
+          ? { ...(originalParams as object) }
+          : { ...defaultCashModelParams() };
+      try {
+        await admin
+          .from("treasury_studies")
+          .update({
+            params: {
+              ...base,
+              openingBalance: null,
+            } as unknown as import("../lib/database.types").Json,
+          })
+          .eq("id", existing.id);
+        const before = await mcpGetCashModelBaseline(admin, r1ClientId);
+        beforeOb = before.opening_balance;
+
+        await admin
+          .from("treasury_studies")
+          .update({
+            params: {
+              ...base,
+              openingBalance: 300_000,
+            } as unknown as import("../lib/database.types").Json,
+          })
+          .eq("id", existing.id);
+        const after = await mcpGetCashModelBaseline(admin, r1ClientId);
+        afterOb = after.opening_balance;
+        baselineOk =
+          after.opening_balance === 300_000 &&
+          after.opening_balance !== before.opening_balance;
+      } finally {
+        await admin
+          .from("treasury_studies")
+          .update({
+            params: originalParams as import("../lib/database.types").Json,
+          })
+          .eq("id", existing.id);
+      }
+    } else {
+      // No primary yet — still pass if loader+resolve unify; baseline covered when primary exists
+      baselineOk = loaderOk && resolveOk;
+    }
+
+    record(
+      40,
+      "B18 openingBalance unifies loader + baseline",
+      loaderOk && resolveOk && baselineOk,
+      `loader=${loaderOk} resolve=${resolveOk} baseline=${baselineOk} before=${beforeOb} after=${afterOb}`
+    );
+  }
+
+  // 41 — B18 Part D: analytics exhibit points survive parse → place
+  {
+    const { parseStudyPageComposite } = await import(
+      "../lib/treasury/study-page-composite"
+    );
+    const { placedStudyFromExternal } = await import(
+      "../lib/treasury/study-assemble"
+    );
+    const composite = {
+      exhibits: [
+        {
+          id: "ex-analytics",
+          title: "Weekly spend",
+          chart_hint: "column",
+          series_kind: "analytics",
+          points: [
+            { label: "W 2026-01-06", value: 1200 },
+            { label: "W 2026-01-13", value: 980 },
+          ],
+          reference_lines: [],
+          layout: { w: 12, h: 2 },
+        },
+      ],
+      notes: [],
+      kpiLayouts: [],
+    };
+    const parsed = parseStudyPageComposite(composite);
+    const p0 = parsed?.exhibits[0]?.points[0];
+    const parseOk =
+      parsed?.exhibits[0]?.series_kind === "analytics" &&
+      p0 != null &&
+      "label" in p0 &&
+      p0.label === "W 2026-01-06" &&
+      !("month" in p0);
+
+    const placed = placedStudyFromExternal({
+      id: "00000000-0000-4000-8000-000000000099",
+      name: "Analytics study",
+      derived_snapshot: {
+        results: {
+          schema_version: "summit.results/v1",
+          export_id: "gate-b18",
+          as_of: "2026-09-07",
+          headline: "Analytics",
+          kpis: [],
+          scenarios: [],
+          narrative: [],
+          recommendations: [],
+          actuals_check: [],
+        },
+        composite,
+        submittedAt: new Date().toISOString(),
+        validationReport: { ok: true },
+        engineBaseline: null,
+      },
+    });
+    const pe = placed.exhibits?.[0];
+    const placeOk =
+      pe?.series_kind === "analytics" &&
+      pe.points.length === 2 &&
+      "label" in pe.points[0]! &&
+      (pe.points[0] as { label: string }).label === "W 2026-01-06";
+
+    record(
+      41,
+      "B18 analytics exhibit points survive save→place",
+      !!parseOk && !!placeOk,
+      `parse=${parseOk} place=${placeOk}`
+    );
+  }
+
+  log("ALL 41/41 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

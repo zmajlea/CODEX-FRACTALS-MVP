@@ -83,12 +83,24 @@ export function StudyBlockView({
     if (!e) return null;
     const layout = resolveLayout(e.layout);
     const asChart = !forceTile && layout.w >= 6;
-    const points = e.points.map((p) => ({
-      bucket_start: `${p.month}-01`,
-      bucket_label: p.month,
-      value: p.ending,
-      partial: p.projected ? (true as const) : undefined,
-    }));
+    const analytics = e.series_kind === "analytics";
+    const points = e.points.map((p) => {
+      if (analytics || ("label" in p && !("month" in p))) {
+        const ap = p as { label: string; value: number };
+        return {
+          bucket_start: ap.label,
+          bucket_label: ap.label,
+          value: ap.value,
+        };
+      }
+      const cp = p as { month: string; ending: number; projected?: boolean };
+      return {
+        bucket_start: `${cp.month}-01`,
+        bucket_label: cp.month,
+        value: cp.ending,
+        partial: cp.projected ? (true as const) : undefined,
+      };
+    });
     const refs = e.reference_lines.map((r, i) => ({
       id: `ref-${i}`,
       label: r.label,
