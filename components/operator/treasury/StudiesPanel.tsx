@@ -7,7 +7,6 @@ import {
   buildStudySavePayload,
   type StudyCanvasState,
 } from "@/components/operator/treasury/StudyAuthorCanvas";
-import { newCompositeId } from "@/lib/treasury/study-page-composite";
 
 type StudyListItem = {
   id: string;
@@ -30,19 +29,9 @@ type Props = {
 };
 
 function emptyCanvas(): StudyCanvasState {
-  return {
-    kpis: [
-      {
-        id: newCompositeId("kpi"),
-        label: "",
-        value: "",
-        unit: "",
-        layout: { w: 3, h: 1 },
-      },
-    ],
-    exhibits: [],
-    notes: [],
-  };
+  // Start truly empty so the builder shows its "Build this study like a page"
+  // empty state (B17F2); the operator adds blocks from the shelf.
+  return { kpis: [], exhibits: [], notes: [] };
 }
 
 /** Spec B16/B17 M2 — Studies panel (list + confirm + page canvas + place). */
