@@ -307,7 +307,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           const json = (await res.json()) as { error?: string };
           throw new Error(json.error ?? "Archive failed");
         }
-        setError("Issue archived.");
+        setError("Study archived.");
         await refresh(activeId === review.id ? null : activeId);
       } else {
         const res = await fetch(`${base}/reviews/${review.id}?hard=1`, {
@@ -317,7 +317,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           const json = (await res.json()) as { error?: string };
           throw new Error(json.error ?? "Delete failed");
         }
-        setError("Issue deleted.");
+        setError("Study deleted.");
         await refresh(activeId === review.id ? null : activeId);
       }
     } catch (e) {
@@ -348,7 +348,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         const json = (await res.json()) as { error?: string };
         throw new Error(json.error ?? "Restore failed");
       }
-      setError("Issue restored.");
+      setError("Study restored.");
       await refresh(reviewId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
@@ -856,7 +856,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 
       {/* ── Issues rail ─────────────────────────────── */}
       <aside className="rcx-rail">
-        <div className="rcx-kick">Issues</div>
+        <div className="rcx-kick">Studies</div>
         <label
           className="rcx-muted"
           style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, marginBottom: 6 }}
@@ -893,7 +893,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               <button
                 type="button"
                 className="rcx-tool"
-                title="Issue actions"
+                title="Study actions"
                 disabled={lifecycleLocked}
                 aria-expanded={menuOpenId === r.id}
                 onClick={(e) => {
@@ -965,20 +965,20 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           disabled={busy}
           onClick={() => void createDraft()}
         >
-          + New draft issue
+          + New study
         </button>
       </aside>
 
       {/* ── Document (centre) ───────────────────────── */}
       <section className="rcx-doc">
         <div className="rcx-gate" data-level={gateLevel}>
-          <span className="gt">{title || "Draft issue"}</span>
+          <span className="gt">{title || "Draft study"}</span>
           <span className={`gc${gateLevel === "blocked" ? " warn" : ""}`}>
             {preflight
               ? `Proposed ${preflight.proposed_count} · Stale ${preflight.stale_count} · Envelope ${preflight.envelope_violations.length}`
               : activeId
                 ? "Loading preflight…"
-                : "No draft issue"}
+                : "No draft study"}
           </span>
           <span className="spacer" />
           <span className="hint">
@@ -1072,16 +1072,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
 
         {!activeId ? (
           <div className="rcx-paper">
-            <p className="rcx-muted">Create or select a draft issue to begin.</p>
+            <p className="rcx-muted">Create or select a draft study to begin.</p>
           </div>
         ) : isLoadingIssue ? (
           <div className="rcx-paper">
             <div className="rcx-cover">
-              <div className="ct">{title || "Issue"}</div>
+              <div className="ct">{title || "Study"}</div>
               <div className="cs">Loading…</div>
             </div>
             <p className="rcx-muted" style={{ padding: "24px 0" }}>
-              Loading {title || "issue"}…
+              Loading {title || "study"}…
             </p>
           </div>
         ) : (
@@ -1898,7 +1898,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="rcx-kick" id="rcx-confirm-title">
-              {pendingAction.kind === "archive" ? "Archive issue" : "Delete issue"}
+              {pendingAction.kind === "archive" ? "Archive study" : "Delete study"}
             </div>
             <p className="rcx-confirm-body">
               {pendingAction.kind === "archive"

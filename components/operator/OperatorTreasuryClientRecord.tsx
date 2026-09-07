@@ -307,7 +307,7 @@ export function OperatorTreasuryClientRecord({
           {
             id: "review",
             icon: "doc",
-            label: "Review",
+            label: "Studies",
             active: tab === "review",
             badge: recUnread,
             onClick: () => setTab("review"),
