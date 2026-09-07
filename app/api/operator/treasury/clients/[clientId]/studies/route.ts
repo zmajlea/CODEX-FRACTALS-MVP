@@ -84,6 +84,8 @@ type PostBody = {
   is_primary?: boolean;
   /** Spec B16 — manual Study editor payload (summit.results/v1, KPI-only ok). */
   results?: unknown;
+  /** Spec B17 M2 — page arrangement sibling persisted on derived_snapshot.composite. */
+  composite?: unknown;
   type_label?: string;
 };
 
@@ -140,11 +142,17 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const typeLabel = body.type_label?.trim() || null;
+    // B17 M2: persist page arrangement as sibling of results (round-trip).
+    const { parseStudyPageComposite } = await import(
+      "@/lib/treasury/study-page-composite"
+    );
+    const composite = parseStudyPageComposite(body.composite) ?? undefined;
     const derivedSnapshot = {
       results: {
         ...results,
         type_label: typeLabel,
       },
+      ...(composite ? { composite } : {}),
       validationReport: {
         schemaOk: true,
         arithmeticOk: results.scenarios.length === 0 || true,

@@ -1,5 +1,6 @@
 /**
  * Spec B16 — unified PlacedStudySnapshot for cash_model + external_model.
+ * Spec B17 M2 — laid-out composite (exhibits/notes/kpi layout) + timeline back-compat.
  * Pure module (no server-only imports) — safe for client renderers.
  */
 
@@ -11,14 +12,22 @@ import type {
   CashModelScenario,
 } from "@/lib/treasury/cash-model-types";
 import { scanEnvelope } from "@/lib/treasury/envelope-scan";
+import type { ReviewBlockLayout } from "@/lib/treasury/review-block-layout";
+import { resolveLayout } from "@/lib/treasury/review-block-layout";
 import type { ExternalModelDerivedSnapshot } from "@/lib/treasury/studies";
+import {
+  compositeFromDerivedSnapshot,
+  type StudyCompositeExhibit,
+} from "@/lib/treasury/study-page-composite";
 
 export type PlacedStudyKpi = {
+  id?: string;
   label: string;
   value: number | string;
   unit?: string;
   basis?: string;
   flag?: "none" | "warn";
+  layout?: ReviewBlockLayout;
 };
 
 export type PlacedStudyTimelinePoint = {
@@ -32,7 +41,24 @@ export type PlacedStudyTimeline = {
   reference_lines: Array<{ label: string; value: number; breach?: boolean }>;
   breach_month?: string | null;
   runway_months?: number | null;
-  chart_hint: "line";
+  chart_hint: "line" | "column";
+};
+
+export type PlacedStudyExhibit = {
+  id: string;
+  title: string;
+  chart_hint: "line" | "column";
+  points: PlacedStudyTimelinePoint[];
+  reference_lines: Array<{ label: string; value: number; breach?: boolean }>;
+  layout: ReviewBlockLayout;
+  breach_month?: string | null;
+  runway_months?: number | null;
+};
+
+export type PlacedStudyNote = {
+  id: string;
+  body: string;
+  layout: ReviewBlockLayout;
 };
 
 export type PlacedStudySnapshot = {
@@ -44,7 +70,10 @@ export type PlacedStudySnapshot = {
   opening_balance?: number | null;
   opening_balance_source?: "ledger" | "manual" | "unknown" | null;
   kpis: PlacedStudyKpi[];
+  /** Back-compat alias of exhibits[0] timeline fields. */
   timeline: PlacedStudyTimeline | null;
+  exhibits?: PlacedStudyExhibit[];
+  notes?: PlacedStudyNote[];
   scenarios: Array<{ id: string; label: string; timeline: PlacedStudyTimeline }> | null;
   narrative: Array<{ target: string; text: string }>;
   recommendations: Array<{
@@ -81,6 +110,12 @@ export function scrubPlacedStudySnapshot(
   for (const r of cleaned.recommendations) {
     if (scanEnvelope(r.title).length) r.title = "[redacted]";
     if (scanEnvelope(r.body).length) r.body = "[redacted]";
+  }
+  for (const e of cleaned.exhibits ?? []) {
+    if (scanEnvelope(e.title).length) e.title = "[redacted]";
+  }
+  for (const n of cleaned.notes ?? []) {
+    if (scanEnvelope(n.body).length) n.body = "[redacted]";
   }
   return cleaned;
 }
@@ -123,6 +158,81 @@ export function isPlacedStudySnapshot(value: unknown): value is PlacedStudySnaps
   );
 }
 
+/**
+ * Ensure exhibits[] exists (synthesize from timeline for B16 snaps) and
+ * timeline stays exhibits[0] alias.
+ */
+export function normalizePlacedStudy(snap: PlacedStudySnapshot): PlacedStudySnapshot {
+  const next: PlacedStudySnapshot = {
+    ...snap,
+    kpis: snap.kpis.map((k, i) => ({
+      ...k,
+      id: k.id ?? `kpi-${i}`,
+      layout: resolveLayout(k.layout ?? { w: 3, h: 1 }),
+    })),
+    notes: (snap.notes ?? []).map((n) => ({
+      ...n,
+      layout: resolveLayout(n.layout),
+    })),
+  };
+
+  let exhibits = snap.exhibits ?? [];
+  if (!exhibits.length && snap.timeline?.points?.length) {
+    exhibits = [
+      {
+        id: "timeline-0",
+        title: "Timeline",
+        chart_hint: snap.timeline.chart_hint === "column" ? "column" : "line",
+        points: snap.timeline.points,
+        reference_lines: snap.timeline.reference_lines ?? [],
+        layout: { w: 12, h: 2 },
+        breach_month: snap.timeline.breach_month,
+        runway_months: snap.timeline.runway_months,
+      },
+    ];
+  }
+  next.exhibits = exhibits.map((e) => ({
+    ...e,
+    layout: resolveLayout(e.layout ?? { w: 12, h: 2 }),
+  }));
+
+  const first = next.exhibits[0];
+  if (first) {
+    next.timeline = {
+      points: first.points,
+      reference_lines: first.reference_lines,
+      breach_month: first.breach_month ?? null,
+      runway_months: first.runway_months ?? null,
+      chart_hint: first.chart_hint === "column" ? "column" : "line",
+    };
+  } else if (!next.timeline) {
+    next.timeline = null;
+  }
+
+  return next;
+}
+
+function exhibitFromComposite(e: StudyCompositeExhibit): PlacedStudyExhibit {
+  return {
+    id: e.id,
+    title: e.title,
+    chart_hint: e.chart_hint,
+    points: e.points,
+    reference_lines: e.reference_lines,
+    layout: resolveLayout(e.layout),
+  };
+}
+
+function timelineFromExhibit(e: PlacedStudyExhibit): PlacedStudyTimeline {
+  return {
+    points: e.points,
+    reference_lines: e.reference_lines,
+    breach_month: e.breach_month ?? null,
+    runway_months: e.runway_months ?? null,
+    chart_hint: e.chart_hint === "column" ? "column" : "line",
+  };
+}
+
 function isExternalDerived(
   value: unknown
 ): value is ExternalModelDerivedSnapshot {
@@ -134,7 +244,7 @@ function isExternalDerived(
   );
 }
 
-/** Map summit.results/v1 → PlacedStudySnapshot (manual / MCP). */
+/** Map summit.results/v1 (+ optional composite sibling) → PlacedStudySnapshot. */
 export function placedStudyFromExternal(study: {
   id: string;
   name: string;
@@ -142,30 +252,50 @@ export function placedStudyFromExternal(study: {
 }): PlacedStudySnapshot {
   const derived = study.derived_snapshot;
   const results = (isExternalDerived(derived) ? derived.results : {}) as Partial<SummitResultsV1>;
+  const composite = compositeFromDerivedSnapshot(derived);
   const asOf = String(results.as_of ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
 
-  const kpis: PlacedStudyKpi[] = (results.kpis ?? []).map((k) => ({
-    label: String(k.label),
-    value: k.value as number | string,
-    unit: k.unit,
-    flag: "none" as const,
-  }));
+  const kpis: PlacedStudyKpi[] = (results.kpis ?? []).map((k, i) => {
+    const layoutEntry = composite?.kpiLayouts[i] ?? composite?.kpiLayouts.find(
+      (l) => l.id === `kpi-${i}`
+    );
+    return {
+      id: layoutEntry?.id ?? `kpi-${i}`,
+      label: String(k.label),
+      value: k.value as number | string,
+      unit: k.unit,
+      flag: "none" as const,
+      layout: resolveLayout(layoutEntry?.layout ?? { w: 3, h: 1 }),
+    };
+  });
 
   const scenariosRaw = results.scenarios ?? [];
-  const primary = scenariosRaw[0];
-  let timeline: PlacedStudyTimeline | null = null;
-  if (primary?.timeline?.length) {
-    timeline = {
-      points: primary.timeline.map((row) => ({
-        month: row.month.slice(0, 7),
-        ending: row.ending,
-      })),
-      reference_lines: [],
-      breach_month: primary.breach_month ?? null,
-      runway_months: primary.runway_months ?? null,
-      chart_hint: "line",
-    };
+  let exhibits: PlacedStudyExhibit[] = [];
+
+  if (composite?.exhibits?.length) {
+    exhibits = composite.exhibits.map(exhibitFromComposite);
+  } else {
+    // B16 path: scenarios → exhibits
+    for (let i = 0; i < scenariosRaw.length; i++) {
+      const s = scenariosRaw[i]!;
+      if (!s.timeline?.length) continue;
+      exhibits.push({
+        id: s.id || `scenario-${i}`,
+        title: s.name || `Scenario ${i + 1}`,
+        chart_hint: "line",
+        points: s.timeline.map((row) => ({
+          month: row.month.slice(0, 7),
+          ending: row.ending,
+        })),
+        reference_lines: [],
+        layout: { w: 12, h: 2 },
+        breach_month: s.breach_month ?? null,
+        runway_months: s.runway_months ?? null,
+      });
+    }
   }
+
+  const timeline = exhibits[0] ? timelineFromExhibit(exhibits[0]) : null;
 
   const scenarios =
     scenariosRaw.length > 1
@@ -185,10 +315,20 @@ export function placedStudyFromExternal(study: {
         }))
       : null;
 
-  const narrative = (results.narrative ?? []).map((n) => ({
-    target: n.heading?.trim() || "note",
-    text: n.body,
-  }));
+  const notes =
+    composite?.notes?.map((n) => ({
+      id: n.id,
+      body: n.body,
+      layout: resolveLayout(n.layout),
+    })) ?? [];
+
+  const narrative =
+    notes.length > 0
+      ? notes.map((n) => ({ target: "note", text: n.body }))
+      : (results.narrative ?? []).map((n) => ({
+          target: n.heading?.trim() || "note",
+          text: n.body,
+        }));
 
   const recommendations = (results.recommendations ?? []).map((r) => ({
     category: r.category ?? "liquidity",
@@ -196,22 +336,26 @@ export function placedStudyFromExternal(study: {
     body: r.body,
   }));
 
-  return scrubPlacedStudySnapshot({
-    kind: "study",
-    study_id: study.id,
-    name: study.name || results.headline || "Study",
-    type: "external_model",
-    as_of: asOf,
-    opening_balance:
-      typeof results.opening_balance === "number" ? results.opening_balance : null,
-    opening_balance_source:
-      typeof results.opening_balance === "number" ? "manual" : null,
-    kpis,
-    timeline,
-    scenarios,
-    narrative,
-    recommendations,
-  });
+  return scrubPlacedStudySnapshot(
+    normalizePlacedStudy({
+      kind: "study",
+      study_id: study.id,
+      name: study.name || results.headline || "Study",
+      type: "external_model",
+      as_of: asOf,
+      opening_balance:
+        typeof results.opening_balance === "number" ? results.opening_balance : null,
+      opening_balance_source:
+        typeof results.opening_balance === "number" ? "manual" : null,
+      kpis,
+      timeline,
+      exhibits,
+      notes,
+      scenarios,
+      narrative,
+      recommendations,
+    })
+  );
 }
 
 /** Map cash_model compute output → PlacedStudySnapshot. */
@@ -289,20 +433,41 @@ export function placedStudyFromCashModelCompute(input: {
     chart_hint: "line",
   };
 
-  return scrubPlacedStudySnapshot({
-    kind: "study",
-    study_id: input.studyId,
-    name: input.name,
-    type: "cash_model",
-    as_of: input.asOf,
-    opening_balance: input.openingBalanceRaw,
-    opening_balance_source: input.openingBalanceSource,
-    kpis,
-    timeline,
-    scenarios: null,
-    narrative: [],
-    recommendations: [],
-  });
+  const exhibits: PlacedStudyExhibit[] = [
+    {
+      id: "timeline-0",
+      title: "Ending cash",
+      chart_hint: "line",
+      points: timeline.points,
+      reference_lines: timeline.reference_lines,
+      layout: { w: 12, h: 2 },
+      breach_month: timeline.breach_month,
+      runway_months: timeline.runway_months,
+    },
+  ];
+
+  return scrubPlacedStudySnapshot(
+    normalizePlacedStudy({
+      kind: "study",
+      study_id: input.studyId,
+      name: input.name,
+      type: "cash_model",
+      as_of: input.asOf,
+      opening_balance: input.openingBalanceRaw,
+      opening_balance_source: input.openingBalanceSource,
+      kpis: kpis.map((k, i) => ({
+        ...k,
+        id: `kpi-${i}`,
+        layout: { w: 3, h: 1 },
+      })),
+      timeline,
+      exhibits,
+      notes: [],
+      scenarios: null,
+      narrative: [],
+      recommendations: [],
+    })
+  );
 }
 
 export function isStudyPlaceable(study: {

@@ -2812,7 +2812,205 @@ async function main() {
     );
   }
 
-  log("ALL 38/38 LIVE CHECKS PASSED");
+  // 39 — B17 M2: composite sibling round-trip + timeline alias + S-width tile + collapse
+  {
+    const { placedStudyFromExternal, normalizePlacedStudy } = await import(
+      "../lib/treasury/study-assemble"
+    );
+    const { summaryValueFromSnapshot, showChartTableToggle, resolveLayout } =
+      await import("../lib/treasury/review-block-layout");
+    const { collapseLayoutUnits } = await import(
+      "../lib/treasury/review-layout-collapse"
+    );
+
+    const composite = {
+      exhibits: [
+        {
+          id: "ex-a",
+          title: "Collections",
+          chart_hint: "column" as const,
+          points: [
+            { month: "2026-01", ending: 100 },
+            { month: "2026-02", ending: 120 },
+          ],
+          reference_lines: [] as Array<{ label: string; value: number }>,
+          layout: { w: 6, h: 2 },
+        },
+        {
+          id: "ex-b",
+          title: "Payroll",
+          chart_hint: "line" as const,
+          points: [
+            { month: "2026-01", ending: 50 },
+            { month: "2026-02", ending: 55 },
+          ],
+          reference_lines: [],
+          layout: { w: 6, h: 2 },
+        },
+      ],
+      notes: [{ id: "n1", body: "Side context", layout: { w: 4, h: 1 } }],
+      kpiLayouts: [{ id: "kpi-0", layout: { w: 3, h: 1 } }],
+    };
+
+    const derived = {
+      results: {
+        schema_version: "summit.results/v1",
+        export_id: "gate-b17m2",
+        as_of: "2026-09-01",
+        headline: "Gate study",
+        kpis: [{ label: "Cash", value: 1000, unit: "usd" }],
+        scenarios: [
+          {
+            id: "ex-a",
+            name: "Collections",
+            timeline: [
+              { month: "2026-01-01", beginning: 100, net: 0, ending: 100 },
+              { month: "2026-02-01", beginning: 100, net: 20, ending: 120 },
+            ],
+          },
+        ],
+        narrative: [],
+        recommendations: [],
+        actuals_check: [],
+      },
+      composite,
+      validationReport: {},
+      engineBaseline: null,
+      submittedAt: "2026-09-01T00:00:00.000Z",
+    };
+
+    const placed = placedStudyFromExternal({
+      id: "study-gate",
+      name: "Gate study",
+      derived_snapshot: derived,
+    });
+    const roundTrip =
+      (placed.exhibits?.length ?? 0) === 2 &&
+      placed.exhibits?.[0]?.layout.w === 6 &&
+      placed.exhibits?.[1]?.id === "ex-b" &&
+      placed.kpis[0]?.layout?.w === 3 &&
+      (placed.notes?.length ?? 0) === 1 &&
+      placed.timeline?.points?.length === 2;
+
+    // B16 back-compat: timeline-only, no composite
+    const legacy = placedStudyFromExternal({
+      id: "legacy",
+      name: "Legacy",
+      derived_snapshot: {
+        results: {
+          schema_version: "summit.results/v1",
+          export_id: "legacy",
+          as_of: "2026-01-01",
+          headline: "Legacy",
+          kpis: [{ label: "A", value: 1 }],
+          scenarios: [
+            {
+              id: "s1",
+              name: "Base",
+              timeline: [
+                { month: "2026-01-01", beginning: 1, net: 0, ending: 1 },
+                { month: "2026-02-01", beginning: 1, net: 1, ending: 2 },
+              ],
+            },
+          ],
+          narrative: [],
+          recommendations: [],
+          actuals_check: [],
+        },
+        validationReport: {},
+        engineBaseline: null,
+        submittedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    const normalized = normalizePlacedStudy(legacy);
+    const aliasOk =
+      (normalized.exhibits?.length ?? 0) === 1 &&
+      normalized.exhibits?.[0]?.id === "s1" &&
+      (normalized.timeline?.points?.length ?? 0) === 2;
+
+    const seriesSnap = {
+      kind: "analytics",
+      value: 99,
+      series: { points: [{ bucket_start: "2026-01-01", value: 10 }], summary: { value: 99 } },
+    };
+    const sWidthOk =
+      summaryValueFromSnapshot(seriesSnap) === 99 &&
+      !showChartTableToggle(resolveLayout({ w: 3, h: 1 }), seriesSnap);
+
+    const units = collapseLayoutUnits([
+      { id: "a", role: "exhibit", layout: { w: 6, h: 1 }, sourceIndex: 0 },
+      { id: "b", role: "exhibit", layout: { w: 6, h: 1 }, sourceIndex: 1 },
+      { id: "c", role: "figure", layout: { w: 3, h: 1 }, sourceIndex: 2 },
+      { id: "d", role: "figure", layout: { w: 3, h: 1 }, sourceIndex: 3 },
+    ]);
+    const collapseOk =
+      units.some((u) => u.kind === "r66") && units.some((u) => u.kind === "figrow");
+
+    const clientSrc = readFileSync(
+      join(ROOT, "components/treasury/ClientReviewView.tsx"),
+      "utf8"
+    );
+    const panelSrc = readFileSync(
+      join(ROOT, "components/operator/treasury/StudiesPanel.tsx"),
+      "utf8"
+    );
+    const studiesRoute = readFileSync(
+      join(ROOT, "app/api/operator/treasury/clients/[clientId]/studies/route.ts"),
+      "utf8"
+    );
+    const srcOk =
+      clientSrc.includes("collapseLayoutUnits") &&
+      clientSrc.includes("readOnly") &&
+      panelSrc.includes("composite") &&
+      studiesRoute.includes("composite") &&
+      !clientSrc.includes("Fractals");
+
+    // Live DB round-trip: insert study with composite, reload via mapper
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let sid: string | null = null;
+    let liveRound = false;
+    try {
+      const { data: study } = await admin
+        .from("treasury_studies")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          name: `gate-b17m2-${stamp}`,
+          type: "external_model",
+          status: "confirmed",
+          source: "manual",
+          is_primary: false,
+          scope: { accountId: "manual", label: "Gate" } as unknown as Json,
+          params: {} as unknown as Json,
+          scenarios: [] as unknown as Json,
+          derived_snapshot: derived as unknown as Json,
+        })
+        .select("id, derived_snapshot, name")
+        .single();
+      sid = study?.id ?? null;
+      const remapped = placedStudyFromExternal({
+        id: study!.id,
+        name: study!.name,
+        derived_snapshot: study!.derived_snapshot,
+      });
+      liveRound =
+        remapped.exhibits?.[0]?.layout.w === 6 &&
+        remapped.exhibits?.[1]?.title === "Payroll" &&
+        remapped.notes?.[0]?.body === "Side context";
+    } finally {
+      if (sid) await admin.from("treasury_studies").delete().eq("id", sid);
+    }
+
+    record(
+      39,
+      "B17 M2 composite round-trip + alias + S-width + collapse",
+      roundTrip && aliasOk && sWidthOk && collapseOk && srcOk && liveRound,
+      `rt=${roundTrip} alias=${aliasOk} sW=${sWidthOk} col=${collapseOk} src=${srcOk} live=${liveRound}`
+    );
+  }
+
+  log("ALL 39/39 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

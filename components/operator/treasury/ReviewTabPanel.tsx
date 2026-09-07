@@ -26,7 +26,9 @@ import {
   gridColumnSpan,
   renderMetricAsChart,
   resolveLayout,
+  showChartTableToggle,
   snapshotHasSeries,
+  summaryValueFromSnapshot,
   type ReviewBlockLayout,
 } from "@/lib/treasury/review-block-layout";
 
@@ -1035,7 +1037,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           Confirm proposal
                         </button>
                       ) : null}
-                      {(hasMetric || isStudy) && (asChart || isStudy || block.role === "exhibit") ? (
+                      {(hasMetric || isStudy) &&
+                      (showChartTableToggle(layout, block.placed_snapshot) ||
+                        isStudy) ? (
                         <div
                           className="rcx-seg"
                           role="group"
@@ -1091,7 +1095,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           </button>
                         </div>
                       ) : null}
-                      {hasMetric && (block.role === "exhibit" || asChart) ? (
+                      {hasMetric && showChartTableToggle(layout, block.placed_snapshot) ? (
                         <select
                           className="rcx-tool"
                           disabled={status !== "draft"}
@@ -1287,17 +1291,23 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                       )}
                     </div>
                   ) : null}
-                  {hasMetric && !asChart &&
-                  typeof (block.placed_snapshot as { value?: number } | null)
-                    ?.value === "number" ? (
+                  {hasMetric && !asChart ? (
                     <div className="rcx-figval">
-                      {(
-                        block.placed_snapshot as { value: number }
-                      ).value.toLocaleString(undefined, {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      })}
+                      {(() => {
+                        const summary =
+                          summaryValueFromSnapshot(block.placed_snapshot) ??
+                          (typeof (block.placed_snapshot as { value?: number } | null)
+                            ?.value === "number"
+                            ? (block.placed_snapshot as { value: number }).value
+                            : null);
+                        return summary != null
+                          ? summary.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              maximumFractionDigits: 0,
+                            })
+                          : "—";
+                      })()}
                       {hasSeries && layout.w <= 3 ? (
                         <span className="rcx-fighint"> · summary</span>
                       ) : null}
@@ -1749,6 +1759,9 @@ const RCX_CSS = `
 .rcx-confirm-input:focus{outline:none;border-color:var(--brand)}
 .rcx-confirm-actions{display:flex;justify-content:flex-end;gap:8px}
 .rcx-btn.danger{background:var(--su-neg,#B42318);border-color:var(--su-neg,#B42318);color:#fff}
+.study-author-stage{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:12px;margin-top:12px;align-items:start}
+@media(max-width:720px){.study-author-stage{grid-template-columns:1fr}}
+.study-shelf{border:1px solid var(--su-line,#DED9D1);border-radius:8px;padding:10px;background:var(--rail,#fff);position:sticky;top:8px}
 @keyframes rcxslide{from{transform:translateX(40px);opacity:.4}to{transform:translateX(0);opacity:1}}
 @keyframes rcxfade{from{opacity:0}to{opacity:1}}
 `;
