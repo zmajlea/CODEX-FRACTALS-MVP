@@ -349,7 +349,7 @@ function minimalSnapshot(
   };
 }
 
-/** Mirror publish route preflight gate + version insert (gate-safe, no server-only imports). */
+/** Mirror publish route: preflight + buildReviewSnapshot over editionWindow (B19 Phase B). */
 async function publishReview(
   admin: ReturnType<typeof adminClient>,
   reviewId: string,
@@ -357,9 +357,16 @@ async function publishReview(
   changeNote = "",
   opts?: { label?: string; window?: { from: string; to: string } }
 ) {
+  const {
+    buildReviewSnapshot,
+    normalizeBlockRow,
+    normalizeReviewRow,
+    resolveEffectiveStudyWindow,
+  } = await import("../lib/treasury/review-assemble");
+
   const { data: reviewRow, error: revErr } = await admin
     .from("treasury_reviews")
-    .select("id, title, period_month, label, current_version, status")
+    .select("*")
     .eq("id", reviewId)
     .eq("status", "draft")
     .maybeSingle();
@@ -371,33 +378,49 @@ async function publishReview(
     return { ok: false as const, status: 422, preflight };
   }
 
-  const blocks = await loadBlocks(admin, reviewId);
-  const newVersion = (reviewRow.current_version ?? 0) + 1;
+  const review = normalizeReviewRow(reviewRow as Record<string, unknown>);
+  const { data: blockRows } = await admin
+    .from("treasury_review_blocks")
+    .select("*")
+    .eq("review_id", reviewId)
+    .order("position", { ascending: true });
+  const blocks = (blockRows ?? []).map((r) =>
+    normalizeBlockRow(r as Record<string, unknown>)
+  );
 
-  if ((reviewRow.current_version ?? 0) > 0) {
+  const newVersion = review.current_version + 1;
+  const reviewedAsOf = new Date().toISOString().slice(0, 10);
+  const editionWindow = resolveEffectiveStudyWindow(
+    opts?.window ?? null,
+    review.window
+  );
+
+  if (review.current_version > 0) {
     await admin
       .from("treasury_review_versions")
       .update({ superseded_at: new Date().toISOString() })
       .eq("review_id", reviewId)
-      .eq("version", reviewRow.current_version!)
+      .eq("version", review.current_version)
       .is("superseded_at", null);
   }
 
-  const snapshot = minimalSnapshot(
-    reviewRow.title,
-    String(reviewRow.period_month).slice(0, 10),
+  // Fresh recompute over editionWindow — do not trust placed_snapshot cache.
+  const snapshot = await buildReviewSnapshot(
+    admin,
+    review,
+    blocks,
     newVersion,
     changeNote,
-    blocks
+    reviewedAsOf,
+    editionWindow
   );
 
   const editionLabel =
     opts?.label?.trim() ||
-    String(reviewRow.title ?? "").trim() ||
-    String(reviewRow.label ?? "").trim() ||
-    String(reviewRow.period_month).slice(0, 7) ||
+    review.title.trim() ||
+    review.label.trim() ||
+    review.period_month.slice(0, 7) ||
     `Edition ${newVersion}`;
-  const editionWindow = opts?.window ?? null;
 
   const { data: versionRow, error: verErr } = await admin
     .from("treasury_review_versions")
@@ -432,6 +455,7 @@ async function publishReview(
     versionId: versionRow.id,
     label: versionRow.label as string | null,
     window: versionRow.window as { from?: string; to?: string } | null,
+    snapshot,
   };
 }
 
@@ -3276,7 +3300,173 @@ async function main() {
     }
   }
 
-  log("ALL 42/42 LIVE CHECKS PASSED");
+  // 43 — B19 Phase B: publish recomputes over W; snapshot ≡ fresh compute(W); W1 ≠ W2
+  {
+    const stamp = Date.now();
+    let rid: string | null = null;
+    let metricId: string | null = null;
+    try {
+      if (!r1TenantId) {
+        record(43, "B19B publish recomputes over window", false, "missing r1 tenant");
+      } else {
+        const { computeBlockMetric, normalizeBlockRow } = await import(
+          "../lib/treasury/review-assemble"
+        );
+        const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+        const def = {
+          of: "monthly_totals" as const,
+          op: "sum" as const,
+          source: {
+            type: "category" as const,
+            key: "Tax",
+            direction: "out" as const,
+          },
+          window: { kind: "all" as const },
+        };
+        const metric = await createMetric(admin, {
+          tenantId: r1TenantId,
+          operatorUserId: r1OperatorId,
+          scope: "client",
+          clientId: r1ClientId,
+          name: `gate_b19b_win_${stamp}`,
+          description: "B19B window recompute gate",
+          definition: def,
+          source: "platform",
+        });
+        metricId = metric.id;
+
+        const { data: review, error: insErr } = await admin
+          .from("treasury_reviews")
+          .insert({
+            tenant_id: r1TenantId,
+            client_user_id: r1ClientId,
+            period_month: "2026-12-01",
+            label: `gate-b19-b-${stamp}`,
+            title: `B19B Gate Study ${stamp}`,
+            status: "draft",
+            created_by: r1OperatorId,
+          })
+          .select("*")
+          .single();
+        if (insErr || !review) throw new Error(insErr?.message ?? "insert study");
+        rid = review.id;
+
+        const { data: blockRow, error: blockErr } = await admin
+          .from("treasury_review_blocks")
+          .insert({
+            review_id: rid,
+            position: 0,
+            role: "figure",
+            metric_id: metricId,
+            caption: "Tax out (windowed)",
+            body: "",
+            proposal_state: "none",
+            provenance: {},
+            // Stale preview cache — must NOT be what publish freezes.
+            placed_snapshot: { kind: "value", value: -999999 },
+          })
+          .select("*")
+          .single();
+        if (blockErr || !blockRow) {
+          throw new Error(blockErr?.message ?? "block insert");
+        }
+
+        const w1 = { from: "2025-01-01", to: "2025-06-30" };
+        const w2 = { from: "2024-01-01", to: "2024-12-31" };
+
+        const pub1 = await publishReview(
+          admin,
+          rid,
+          r1OperatorId,
+          "B19B W1",
+          { label: "H1 2025", window: w1 }
+        );
+        if (!pub1.ok) throw new Error("publish W1 blocked");
+
+        const block = normalizeBlockRow(blockRow as Record<string, unknown>);
+        const fresh1 = await computeBlockMetric(
+          admin,
+          r1TenantId,
+          r1ClientId,
+          block,
+          w1
+        );
+        const snap1Val =
+          typeof pub1.snapshot.cover_figures[0]?.value === "number"
+            ? pub1.snapshot.cover_figures[0].value
+            : null;
+        const fresh1Val =
+          fresh1?.kind === "value"
+            ? fresh1.value
+            : typeof fresh1?.value === "number"
+              ? fresh1.value
+              : null;
+        const matchW1 =
+          snap1Val != null &&
+          fresh1Val != null &&
+          Math.abs(snap1Val - fresh1Val) < 0.01 &&
+          snap1Val !== -999999;
+
+        // Re-open as draft for second edition over a different window.
+        await admin
+          .from("treasury_reviews")
+          .update({ status: "draft" })
+          .eq("id", rid);
+
+        const pub2 = await publishReview(
+          admin,
+          rid,
+          r1OperatorId,
+          "B19B W2",
+          { label: "CY 2024", window: w2 }
+        );
+        if (!pub2.ok) throw new Error("publish W2 blocked");
+
+        const snap2Val =
+          typeof pub2.snapshot.cover_figures[0]?.value === "number"
+            ? pub2.snapshot.cover_figures[0].value
+            : null;
+        const fresh2 = await computeBlockMetric(
+          admin,
+          r1TenantId,
+          r1ClientId,
+          block,
+          w2
+        );
+        const fresh2Val =
+          fresh2?.kind === "value"
+            ? fresh2.value
+            : typeof fresh2?.value === "number"
+              ? fresh2.value
+              : null;
+        const matchW2 =
+          snap2Val != null &&
+          fresh2Val != null &&
+          Math.abs(snap2Val - fresh2Val) < 0.01;
+        const windowsDiffer =
+          snap1Val != null && snap2Val != null && snap1Val !== snap2Val;
+
+        record(
+          43,
+          "B19B publish snapshot ≡ fresh compute(W); W1≠W2",
+          matchW1 && matchW2 && windowsDiffer,
+          `matchW1=${matchW1} matchW2=${matchW2} differ=${windowsDiffer} v1=${snap1Val} v2=${snap2Val}`
+        );
+      }
+    } catch (e) {
+      record(
+        43,
+        "B19B publish snapshot ≡ fresh compute(W); W1≠W2",
+        false,
+        e instanceof Error ? e.message : String(e)
+      );
+    } finally {
+      if (rid) await admin.from("treasury_reviews").delete().eq("id", rid);
+      if (metricId) await admin.from("treasury_metrics").delete().eq("id", metricId);
+    }
+  }
+
+  log("ALL 43/43 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

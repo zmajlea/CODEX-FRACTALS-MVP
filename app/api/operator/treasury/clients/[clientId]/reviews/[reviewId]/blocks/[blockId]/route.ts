@@ -7,6 +7,7 @@ import {
   computeBlockMetric,
   normalizeBlockRow,
   normalizeReviewRow,
+  resolveEffectiveStudyWindow,
   toPlacedSnapshot,
 } from "@/lib/treasury/review-assemble";
 import { parseLayoutOrNull } from "@/lib/treasury/review-block-layout";
@@ -37,6 +38,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const review = normalizeReviewRow(reviewRow as Record<string, unknown>);
+  const studyWindow = resolveEffectiveStudyWindow(null, review.window);
 
   let body: {
     action?: string;
@@ -125,7 +127,8 @@ export async function PATCH(request: Request, context: RouteContext) {
         guard.admin,
         review.tenant_id,
         review.client_user_id,
-        block
+        block,
+        studyWindow
       );
       if (out) {
         update.placed_snapshot = toPlacedSnapshot(out);
@@ -144,7 +147,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       guard.admin,
       review.tenant_id,
       review.client_user_id,
-      nextBlock
+      nextBlock,
+      studyWindow
     );
     if (out) {
       update.placed_snapshot = toPlacedSnapshot(out);

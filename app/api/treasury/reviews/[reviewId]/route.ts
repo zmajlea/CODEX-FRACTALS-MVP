@@ -28,7 +28,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { data: version, error: verErr } = await supabase
     .from("treasury_review_versions")
-    .select("id, version, reviewed_as_of, published_at, change_note, snapshot")
+    .select("id, version, reviewed_as_of, published_at, change_note, snapshot, label, window")
     .eq("review_id", reviewId)
     .is("superseded_at", null)
     .maybeSingle();
@@ -37,20 +37,37 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: verErr.message }, { status: 500 });
   }
 
+  const versionParam = new URL(_request.url).searchParams.get("version");
+  let selected = version;
+  if (versionParam) {
+    const vNum = Number(versionParam);
+    if (Number.isFinite(vNum)) {
+      const { data: picked } = await supabase
+        .from("treasury_review_versions")
+        .select("id, version, reviewed_as_of, published_at, change_note, snapshot, label, window")
+        .eq("review_id", reviewId)
+        .eq("version", vNum)
+        .maybeSingle();
+      if (picked) selected = picked;
+    }
+  }
+
   const { data: history } = await supabase
     .from("treasury_review_versions")
-    .select("id, version, reviewed_as_of, published_at, change_note")
+    .select("id, version, reviewed_as_of, published_at, change_note, label, window")
     .eq("review_id", reviewId)
     .order("version", { ascending: false });
 
   return NextResponse.json({
     review,
-    current: version
+    current: selected
       ? {
-          ...version,
-          snapshot: version.snapshot as unknown as ReviewSnapshot,
+          ...selected,
+          snapshot: selected.snapshot as unknown as ReviewSnapshot,
         }
       : null,
+    /** Spec B19 — Editions (latest first). */
+    editions: history ?? [],
     history: history ?? [],
   });
 }

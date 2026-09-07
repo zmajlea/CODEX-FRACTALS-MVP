@@ -32,6 +32,17 @@ import {
   type ReviewBlockLayout,
 } from "@/lib/treasury/review-block-layout";
 
+type StudyDateWindow = { from: string; to: string };
+
+function defaultStudyWindow(now = new Date()): StudyDateWindow {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const day = now.getUTCDate();
+  const end = new Date(Date.UTC(y, m, day)).toISOString().slice(0, 10);
+  const start = new Date(Date.UTC(y, m - 11, 1)).toISOString().slice(0, 10);
+  return { from: start, to: end };
+}
+
 type ReviewItem = {
   id: string;
   title: string;
@@ -39,6 +50,7 @@ type ReviewItem = {
   status: string;
   current_version: number;
   reply_count?: number;
+  window?: StudyDateWindow | null;
 };
 
 type BlockItem = {
@@ -119,6 +131,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [canvasBp, setCanvasBp] = useState<"desktop" | "tablet" | "phone">(
     "desktop"
   );
+  /** Spec B19 — Study live from–to (drives preview; default trailing-12 when empty). */
+  const [windowFrom, setWindowFrom] = useState("");
+  const [windowTo, setWindowTo] = useState("");
+  const [previewAsClient, setPreviewAsClient] = useState(false);
+  const [clientPreview, setClientPreview] = useState<{
+    meta: { title: string; reviewed_as_of: string; version: number };
+    cover_figures: Array<{ label: string; value: number | string; caption?: string }>;
+    blocks: Array<Record<string, unknown>>;
+  } | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [editionLabel, setEditionLabel] = useState("");
+  const [publishFrom, setPublishFrom] = useState("");
+  const [publishTo, setPublishTo] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -155,13 +180,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       setLoadingId(reviewId);
       setBlocks([]);
       setPreflight(null);
+      setClientPreview(null);
       if (optimisticTitle !== undefined) setTitle(optimisticTitle);
       setError(null);
       try {
         const res = await fetch(`${base}/reviews/${reviewId}`);
         if (!res.ok) throw new Error("Failed to load review");
         const json = (await res.json()) as {
-          review: { id: string; title: string; status: string };
+          review: {
+            id: string;
+            title: string;
+            status: string;
+            window?: StudyDateWindow | null;
+          };
           blocks: BlockItem[];
           preflight: Preflight;
         };
@@ -170,6 +201,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         setStatus(json.review.status);
         setBlocks(json.blocks);
         setPreflight(json.preflight);
+        const w = json.review.window;
+        setWindowFrom(w?.from ?? "");
+        setWindowTo(w?.to ?? "");
         setLoadingId(null);
         // Spec B15-FIXES-2: skip deferred stale scan on frozen issues.
         if (json.review.status === "draft") void loadPreflight(reviewId);
@@ -449,6 +483,140 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     }
   }
 
+  /** Spec B19 — persist Study window; server refreshes placed_snapshot preview cache. */
+  async function saveStudyWindow(from: string, to: string) {
+    if (!activeId || status !== "draft") return;
+    const window =
+      from && to && to >= from ? { from, to } : null;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${activeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ window }),
+      });
+      const json = (await res.json()) as {
+        error?: string;
+        review?: { window?: StudyDateWindow | null };
+      };
+      if (!res.ok) throw new Error(json.error ?? "Window save failed");
+      const w = json.review?.window;
+      setWindowFrom(w?.from ?? from);
+      setWindowTo(w?.to ?? to);
+      await loadReview(activeId);
+      if (previewAsClient) await runClientPreview(activeId, w ?? window);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Window save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runClientPreview(
+    reviewId: string,
+    window?: StudyDateWindow | null
+  ) {
+    const body =
+      window && window.from && window.to
+        ? { window }
+        : windowFrom && windowTo
+          ? { window: { from: windowFrom, to: windowTo } }
+          : {};
+    const res = await fetch(`${base}/reviews/${reviewId}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json()) as {
+      error?: string;
+      snapshot?: {
+        meta: { title: string; reviewed_as_of: string; version: number };
+        cover_figures: Array<{
+          label: string;
+          value: number | string;
+          caption?: string;
+        }>;
+        blocks: Array<Record<string, unknown>>;
+      };
+    };
+    if (!res.ok) throw new Error(json.error ?? "Preview failed");
+    setClientPreview(json.snapshot ?? null);
+  }
+
+  async function togglePreviewAsClient() {
+    if (!activeId) return;
+    const next = !previewAsClient;
+    setPreviewAsClient(next);
+    if (!next) {
+      setClientPreview(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await runClientPreview(activeId);
+    } catch (e) {
+      setPreviewAsClient(false);
+      setError(e instanceof Error ? e.message : "Preview failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openPublishDialog() {
+    if (!activeId || status !== "draft") return;
+    const ver =
+      (reviews.find((r) => r.id === activeId)?.current_version ?? 0) + 1;
+    setEditionLabel(title.trim() || `Edition ${ver}`);
+    if (windowFrom && windowTo) {
+      setPublishFrom(windowFrom);
+      setPublishTo(windowTo);
+    } else {
+      const d = defaultStudyWindow();
+      setPublishFrom(d.from);
+      setPublishTo(d.to);
+    }
+    setPublishOpen(true);
+  }
+
+  async function publish() {
+    if (!activeId) return;
+    if (!publishFrom || !publishTo || publishTo < publishFrom) {
+      setError("Edition window requires from ≤ to (YYYY-MM-DD)");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${activeId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: editionLabel.trim() || undefined,
+          window: { from: publishFrom, to: publishTo },
+        }),
+      });
+      const json = (await res.json()) as { error?: string; preflight?: Preflight };
+      if (!res.ok) {
+        if (json.preflight) setPreflight(json.preflight);
+        throw new Error(
+          json.error
+            ? `${json.error} (${res.status})`
+            : `Publish failed (${res.status})`
+        );
+      }
+      setPublishOpen(false);
+      setPreviewAsClient(false);
+      setClientPreview(null);
+      await refresh(activeId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Publish failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addMetricBlock(
     metric: MetricRow,
     role: "figure" | "exhibit",
@@ -628,34 +796,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     setDragId(null);
     setDropBeforeId(null);
     applyReorder(from, before);
-  }
-
-  async function publish() {
-    if (!activeId) return;
-    if (!confirm("Publish this review to the client?")) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`${base}/reviews/${activeId}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const json = (await res.json()) as { error?: string; preflight?: Preflight };
-      if (!res.ok) {
-        if (json.preflight) setPreflight(json.preflight);
-        throw new Error(
-          json.error
-            ? `${json.error} (${res.status})`
-            : `Publish failed (${res.status})`
-        );
-      }
-      await refresh(activeId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Publish failed");
-    } finally {
-      setBusy(false);
-    }
   }
 
   const publishBlocked =
@@ -845,11 +985,51 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                   ? `Preflight clean · freezes ${blocks.length} blocks`
                   : "Published"}
           </span>
+          {status === "draft" && activeId ? (
+            <>
+              <label className="rcx-win">
+                From
+                <input
+                  type="date"
+                  value={windowFrom}
+                  disabled={busy}
+                  onChange={(e) => setWindowFrom(e.target.value)}
+                  onBlur={() => {
+                    if (windowFrom && windowTo && windowTo >= windowFrom) {
+                      void saveStudyWindow(windowFrom, windowTo);
+                    }
+                  }}
+                />
+              </label>
+              <label className="rcx-win">
+                To
+                <input
+                  type="date"
+                  value={windowTo}
+                  disabled={busy}
+                  onChange={(e) => setWindowTo(e.target.value)}
+                  onBlur={() => {
+                    if (windowFrom && windowTo && windowTo >= windowFrom) {
+                      void saveStudyWindow(windowFrom, windowTo);
+                    }
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className={`rcx-btn sm ghost${previewAsClient ? " on" : ""}`}
+                disabled={busy || blocks.length === 0}
+                onClick={() => void togglePreviewAsClient()}
+              >
+                {previewAsClient ? "Editing" : "Preview as client"}
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             className={`rcx-btn sm${gateLevel === "ready" && status === "draft" ? "" : " ghost"}`}
             disabled={busy || status !== "draft" || publishBlocked}
-            onClick={() => void publish()}
+            onClick={() => openPublishDialog()}
           >
             {status === "draft" ? `Publish v${nextVersion}` : "Published"}
           </button>
@@ -903,10 +1083,53 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                 {activeReview?.current_version
                   ? ` · v${activeReview.current_version}`
                   : ""}
+                {windowFrom && windowTo
+                  ? ` · ${windowFrom} → ${windowTo}`
+                  : " · trailing 12 (default)"}
               </div>
             </div>
 
-            {status === "draft" && blocks.length === 0 ? (
+            {previewAsClient && clientPreview ? (
+              <div className="rcx-client-prev" data-testid="preview-as-client">
+                <p className="rcx-muted" style={{ marginBottom: 12 }}>
+                  Client envelope preview · not frozen until Publish
+                </p>
+                <h2 className="rcx-prev-title">{clientPreview.meta.title}</h2>
+                <p className="rcx-muted">
+                  Reviewed as of {clientPreview.meta.reviewed_as_of}
+                </p>
+                {clientPreview.cover_figures.length ? (
+                  <div className="rcx-prev-figs">
+                    {clientPreview.cover_figures.map((f, i) => (
+                      <div key={i} className="rcx-prev-fig">
+                        <div className="l">{f.label}</div>
+                        <div className="v">
+                          {typeof f.value === "number"
+                            ? f.value.toLocaleString()
+                            : String(f.value)}
+                        </div>
+                        {f.caption ? <div className="c">{f.caption}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <ul className="rcx-prev-blocks">
+                  {clientPreview.blocks.map((b, i) => (
+                    <li key={i}>
+                      <strong>{String(b.role ?? "block")}</strong>
+                      {b.label || b.name || b.title
+                        ? ` · ${String(b.label ?? b.name ?? b.title)}`
+                        : ""}
+                      {typeof b.value === "number"
+                        ? ` · ${b.value.toLocaleString()}`
+                        : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {status === "draft" && blocks.length === 0 && !previewAsClient ? (
               <div className="rcx-empty">
                 <div className="et">Nothing placed yet</div>
                 <div className="eh">Start your {title || "review"}</div>
@@ -940,6 +1163,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               </div>
             ) : null}
 
+            {!previewAsClient ? (
             <div
               className={`rcx-canvas${dragId ? " dragging" : ""}`}
               ref={canvasRef}
@@ -1385,6 +1609,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             })}
             </div>
             </div>
+            ) : null}
 
             {status === "draft" ? (
               <div className="rcx-drafts-wrap" style={{ marginTop: 16 }}>
@@ -1574,6 +1799,71 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
         </>
       ) : null}
 
+      {publishOpen ? (
+        <>
+          <div className="rcx-scrim" onClick={() => !busy && setPublishOpen(false)} />
+          <div
+            className="rcx-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Publish edition"
+          >
+            <div className="rcx-confirm-title">Publish Edition</div>
+            <p className="rcx-muted" style={{ marginBottom: 12 }}>
+              Freezes a fresh compute over this window — same path as preview.
+            </p>
+            <label className="rcx-win" style={{ display: "block", marginBottom: 8 }}>
+              Edition name
+              <input
+                type="text"
+                value={editionLabel}
+                disabled={busy}
+                onChange={(e) => setEditionLabel(e.target.value)}
+                style={{ width: "100%", marginTop: 4 }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <label className="rcx-win">
+                From
+                <input
+                  type="date"
+                  value={publishFrom}
+                  disabled={busy}
+                  onChange={(e) => setPublishFrom(e.target.value)}
+                />
+              </label>
+              <label className="rcx-win">
+                To
+                <input
+                  type="date"
+                  value={publishTo}
+                  disabled={busy}
+                  onChange={(e) => setPublishTo(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="rcx-confirm-actions">
+              <button
+                type="button"
+                className="rcx-btn ghost sm"
+                disabled={busy}
+                onClick={() => setPublishOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rcx-btn sm"
+                disabled={busy}
+                onClick={() => void publish()}
+              >
+                Publish v{nextVersion}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {/* ── Lifecycle confirm (single-owner) ────────── */}
       {pendingAction ? (
         <>
@@ -1665,6 +1955,18 @@ const RCX_CSS = `
 .rcx-gate .spacer{flex:1 1 auto}
 .rcx-gate .hint{font-size:11.5px;color:var(--mute)}
 .rcx-gate[data-level="ready"] .hint{color:var(--su-accept)}
+.rcx-win{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mute);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.rcx-win input{font:inherit;font-size:12px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink);border:1px solid var(--paper-edge);border-radius:6px;padding:3px 6px;background:var(--paper,#fff)}
+.rcx-btn.ghost.on{background:color-mix(in srgb,var(--su-accept,#174a7a) 12%,#fff);border-color:color-mix(in srgb,var(--su-accept,#174a7a) 35%,var(--line))}
+.rcx-client-prev{margin-top:16px;padding-top:8px;border-top:1px solid var(--paper-edge)}
+.rcx-prev-title{font-size:20px;font-weight:700;margin:4px 0 6px}
+.rcx-prev-figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:14px 0}
+.rcx-prev-fig{border:1px solid var(--paper-edge);border-radius:8px;padding:10px 12px}
+.rcx-prev-fig .l{font-size:11px;color:var(--mute)}
+.rcx-prev-fig .v{font-size:18px;font-weight:600;margin-top:2px}
+.rcx-prev-fig .c{font-size:11px;color:var(--mute);margin-top:4px}
+.rcx-prev-blocks{list-style:none;margin:0;padding:0;font-size:13px}
+.rcx-prev-blocks li{padding:6px 0;border-bottom:1px solid var(--paper-edge)}
 .rcx-viol{list-style:none;margin:0 0 12px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--su-warn,#c8881f) 8%,#fff);border:1px solid color-mix(in srgb,var(--su-warn,#c8881f) 30%,var(--line));font-size:12px;color:var(--su-warn-ink)}
 .rcx-err{background:color-mix(in srgb,var(--su-neg,#b23a2e) 7%,#fff);border:1px solid color-mix(in srgb,var(--su-neg,#b23a2e) 28%,var(--line));color:var(--su-neg);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:14px}
 /* paper */
@@ -1753,6 +2055,7 @@ const RCX_CSS = `
 .rcx-builder .bx:hover{color:var(--ink)}
 .rcx-bbody{padding:18px 22px;overflow:auto;flex:1 1 auto}
 .rcx-confirm{position:fixed;left:50%;top:28%;transform:translateX(-50%);z-index:70;width:min(420px,92vw);background:var(--su-paper,#FCFBF9);border:1px solid var(--su-line,#DED9D1);border-radius:10px;box-shadow:0 12px 40px rgba(16,42,71,.18);padding:18px 20px;animation:rcxfade .16s ease}
+.rcx-confirm-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}
 .rcx-confirm-body{font-size:13.5px;line-height:1.5;color:var(--ink);margin:8px 0 14px}
 .rcx-confirm-label{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .rcx-confirm-input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;color:var(--ink);background:#fff}

@@ -14,7 +14,6 @@ import {
 import { autoCaption, autoCaptionComparison, autoCaptionValue } from "@/lib/treasury/auto-caption";
 import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
 import {
-  definitionWithPinnedWindow,
   isPinnedWindow,
 } from "@/lib/treasury/pinned-window";
 import type { MetricDefinition } from "@/lib/mcp/metrics-schema";
@@ -87,6 +86,34 @@ export function parseStudyDateWindow(value: unknown): StudyDateWindow | null {
     from: value.from.slice(0, 10),
     to: value.to.slice(0, 10),
   };
+}
+
+/**
+ * Spec B19 — when Study.window is null, resolve trailing 12 months (page not empty).
+ * Used at preview/publish before threading into computeBlockMetric.
+ */
+export function resolveDefaultStudyWindow(now = new Date()): StudyDateWindow {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const day = now.getUTCDate();
+  const end = new Date(Date.UTC(y, m, day)).toISOString().slice(0, 10);
+  const start = new Date(Date.UTC(y, m - 11, 1)).toISOString().slice(0, 10);
+  return { from: start, to: end };
+}
+
+/** Prefer explicit → study.window → trailing-12 default. */
+export function resolveEffectiveStudyWindow(
+  explicit: StudyDateWindow | null | undefined,
+  studyWindow: StudyDateWindow | null | undefined,
+  now = new Date()
+): StudyDateWindow {
+  if (explicit && isStudyDateWindow(explicit)) {
+    return { from: explicit.from.slice(0, 10), to: explicit.to.slice(0, 10) };
+  }
+  if (studyWindow && isStudyDateWindow(studyWindow)) {
+    return { from: studyWindow.from.slice(0, 10), to: studyWindow.to.slice(0, 10) };
+  }
+  return resolveDefaultStudyWindow(now);
 }
 
 export type ReviewSnapshot = {
@@ -194,12 +221,16 @@ function snapshotValueDiff(
   return ps?.summary?.value !== cs && p.value !== current.value;
 }
 
-/** Compute fresh metric output for a block (honors pinned_window override). */
+/** Compute fresh metric output for a block.
+ * Spec B19 cascade: block.pinned_window ?? effectiveWindow ?? definition.window.
+ * Callers must pass the Study/Edition effective window (resolved at preview/publish).
+ */
 export async function computeBlockMetric(
   admin: Admin,
   tenantId: string,
   clientUserId: string,
-  block: ReviewBlockRow
+  block: ReviewBlockRow,
+  effectiveWindow?: StudyDateWindow | null
 ): Promise<ComputeMetricResult | null> {
   if (!block.metric_id) return null;
   const metric = await findMetricForClient(
@@ -213,7 +244,14 @@ export async function computeBlockMetric(
   const pinned = isPinnedWindow(block.pinned_window)
     ? block.pinned_window
     : null;
-  const definition = definitionWithPinnedWindow(baseDef, pinned);
+  const { definitionWithWindowCascade } = await import(
+    "@/lib/treasury/pinned-window"
+  );
+  const definition = definitionWithWindowCascade(
+    baseDef,
+    pinned,
+    effectiveWindow ?? null
+  );
   return computeMetricValue(admin, {
     id: metric.id,
     tenant_id: metric.tenant_id,
@@ -226,7 +264,8 @@ export async function isBlockStale(
   admin: Admin,
   tenantId: string,
   clientUserId: string,
-  block: ReviewBlockRow
+  block: ReviewBlockRow,
+  effectiveWindow?: StudyDateWindow | null
 ): Promise<boolean> {
   if (block.role === "study" && block.study_id) {
     const { buildPlacedStudySnapshot } = await import(
@@ -249,7 +288,13 @@ export async function isBlockStale(
     return studySnapshotDiffers(block.placed_snapshot, fresh);
   }
   if (block.role !== "figure" && block.role !== "exhibit") return false;
-  const current = await computeBlockMetric(admin, tenantId, clientUserId, block);
+  const current = await computeBlockMetric(
+    admin,
+    tenantId,
+    clientUserId,
+    block,
+    effectiveWindow
+  );
   if (!current) return true;
   return snapshotValueDiff(block.placed_snapshot, current);
 }
@@ -291,8 +336,11 @@ export async function buildReviewSnapshot(
   blocks: ReviewBlockRow[],
   version: number,
   changeNote: string,
-  reviewedAsOf: string
+  reviewedAsOf: string,
+  /** Spec B19 — Edition/Study window for fresh recompute (WYSIWYG). */
+  effectiveWindow?: StudyDateWindow | null
 ): Promise<ReviewSnapshot> {
+  const window = resolveEffectiveStudyWindow(effectiveWindow, review.window);
   const sorted = [...blocks].sort((a, b) => a.position - b.position);
   const coverFigures: ReviewSnapshot["cover_figures"] = [];
   const snapshotBlocks: Array<Record<string, unknown>> = [];
@@ -303,7 +351,8 @@ export async function buildReviewSnapshot(
         admin,
         review.tenant_id,
         review.client_user_id,
-        block
+        block,
+        window
       );
       const metric = await findMetricForClient(
         admin,
@@ -336,7 +385,8 @@ export async function buildReviewSnapshot(
         admin,
         review.tenant_id,
         review.client_user_id,
-        block
+        block,
+        window
       );
       const metric = await findMetricForClient(
         admin,
@@ -460,9 +510,16 @@ export async function suggestedCaptionForBlock(
   admin: Admin,
   tenantId: string,
   clientUserId: string,
-  block: ReviewBlockRow
+  block: ReviewBlockRow,
+  effectiveWindow?: StudyDateWindow | null
 ): Promise<string> {
-  const out = await computeBlockMetric(admin, tenantId, clientUserId, block);
+  const out = await computeBlockMetric(
+    admin,
+    tenantId,
+    clientUserId,
+    block,
+    effectiveWindow
+  );
   if (!out) return "";
   if (out.kind === "analytics" && out.series) return autoCaption(out.series);
   if (out.kind === "comparison" && out.comparison) {

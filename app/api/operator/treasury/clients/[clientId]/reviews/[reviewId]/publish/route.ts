@@ -10,6 +10,7 @@ import {
   normalizeBlockRow,
   normalizeReviewRow,
   parseStudyDateWindow,
+  resolveEffectiveStudyWindow,
   type ReviewSnapshot,
   type StudyDateWindow,
 } from "@/lib/treasury/review-assemble";
@@ -27,8 +28,7 @@ type PublishBody = {
   /** Spec B19 — Edition name. */
   label?: string;
   /**
-   * Spec B19 — Edition frozen from–to (metadata in Phase A).
-   * Window cascade / recompute over this window is Phase B.
+   * Spec B19 — Edition frozen from–to. Phase B recomputes the snapshot over this window.
    */
   window?: StudyDateWindow;
 };
@@ -96,11 +96,9 @@ export async function POST(request: Request, context: RouteContext) {
   const newVersion = review.current_version + 1;
   const reviewedAsOf = new Date().toISOString().slice(0, 10);
 
-  // Phase A: store edition window as metadata only — do not recompute blocks over it.
-  // Prefer explicit body window, else Study live window (still metadata until Phase B).
-  if (!editionWindow && review.window) {
-    editionWindow = review.window;
-  }
+  // Spec B19 Phase B — editionWindow drives fresh recompute (WYSIWYG).
+  // body.window ?? study.window ?? trailing-12 default.
+  editionWindow = resolveEffectiveStudyWindow(editionWindow, review.window);
   if (!editionLabel) {
     editionLabel =
       review.title.trim() ||
@@ -122,6 +120,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
   }
 
+  // Always recompute over editionWindow — do not trust preview-cache placed_snapshots.
   const snapshot = await buildReviewSnapshot(
     guard.admin,
     review,
@@ -145,7 +144,8 @@ export async function POST(request: Request, context: RouteContext) {
           review: "",
         },
       }),
-    reviewedAsOf
+    reviewedAsOf,
+    editionWindow
   );
 
   if (!changeNote) {
@@ -209,7 +209,7 @@ export async function POST(request: Request, context: RouteContext) {
     ok: true,
     version: newVersion,
     version_id: versionRow.id,
-    /** Spec B19 — Edition fields (window is metadata-only until Phase B). */
+    /** Spec B19 — Edition fields (snapshot recomputed over window). */
     edition: {
       label: versionRow.label ?? editionLabel,
       window: versionRow.window ?? editionWindow,

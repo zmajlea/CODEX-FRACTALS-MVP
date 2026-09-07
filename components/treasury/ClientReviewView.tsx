@@ -31,6 +31,16 @@ type ReviewListItem = {
   current_version: number;
 };
 
+type EditionMeta = {
+  id: string;
+  version: number;
+  reviewed_as_of: string;
+  published_at: string | null;
+  change_note: string | null;
+  label: string | null;
+  window: { from?: string; to?: string } | null;
+};
+
 type Props = {
   /** @deprecated use theme wordmark — kept for callers without BcnThemeProvider */
   tenantName?: string | null;
@@ -54,27 +64,68 @@ function blockTitle(block: Record<string, unknown>): string {
   return role || "Block";
 }
 
+function editionCaption(ed: EditionMeta): string {
+  const name = (ed.label ?? "").trim() || `Edition ${ed.version}`;
+  const win =
+    ed.window?.from && ed.window?.to
+      ? ` · ${ed.window.from} → ${ed.window.to}`
+      : "";
+  return `${name}${win}`;
+}
+
 export function ClientReviewView({ tenantName }: Props) {
   const theme = useBcnThemeOptional();
   const brandLabel = theme?.wordmark?.trim() || tenantName || null;
   const [reviews, setReviews] = useState<ReviewListItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editions, setEditions] = useState<EditionMeta[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [snapshot, setSnapshot] = useState<ReviewSnapshot | null>(null);
   const [changeNote, setChangeNote] = useState("");
+  const [editionLabel, setEditionLabel] = useState<string | null>(null);
+  const [editionWindow, setEditionWindow] = useState<{
+    from?: string;
+    to?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bp, setBp] = useState<"desktop" | "phone">("desktop");
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const loadReview = useCallback(async (reviewId: string) => {
-    const res = await fetch(`/api/treasury/reviews/${reviewId}`);
-    if (!res.ok) throw new Error("Failed to load review");
-    const json = (await res.json()) as {
-      current?: { snapshot: ReviewSnapshot; change_note: string } | null;
-    };
-    setSnapshot(json.current?.snapshot ?? null);
-    setChangeNote(json.current?.change_note ?? "");
-  }, []);
+  const loadReview = useCallback(
+    async (reviewId: string, version?: number | null) => {
+      const qs =
+        version != null && Number.isFinite(version)
+          ? `?version=${version}`
+          : "";
+      const res = await fetch(`/api/treasury/reviews/${reviewId}${qs}`);
+      if (!res.ok) throw new Error("Failed to load review");
+      const json = (await res.json()) as {
+        current?: {
+          snapshot: ReviewSnapshot;
+          change_note: string;
+          version?: number;
+          label?: string | null;
+          window?: { from?: string; to?: string } | null;
+        } | null;
+        editions?: EditionMeta[];
+        history?: EditionMeta[];
+      };
+      const list = json.editions ?? json.history ?? [];
+      setEditions(list);
+      setSnapshot(json.current?.snapshot ?? null);
+      setChangeNote(json.current?.change_note ?? "");
+      setEditionLabel(json.current?.label ?? null);
+      setEditionWindow(json.current?.window ?? null);
+      setSelectedVersion(
+        json.current?.version ??
+          json.current?.snapshot?.meta?.version ??
+          list[0]?.version ??
+          null
+      );
+    },
+    []
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +142,7 @@ export function ClientReviewView({ tenantName }: Props) {
       } else {
         setActiveId(null);
         setSnapshot(null);
+        setEditions([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -122,6 +174,20 @@ export function ClientReviewView({ tenantName }: Props) {
       setError(e instanceof Error ? e.message : "Failed to load issue");
     }
   }
+
+  async function pickEdition(version: number) {
+    if (!activeId) return;
+    try {
+      await loadReview(activeId, version);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load edition");
+    }
+  }
+
+  const selectedIdx = useMemo(() => {
+    if (selectedVersion == null) return -1;
+    return editions.findIndex((e) => e.version === selectedVersion);
+  }, [editions, selectedVersion]);
 
   const contents = useMemo(() => {
     if (!snapshot) return [];
@@ -305,11 +371,66 @@ export function ClientReviewView({ tenantName }: Props) {
         ) : null}
       </div>
 
+      {editions.length > 1 ? (
+        <div
+          className="panel p-3 mb-4 flex flex-wrap items-center gap-2"
+          data-testid="editions-stepper"
+        >
+          <span className="text-xs uppercase tracking-wide text-codex-muted font-semibold">
+            Editions
+          </span>
+          <button
+            type="button"
+            className="chip"
+            disabled={selectedIdx <= 0}
+            onClick={() => {
+              const prev = editions[selectedIdx - 1];
+              if (prev) void pickEdition(prev.version);
+            }}
+            aria-label="Newer edition"
+          >
+            ← Newer
+          </button>
+          <select
+            className="chip"
+            value={selectedVersion ?? ""}
+            onChange={(e) => void pickEdition(Number(e.target.value))}
+            aria-label="Select edition"
+          >
+            {editions.map((ed) => (
+              <option key={ed.id} value={ed.version}>
+                {editionCaption(ed)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="chip"
+            disabled={selectedIdx < 0 || selectedIdx >= editions.length - 1}
+            onClick={() => {
+              const next = editions[selectedIdx + 1];
+              if (next) void pickEdition(next.version);
+            }}
+            aria-label="Older edition"
+          >
+            Older →
+          </button>
+        </div>
+      ) : null}
+
       <header className="panel p-4 mb-4">
         <p className="eyebrow">{brandLabel ? `${brandLabel} · ` : ""}Treasury Review</p>
         <h1 className="title text-xl">{snapshot.meta.title}</h1>
         <p className="treasury-meta text-sm">
-          Reviewed as of {snapshot.meta.reviewed_as_of} · Version {snapshot.meta.version}
+          {(editionLabel ?? "").trim() ||
+            (selectedVersion != null
+              ? `Edition ${selectedVersion}`
+              : `Edition ${snapshot.meta.version}`)}
+          {editionWindow?.from && editionWindow?.to
+            ? ` · ${editionWindow.from} → ${editionWindow.to}`
+            : ""}
+          {" · "}
+          Reviewed as of {snapshot.meta.reviewed_as_of}
         </p>
         {changeNote || snapshot.meta.change_note ? (
           <p className="panel-note mt-2 text-sm">{changeNote || snapshot.meta.change_note}</p>

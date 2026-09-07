@@ -430,10 +430,11 @@ export async function mcpGetReview(
   if (error) throw new Error(error.message);
   if (!reviewRow) throw new Error("Draft review not found");
 
-  const { normalizeBlockRow, normalizeReviewRow, computeBlockMetric, suggestedCaptionForBlock } =
+  const { normalizeBlockRow, normalizeReviewRow, computeBlockMetric, suggestedCaptionForBlock, resolveEffectiveStudyWindow } =
     await import("@/lib/treasury/review-assemble");
 
   const review = normalizeReviewRow(reviewRow as Record<string, unknown>);
+  const studyWindow = resolveEffectiveStudyWindow(null, review.window);
   const { data: blockRows } = await admin
     .from("treasury_review_blocks")
     .select("*")
@@ -449,7 +450,8 @@ export async function mcpGetReview(
           admin,
           review.tenant_id,
           review.client_user_id,
-          block
+          block,
+          studyWindow
         );
         computed = out;
       }

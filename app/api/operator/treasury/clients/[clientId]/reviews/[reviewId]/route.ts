@@ -4,10 +4,16 @@ import {
   requireOperatorTreasuryGrant,
 } from "@/lib/server/operator-treasury-route";
 import {
+  computeBlockMetric,
+  isStudyDateWindow,
   normalizeBlockRow,
   normalizeReviewRow,
+  parseStudyDateWindow,
+  resolveEffectiveStudyWindow,
+  toPlacedSnapshot,
+  type StudyDateWindow,
 } from "@/lib/treasury/review-assemble";
-import type { Database } from "@/lib/database.types";
+import type { Database, Json } from "@/lib/database.types";
 
 type RouteContext = { params: Promise<{ clientId: string; reviewId: string }> };
 
@@ -90,7 +96,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   const guard = await requireOperatorTreasuryGrant(clientId);
   if (isGuardResponse(guard)) return guard;
 
-  let body: { title?: string; period_month?: string; action?: string };
+  let body: {
+    title?: string;
+    period_month?: string;
+    action?: string;
+    /** Spec B19 — Study live from–to; null clears to default. */
+    window?: StudyDateWindow | null;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -141,6 +153,18 @@ export async function PATCH(request: Request, context: RouteContext) {
   const update: Database["public"]["Tables"]["treasury_reviews"]["Update"] = {};
   if (body.title !== undefined) update.title = body.title.trim();
   if (body.period_month !== undefined) update.period_month = body.period_month.trim();
+  if (body.window !== undefined) {
+    if (body.window === null) {
+      update.window = null;
+    } else if (!isStudyDateWindow(body.window)) {
+      return NextResponse.json(
+        { error: "Invalid window: require {from,to} YYYY-MM-DD with to >= from" },
+        { status: 400 }
+      );
+    } else {
+      update.window = parseStudyDateWindow(body.window) as unknown as Json;
+    }
+  }
 
   if (Object.keys(update).length === 0) {
     const { data: current } = await guard.admin
@@ -201,7 +225,38 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ review: normalizeReviewRow(data as Record<string, unknown>) });
+  const review = normalizeReviewRow(data as Record<string, unknown>);
+
+  // Spec B19 — window change re-previews metric blocks into placed_snapshot cache (not an Edition).
+  if (body.window !== undefined) {
+    const studyWindow = resolveEffectiveStudyWindow(null, review.window);
+    const { data: blockRows } = await guard.admin
+      .from("treasury_review_blocks")
+      .select("*")
+      .eq("review_id", reviewId)
+      .in("role", ["figure", "exhibit"]);
+    for (const row of blockRows ?? []) {
+      const block = normalizeBlockRow(row as Record<string, unknown>);
+      if (!block.metric_id) continue;
+      const out = await computeBlockMetric(
+        guard.admin,
+        review.tenant_id,
+        review.client_user_id,
+        block,
+        studyWindow
+      );
+      if (!out) continue;
+      await guard.admin
+        .from("treasury_review_blocks")
+        .update({
+          placed_snapshot: toPlacedSnapshot(out),
+          proposal_state: "none",
+        })
+        .eq("id", block.id);
+    }
+  }
+
+  return NextResponse.json({ review });
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
