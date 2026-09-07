@@ -13,15 +13,29 @@
 import type { ReviewBlockLayout } from "@/lib/treasury/review-block-layout";
 import { parseLayoutOrNull, resolveLayout } from "@/lib/treasury/review-block-layout";
 
+export type StudyCompositeCashPoint = {
+  month: string;
+  ending: number;
+  projected?: boolean;
+};
+
+/** Analytics / metric series point (Spec B18 Part D). */
+export type StudyCompositeAnalyticsPoint = {
+  label: string;
+  value: number;
+};
+
+export type StudyCompositeExhibitPoint =
+  | StudyCompositeCashPoint
+  | StudyCompositeAnalyticsPoint;
+
 export type StudyCompositeExhibit = {
   id: string;
   title: string;
   chart_hint: "line" | "column";
-  points: Array<{
-    month: string;
-    ending: number;
-    projected?: boolean;
-  }>;
+  /** cash = ending-cash timeline; analytics = metric {label,value} series. */
+  series_kind: "cash" | "analytics";
+  points: StudyCompositeExhibitPoint[];
   reference_lines: Array<{ label: string; value: number; breach?: boolean }>;
   layout: ReviewBlockLayout;
 };
@@ -63,10 +77,23 @@ export function parseStudyPageComposite(raw: unknown): StudyPageComposite | null
     const id = String(e.id ?? `exhibit-${i}`);
     const layout = parseLayoutOrNull(e.layout) ?? { w: 12, h: 2 };
     const pointsRaw = Array.isArray(e.points) ? e.points : [];
-    const points: StudyCompositeExhibit["points"] = [];
+    const seriesKindRaw = e.series_kind;
+    let series_kind: "cash" | "analytics" =
+      seriesKindRaw === "analytics" ? "analytics" : "cash";
+    const points: StudyCompositeExhibitPoint[] = [];
     for (const p of pointsRaw) {
       if (!p || typeof p !== "object") continue;
       const row = p as Record<string, unknown>;
+      // Analytics shape: { label, value } — preserve without coercing to month/ending.
+      if (
+        typeof row.label === "string" &&
+        row.label.trim() &&
+        Number.isFinite(Number(row.value))
+      ) {
+        series_kind = "analytics";
+        points.push({ label: String(row.label), value: Number(row.value) });
+        continue;
+      }
       const month = String(row.month ?? "").slice(0, 7);
       const ending = Number(row.ending);
       if (!month || !Number.isFinite(ending)) continue;
@@ -94,6 +121,7 @@ export function parseStudyPageComposite(raw: unknown): StudyPageComposite | null
       id,
       title: String(e.title ?? "Exhibit"),
       chart_hint: e.chart_hint === "column" ? "column" : "line",
+      series_kind,
       points,
       reference_lines,
       layout: resolveLayout(layout),

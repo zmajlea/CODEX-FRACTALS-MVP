@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MetricChart,
   type MetricChartPoint,
   type MetricChartRefLine,
 } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
+import {
+  MetricSentenceWizard,
+  autoNameFromSentence,
+  definitionFromSentence,
+  emptySentenceDraft,
+  sentenceFromDefinition,
+  type SentenceDraft,
+} from "@/components/operator/treasury/analytics/MetricSentenceWizard";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 
 type MetricSeriesEnvelope = {
@@ -38,50 +46,12 @@ type MetricRow = {
   client_user_id: string | null;
 };
 
-type RefLineDraft = {
-  id: string;
-  label: string;
-  kind: "avg" | "min" | "max" | "target" | "threshold";
-  value?: number;
-  stat?: "avg" | "min" | "max" | "median";
-  breach?: "none" | "flag";
-};
-
-type DefinitionDraft = {
-  of: "monthly_totals" | "series_totals" | "series_compare";
-  source: {
-    type: "bucket" | "category" | "account" | "metric";
-    key?: string;
-    direction?: "in" | "out" | "any";
-    ref?: string;
-  };
-  op?: "avg" | "sum" | "stddev" | "min" | "max" | "yoy" | "count" | "pct_of";
-  window: {
-    kind: "trailing" | "calendar_year" | "ytd" | "all";
-    months?: number;
-  };
-  of2?: DefinitionDraft;
-  subdivision?: "day" | "week" | "month" | "quarter" | "year";
-  bucket_op?: "sum" | "count" | "avg" | "min" | "max";
-  reference_lines?: RefLineDraft[];
-  chart_hint?: "column" | "line" | "grouped_column" | "multi_line";
-  compareMode?: "none" | "years" | "categories";
-  compare_last_n_years?: number;
-  compare_keys?: string[];
-};
-
 type Props = {
   clientUserId: string;
   dataThrough?: string | null;
 };
 
-const OPS_GUIDED = ["avg", "sum", "stddev", "min", "max", "yoy", "count"] as const;
-const SOURCE_TYPES = ["bucket", "category", "account", "metric"] as const;
-const WINDOWS = ["trailing", "calendar_year", "ytd", "all"] as const;
-const SUBDIVISIONS = ["day", "week", "month", "quarter", "year"] as const;
-const BUCKET_OPS = ["sum", "count", "avg", "min", "max"] as const;
-const REF_KINDS = ["avg", "min", "max", "target", "threshold"] as const;
-const REF_STATS = ["avg", "min", "max", "median"] as const;
+const PREVIEW_DEBOUNCE_MS = 250;
 
 function formatValue(v: number | undefined | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -122,7 +92,15 @@ function scalarFromRow(row: MetricRow): number | undefined {
 
 function summarizeDefinition(def: unknown): string {
   if (!def || typeof def !== "object") return "—";
-  const d = def as DefinitionDraft;
+  const d = def as {
+    source?: { type?: string; key?: string; ref?: string; direction?: string };
+    window?: { kind?: string; months?: number };
+    subdivision?: string;
+    bucket_op?: string;
+    op?: string;
+    of?: string;
+    compare?: { by?: string };
+  };
   try {
     const src =
       d.source?.type === "metric"
@@ -132,6 +110,9 @@ function summarizeDefinition(def: unknown): string {
       d.window?.kind === "trailing"
         ? `trailing ${d.window.months ?? "?"} mo`
         : (d.window?.kind ?? "?");
+    if (d.of === "series_compare" || d.compare) {
+      return `${d.bucket_op ?? "sum"} by ${d.subdivision ?? "?"} of ${src}, ${win} · vs ${d.compare?.by ?? "?"}`;
+    }
     if (d.subdivision) {
       return `${d.bucket_op ?? "sum"} by ${d.subdivision} of ${src}, ${win}${d.op ? ` · summary ${d.op}` : ""}`;
     }
@@ -141,86 +122,7 @@ function summarizeDefinition(def: unknown): string {
   }
 }
 
-function emptyGuided(kind: "value" | "analytics" = "value"): DefinitionDraft {
-  if (kind === "analytics") {
-    return {
-      of: "series_totals",
-      source: { type: "category", key: "", direction: "in" },
-      op: "avg",
-      window: { kind: "trailing", months: 3 },
-      subdivision: "day",
-      bucket_op: "sum",
-      chart_hint: "column",
-      reference_lines: [],
-      compareMode: "none",
-      compare_last_n_years: 3,
-      compare_keys: [],
-    };
-  }
-  return {
-    of: "monthly_totals",
-    source: { type: "category", key: "", direction: "in" },
-    op: "avg",
-    window: { kind: "trailing", months: 3 },
-  };
-}
-
-function definitionFromGuided(
-  guided: DefinitionDraft,
-  kind: "value" | "analytics"
-): unknown {
-  const d: DefinitionDraft = { ...guided };
-  if (d.source.type === "metric") {
-    d.source = { type: "metric", ref: d.source.ref, direction: d.source.direction };
-  } else if (d.source.type === "account") {
-    d.source = { type: "account", direction: d.source.direction ?? "any" };
-  } else {
-    d.source = {
-      type: d.source.type,
-      key: d.source.key,
-      direction: d.source.direction ?? "any",
-    };
-  }
-  if (kind === "value") {
-    delete d.subdivision;
-    delete d.bucket_op;
-    delete d.reference_lines;
-    delete d.chart_hint;
-    delete d.compareMode;
-    delete d.compare_last_n_years;
-    delete d.compare_keys;
-    d.of = "monthly_totals";
-    return d;
-  }
-  if (d.compareMode && d.compareMode !== "none") {
-    return {
-      of: "series_compare",
-      source: d.source,
-      window: d.window,
-      subdivision: d.subdivision ?? "month",
-      bucket_op: d.bucket_op ?? "sum",
-      chart_hint:
-        d.chart_hint === "multi_line" ? "multi_line" : "grouped_column",
-      reference_lines: d.reference_lines,
-      compare:
-        d.compareMode === "years"
-          ? { by: "year", last_n_years: d.compare_last_n_years ?? 3 }
-          : { by: "category", keys: d.compare_keys ?? [] },
-    };
-  }
-  d.of = "series_totals";
-  if (!d.subdivision) d.subdivision = "day";
-  if (!d.bucket_op) d.bucket_op = "sum";
-  if (!d.chart_hint || d.chart_hint === "grouped_column" || d.chart_hint === "multi_line") {
-    d.chart_hint = "column";
-  }
-  delete d.compareMode;
-  delete d.compare_last_n_years;
-  delete d.compare_keys;
-  return d;
-}
-
-/** Spec B5 — Metrics tab: value + analytics groups, expand, recalculate. */
+/** Spec B5/B18 — Metrics tab: sentence composer + live preview + saved list. */
 export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [rows, setRows] = useState<MetricRow[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
@@ -229,13 +131,12 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [mode, setMode] = useState<"guided" | "advanced">("guided");
-  const [builderKind, setBuilderKind] = useState<"value" | "analytics">("value");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [scopeGeneral, setScopeGeneral] = useState(false);
-  const [guided, setGuided] = useState<DefinitionDraft>(() => emptyGuided("value"));
+  const [sentence, setSentence] = useState<SentenceDraft>(() => emptySentenceDraft());
   const [jsonText, setJsonText] = useState(() =>
-    JSON.stringify(emptyGuided("value"), null, 2)
+    JSON.stringify(definitionFromSentence(emptySentenceDraft()), null, 2)
   );
   const [previewLabel, setPreviewLabel] = useState<string | null>(null);
   const [previewSeries, setPreviewSeries] = useState<MetricSeriesEnvelope | null>(
@@ -244,6 +145,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [previewComparison, setPreviewComparison] = useState<MetricComparison | null>(
     null
   );
+  const [previewMs, setPreviewMs] = useState<number | null>(null);
   const [fieldErrors, setFieldErrors] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filterFrom, setFilterFrom] = useState("");
@@ -252,6 +154,7 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
   const [saveTitle, setSaveTitle] = useState("");
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedBoardLink, setSavedBoardLink] = useState<string | null>(null);
+  const previewGen = useRef(0);
 
   const load = useCallback(async () => {
     const res = await fetch(
@@ -290,41 +193,43 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     [rows]
   );
 
+  const resolvedDefinition = useMemo(() => {
+    if (mode === "advanced") {
+      try {
+        return JSON.parse(jsonText) as unknown;
+      } catch {
+        return null;
+      }
+    }
+    return definitionFromSentence(sentence);
+  }, [mode, jsonText, sentence]);
+
   function definitionFromUi(): unknown {
     if (mode === "advanced") {
       return JSON.parse(jsonText) as unknown;
     }
-    return definitionFromGuided(guided, builderKind);
+    return definitionFromSentence(sentence);
   }
 
-  function syncAdvancedFromGuided(next: DefinitionDraft) {
-    setGuided(next);
-    setJsonText(JSON.stringify(definitionFromGuided(next, builderKind), null, 2));
-  }
-
-  function setKind(next: "value" | "analytics") {
-    setBuilderKind(next);
-    const g = emptyGuided(next);
-    setGuided(g);
-    setJsonText(JSON.stringify(g, null, 2));
-    setPreviewLabel(null);
-    setPreviewSeries(null);
-    setPreviewComparison(null);
+  function syncSentence(next: SentenceDraft) {
+    setSentence(next);
+    setJsonText(JSON.stringify(definitionFromSentence(next), null, 2));
   }
 
   function openNew() {
     setEditingId(null);
-    setName("");
     setDescription("");
     setScopeGeneral(false);
     setMode("guided");
-    setBuilderKind("value");
-    const g = emptyGuided("value");
-    setGuided(g);
-    setJsonText(JSON.stringify(g, null, 2));
+    const g = emptySentenceDraft();
+    setSentence(g);
+    const def = definitionFromSentence(g);
+    setJsonText(JSON.stringify(def, null, 2));
+    setName(autoNameFromSentence(g));
     setPreviewLabel(null);
     setPreviewSeries(null);
     setPreviewComparison(null);
+    setPreviewMs(null);
     setFieldErrors(null);
     setBuilderOpen(true);
   }
@@ -334,90 +239,118 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
     setName(row.name);
     setDescription(row.description ?? "");
     setScopeGeneral(row.scope === "general");
-    setMode("advanced");
-    const k = rowKind(row);
-    setBuilderKind(k === "comparison" ? "analytics" : k);
+    setMode("guided");
     setJsonText(JSON.stringify(row.definition ?? {}, null, 2));
-    try {
-      const def = row.definition as DefinitionDraft;
-      const g = { ...emptyGuided(k === "comparison" ? "analytics" : k), ...def };
-      if (def.of === "series_compare") {
-        const cmp = def as DefinitionDraft & {
-          compare?: { by?: string; last_n_years?: number; keys?: string[] };
-        };
-        g.compareMode =
-          cmp.compare?.by === "category" ? "categories" : "years";
-        g.compare_last_n_years = cmp.compare?.last_n_years ?? 3;
-        g.compare_keys = cmp.compare?.keys ?? [];
-      }
-      setGuided(g);
-    } catch {
-      setGuided(emptyGuided(k === "comparison" ? "analytics" : k));
-    }
+    setSentence(sentenceFromDefinition(row.definition));
     setPreviewLabel(null);
     setPreviewSeries(null);
     setPreviewComparison(null);
+    setPreviewMs(null);
     setFieldErrors(null);
     setBuilderOpen(true);
   }
 
-  async function runPreview() {
-    setFieldErrors(null);
-    setPreviewLabel(null);
-    setPreviewSeries(null);
-    setPreviewComparison(null);
-    setBusy("preview");
-    try {
-      const definition = definitionFromUi();
-      const res = await fetch(
-        `/api/operator/treasury/clients/${clientUserId}/metrics/preview`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ definition }),
-        }
-      );
-      const json = (await res.json()) as
-        | (MetricSeriesEnvelope & { value?: number })
-        | (MetricComparison & { value?: number })
-        | {
+  const runPreview = useCallback(
+    async (definition: unknown) => {
+      const gen = ++previewGen.current;
+      setBusy("preview");
+      const t0 =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      try {
+        const res = await fetch(
+          `/api/operator/treasury/clients/${clientUserId}/metrics/preview`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ definition }),
+          }
+        );
+        const json = (await res.json()) as
+          | (MetricSeriesEnvelope & { value?: number })
+          | (MetricComparison & { value?: number })
+          | {
+              errors?: Array<{ path: string; message: string }>;
+              error?: string;
+              value?: number;
+            };
+        if (gen !== previewGen.current) return;
+        const elapsed = Math.round(
+          (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+            t0
+        );
+        setPreviewMs(elapsed);
+        if (!res.ok) {
+          const errJson = json as {
             errors?: Array<{ path: string; message: string }>;
             error?: string;
-            value?: number;
           };
-      if (!res.ok) {
-        const errJson = json as {
-          errors?: Array<{ path: string; message: string }>;
-          error?: string;
-        };
-        setFieldErrors(
-          errJson.errors?.map((e) => `${e.path}: ${e.message}`).join("; ") ??
-            errJson.error ??
-            "Preview failed"
-        );
-        return;
+          setFieldErrors(
+            errJson.errors?.map((e) => `${e.path}: ${e.message}`).join("; ") ??
+              errJson.error ??
+              "Preview failed"
+          );
+          setPreviewLabel(null);
+          setPreviewSeries(null);
+          setPreviewComparison(null);
+          return;
+        }
+        setFieldErrors(null);
+        if (
+          "v" in json &&
+          json.v === 3 &&
+          "groups" in json &&
+          Array.isArray(json.groups)
+        ) {
+          setPreviewComparison(json as MetricComparison);
+          setPreviewSeries(null);
+          setPreviewLabel(
+            `${json.groups.length} groups · ${json.axis.labels.length} periods`
+          );
+        } else if (
+          "v" in json &&
+          json.v === 2 &&
+          "points" in json &&
+          Array.isArray(json.points)
+        ) {
+          setPreviewSeries(
+            json as MetricSeriesEnvelope & { points: MetricChartPoint[] }
+          );
+          setPreviewComparison(null);
+          setPreviewLabel(
+            json.summary
+              ? `summary ${json.summary.op}=${formatValue(json.summary.value)}`
+              : `${json.points.length} points`
+          );
+        } else {
+          setPreviewSeries(null);
+          setPreviewComparison(null);
+          setPreviewLabel(formatValue(json.value));
+        }
+      } catch (e) {
+        if (gen !== previewGen.current) return;
+        setFieldErrors(e instanceof Error ? e.message : "Preview failed");
+        setPreviewSeries(null);
+        setPreviewComparison(null);
+        setPreviewLabel(null);
+      } finally {
+        if (gen === previewGen.current) setBusy(null);
       }
-      if ("v" in json && json.v === 3 && "groups" in json && Array.isArray(json.groups)) {
-        setPreviewComparison(json as MetricComparison);
-        setPreviewLabel(
-          `${json.groups.length} groups · ${json.axis.labels.length} periods`
-        );
-      } else if ("v" in json && json.v === 2 && "points" in json && Array.isArray(json.points)) {
-        setPreviewSeries(json as MetricSeriesEnvelope & { points: MetricChartPoint[] });
-        setPreviewLabel(
-          json.summary
-            ? `summary ${json.summary.op}=${formatValue(json.summary.value)}`
-            : `${json.points.length} points`
-        );
-      } else {
-        setPreviewLabel(formatValue(json.value));
-      }
-    } catch (e) {
-      setFieldErrors(e instanceof Error ? e.message : "Preview failed");
-    } finally {
-      setBusy(null);
+    },
+    [clientUserId]
+  );
+
+  // Live preview — debounce ~250ms whenever the resolved definition changes.
+  useEffect(() => {
+    if (!builderOpen) return;
+    if (resolvedDefinition == null) {
+      setFieldErrors("Invalid JSON");
+      return;
     }
-  }
+    const handle = window.setTimeout(() => {
+      void runPreview(resolvedDefinition);
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [builderOpen, resolvedDefinition, runPreview]);
 
   async function runSave() {
     setFieldErrors(null);
@@ -901,609 +834,57 @@ export function MetricsTab({ clientUserId, dataThrough }: Props) {
       ) : null}
 
       {builderOpen ? (
-        <div
-          className="panel p-4 space-y-3"
-          style={{ border: "1px solid var(--line)" }}
-        >
-          <p className="sec-title mb-0">
-            {editingId ? "Edit metric" : "New metric"}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="chip"
-              data-active={builderKind === "value" ? "true" : undefined}
-              onClick={() => setKind("value")}
-            >
-              Value
-            </button>
-            <button
-              type="button"
-              className="chip"
-              data-active={builderKind === "analytics" ? "true" : undefined}
-              onClick={() => setKind("analytics")}
-            >
-              Analytics
-            </button>
-            <button
-              type="button"
-              className="chip"
-              data-active={mode === "guided" ? "true" : undefined}
-              onClick={() => {
-                setMode("guided");
-                setJsonText(
-                  JSON.stringify(definitionFromGuided(guided, builderKind), null, 2)
-                );
-              }}
-            >
-              Guided
-            </button>
-            <button
-              type="button"
-              className="chip"
-              data-active={mode === "advanced" ? "true" : undefined}
-              onClick={() => {
-                setMode("advanced");
-                setJsonText(
-                  JSON.stringify(definitionFromGuided(guided, builderKind), null, 2)
-                );
-              }}
-            >
-              Advanced
-            </button>
-          </div>
-
-          <label className="block text-sm">
-            <span className="treasury-meta">Name</span>
-            <input
-              className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="treasury-meta">Description</span>
-            <input
-              className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </label>
-          {!editingId ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={scopeGeneral}
-                onChange={(e) => setScopeGeneral(e.target.checked)}
-              />
-              <span className="treasury-meta">General (tenant-wide)</span>
-            </label>
-          ) : null}
-
-          {mode === "guided" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="treasury-meta">Source type</span>
-                <select
-                  className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                  value={guided.source.type}
-                  onChange={(e) =>
-                    syncAdvancedFromGuided({
-                      ...guided,
-                      source: {
-                        ...guided.source,
-                        type: e.target.value as DefinitionDraft["source"]["type"],
-                      },
-                    })
-                  }
-                >
-                  {SOURCE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {guided.source.type === "metric" ? (
-                <label className="block text-sm">
-                  <span className="treasury-meta">Metric ref</span>
-                  <select
-                    className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                    value={guided.source.ref ?? ""}
-                    onChange={(e) =>
-                      syncAdvancedFromGuided({
-                        ...guided,
-                        source: { ...guided.source, ref: e.target.value },
-                      })
-                    }
-                  >
-                    <option value="">Select…</option>
-                    {metricNames.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : guided.source.type !== "account" ? (
-                <label className="block text-sm">
-                  <span className="treasury-meta">Key (category/bucket)</span>
-                  <input
-                    list="metric-label-options"
-                    className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                    value={guided.source.key ?? ""}
-                    onChange={(e) =>
-                      syncAdvancedFromGuided({
-                        ...guided,
-                        source: { ...guided.source, key: e.target.value },
-                      })
-                    }
-                  />
-                  <datalist id="metric-label-options">
-                    {labels.map((l) => (
-                      <option key={l} value={l} />
-                    ))}
-                  </datalist>
-                </label>
-              ) : null}
-              <label className="block text-sm">
-                <span className="treasury-meta">Direction</span>
-                <select
-                  className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                  value={guided.source.direction ?? "any"}
-                  onChange={(e) =>
-                    syncAdvancedFromGuided({
-                      ...guided,
-                      source: {
-                        ...guided.source,
-                        direction: e.target.value as "in" | "out" | "any",
-                      },
-                    })
-                  }
-                >
-                  <option value="any">any</option>
-                  <option value="in">in</option>
-                  <option value="out">out</option>
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="treasury-meta">
-                  {builderKind === "analytics" ? "Summary op (optional)" : "Op"}
-                </span>
-                <select
-                  className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                  value={guided.op ?? ""}
-                  onChange={(e) =>
-                    syncAdvancedFromGuided({
-                      ...guided,
-                      op: (e.target.value || undefined) as DefinitionDraft["op"],
-                    })
-                  }
-                >
-                  {builderKind === "analytics" ? (
-                    <option value="">(none)</option>
-                  ) : null}
-                  {OPS_GUIDED.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="treasury-meta">Window</span>
-                <select
-                  className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                  value={guided.window.kind}
-                  onChange={(e) =>
-                    syncAdvancedFromGuided({
-                      ...guided,
-                      window: {
-                        ...guided.window,
-                        kind: e.target.value as DefinitionDraft["window"]["kind"],
-                      },
-                    })
-                  }
-                >
-                  {WINDOWS.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {guided.window.kind === "trailing" ? (
-                <label className="block text-sm">
-                  <span className="treasury-meta">Months</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                    value={guided.window.months ?? 3}
-                    onChange={(e) =>
-                      syncAdvancedFromGuided({
-                        ...guided,
-                        window: {
-                          ...guided.window,
-                          months: Number(e.target.value) || 3,
-                        },
-                      })
-                    }
-                  />
-                </label>
-              ) : null}
-
-              {builderKind === "analytics" ? (
-                <>
-                  <label className="block text-sm sm:col-span-2">
-                    <span className="treasury-meta">Compare across</span>
-                    <select
-                      className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                      value={guided.compareMode ?? "none"}
-                      onChange={(e) =>
-                        syncAdvancedFromGuided({
-                          ...guided,
-                          compareMode: e.target.value as DefinitionDraft["compareMode"],
-                          subdivision:
-                            e.target.value === "years"
-                              ? guided.subdivision === "day" || guided.subdivision === "week"
-                                ? "month"
-                                : guided.subdivision ?? "month"
-                              : guided.subdivision,
-                        })
-                      }
-                    >
-                      <option value="none">None (single series)</option>
-                      <option value="years">Years</option>
-                      <option value="categories">Categories</option>
-                    </select>
-                  </label>
-                  {guided.compareMode === "years" ? (
-                    <label className="block text-sm">
-                      <span className="treasury-meta">Last N years</span>
-                      <input
-                        type="number"
-                        min={2}
-                        max={5}
-                        className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                        value={guided.compare_last_n_years ?? 3}
-                        onChange={(e) =>
-                          syncAdvancedFromGuided({
-                            ...guided,
-                            compare_last_n_years: Number(e.target.value) || 3,
-                          })
-                        }
-                      />
-                    </label>
-                  ) : null}
-                  {guided.compareMode === "categories" ? (
-                    <label className="block text-sm sm:col-span-2">
-                      <span className="treasury-meta">Categories (comma-separated)</span>
-                      <input
-                        className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                        value={(guided.compare_keys ?? []).join(", ")}
-                        onChange={(e) =>
-                          syncAdvancedFromGuided({
-                            ...guided,
-                            compare_keys: e.target.value
-                              .split(",")
-                              .map((s) => s.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                        placeholder="Payroll, Software"
-                      />
-                    </label>
-                  ) : null}
-                  <label className="block text-sm">
-                    <span className="treasury-meta">Subdivision</span>
-                    <select
-                      className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                      value={guided.subdivision ?? "day"}
-                      onChange={(e) =>
-                        syncAdvancedFromGuided({
-                          ...guided,
-                          subdivision: e.target
-                            .value as DefinitionDraft["subdivision"],
-                        })
-                      }
-                    >
-                      {SUBDIVISIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm">
-                    <span className="treasury-meta">Bucket op</span>
-                    <select
-                      className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                      value={guided.bucket_op ?? "sum"}
-                      onChange={(e) =>
-                        syncAdvancedFromGuided({
-                          ...guided,
-                          bucket_op: e.target.value as DefinitionDraft["bucket_op"],
-                        })
-                      }
-                    >
-                      {BUCKET_OPS.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm">
-                    <span className="treasury-meta">Chart</span>
-                    <select
-                      className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                      value={
-                        guided.compareMode && guided.compareMode !== "none"
-                          ? guided.chart_hint === "multi_line"
-                            ? "multi_line"
-                            : "grouped_column"
-                          : guided.chart_hint ?? "column"
-                      }
-                      onChange={(e) =>
-                        syncAdvancedFromGuided({
-                          ...guided,
-                          chart_hint: e.target.value as DefinitionDraft["chart_hint"],
-                        })
-                      }
-                    >
-                      {guided.compareMode && guided.compareMode !== "none" ? (
-                        <>
-                          <option value="grouped_column">grouped columns</option>
-                          <option value="multi_line">multi line</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="column">column</option>
-                          <option value="line">line</option>
-                        </>
-                      )}
-                    </select>
-                  </label>
-                  <div className="sm:col-span-2 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="treasury-meta text-sm">Reference lines</span>
-                      <button
-                        type="button"
-                        className="chip text-xs"
-                        onClick={() => {
-                          const id = `line_${(guided.reference_lines?.length ?? 0) + 1}`;
-                          syncAdvancedFromGuided({
-                            ...guided,
-                            reference_lines: [
-                              ...(guided.reference_lines ?? []),
-                              {
-                                id,
-                                label: "Max",
-                                kind: "max",
-                                value: 0,
-                                breach: "none",
-                              },
-                            ],
-                          });
-                        }}
-                      >
-                        Add line
-                      </button>
-                    </div>
-                    {(guided.reference_lines ?? []).map((line, idx) => (
-                      <div
-                        key={line.id}
-                        className="grid gap-2 sm:grid-cols-5 items-end"
-                      >
-                        <label className="block text-sm">
-                          <span className="treasury-meta">Label</span>
-                          <input
-                            className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                            value={line.label}
-                            onChange={(e) => {
-                              const next = [...(guided.reference_lines ?? [])];
-                              next[idx] = { ...line, label: e.target.value };
-                              syncAdvancedFromGuided({
-                                ...guided,
-                                reference_lines: next,
-                              });
-                            }}
-                          />
-                        </label>
-                        <label className="block text-sm">
-                          <span className="treasury-meta">Kind</span>
-                          <select
-                            className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                            value={line.kind}
-                            onChange={(e) => {
-                              const next = [...(guided.reference_lines ?? [])];
-                              next[idx] = {
-                                ...line,
-                                kind: e.target.value as RefLineDraft["kind"],
-                              };
-                              syncAdvancedFromGuided({
-                                ...guided,
-                                reference_lines: next,
-                              });
-                            }}
-                          >
-                            {REF_KINDS.map((k) => (
-                              <option key={k} value={k}>
-                                {k}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="block text-sm">
-                          <span className="treasury-meta">Mode</span>
-                          <select
-                            className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                            value={line.stat !== undefined ? "stat" : "value"}
-                            onChange={(e) => {
-                              const next = [...(guided.reference_lines ?? [])];
-                              if (e.target.value === "stat") {
-                                const { value: _v, ...rest } = line;
-                                next[idx] = { ...rest, stat: "avg" };
-                              } else {
-                                const { stat: _s, ...rest } = line;
-                                next[idx] = { ...rest, value: 0 };
-                              }
-                              syncAdvancedFromGuided({
-                                ...guided,
-                                reference_lines: next,
-                              });
-                            }}
-                          >
-                            <option value="value">static</option>
-                            <option value="stat">computed</option>
-                          </select>
-                        </label>
-                        {line.stat !== undefined ? (
-                          <label className="block text-sm">
-                            <span className="treasury-meta">Stat</span>
-                            <select
-                              className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                              value={line.stat}
-                              onChange={(e) => {
-                                const next = [...(guided.reference_lines ?? [])];
-                                next[idx] = {
-                                  ...line,
-                                  stat: e.target.value as RefLineDraft["stat"],
-                                };
-                                syncAdvancedFromGuided({
-                                  ...guided,
-                                  reference_lines: next,
-                                });
-                              }}
-                            >
-                              {REF_STATS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <label className="block text-sm">
-                            <span className="treasury-meta">Value</span>
-                            <input
-                              type="number"
-                              className="w-full border border-[var(--line)] rounded px-2 py-1 mt-1"
-                              value={line.value ?? 0}
-                              onChange={(e) => {
-                                const next = [...(guided.reference_lines ?? [])];
-                                next[idx] = {
-                                  ...line,
-                                  value: Number(e.target.value),
-                                };
-                                syncAdvancedFromGuided({
-                                  ...guided,
-                                  reference_lines: next,
-                                });
-                              }}
-                            />
-                          </label>
-                        )}
-                        <label className="flex items-center gap-2 text-sm pb-1">
-                          <input
-                            type="checkbox"
-                            checked={line.breach === "flag"}
-                            onChange={(e) => {
-                              const next = [...(guided.reference_lines ?? [])];
-                              next[idx] = {
-                                ...line,
-                                breach: e.target.checked ? "flag" : "none",
-                              };
-                              syncAdvancedFromGuided({
-                                ...guided,
-                                reference_lines: next,
-                              });
-                            }}
-                          />
-                          <span className="treasury-meta">Flag breach</span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="treasury-meta-fine text-xs">
-                Value: of=monthly_totals · op required · no subdivision. Analytics:
-                of=series_totals · subdivision · bucket_op · reference_lines ·
-                chart_hint · op optional.
-              </p>
-              <textarea
-                className="w-full min-h-[180px] font-mono text-sm border border-[var(--line)] rounded p-2"
-                value={jsonText}
-                onChange={(e) => {
-                  setJsonText(e.target.value);
-                  try {
-                    const parsed = JSON.parse(e.target.value) as DefinitionDraft;
-                    setGuided({ ...emptyGuided(builderKind), ...parsed });
-                    if (parsed.subdivision) setBuilderKind("analytics");
-                    else setBuilderKind("value");
-                  } catch {
-                    /* keep typing */
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {fieldErrors ? (
-            <p className="treasury-meta cm-err">{fieldErrors}</p>
-          ) : null}
-          {previewLabel != null ? (
-            <p className="treasury-meta">
-              Preview: <strong>{previewLabel}</strong>
-            </p>
-          ) : null}
-          {previewComparison ? (
-            <div className="space-y-2">
-              <MetricComparisonChart comparison={previewComparison} />
-            </div>
-          ) : null}
-          {previewSeries?.points ? (
-            <div className="space-y-2">
-              <MetricChart
-                points={previewSeries.points}
-                referenceLines={previewSeries.reference_lines}
-                chartHint={previewSeries.chart_hint ?? "column"}
-              />
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="chip"
-              disabled={busy === "preview" || busy === "save"}
-              onClick={() => void runPreview()}
-            >
-              Preview
-            </button>
-            <button
-              type="button"
-              className="chip"
-              disabled={busy === "preview" || busy === "save" || !name.trim()}
-              onClick={() => void runSave()}
-            >
-              Save
-            </button>
-            <button
-              type="button"
-              className="chip"
-              onClick={() => setBuilderOpen(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <MetricSentenceWizard
+          draft={sentence}
+          onChange={syncSentence}
+          name={name}
+          onNameChange={setName}
+          description={description}
+          onDescriptionChange={setDescription}
+          scopeGeneral={scopeGeneral}
+          onScopeGeneralChange={setScopeGeneral}
+          showScope={!editingId}
+          labels={labels}
+          metricNames={metricNames}
+          definition={resolvedDefinition ?? definitionFromSentence(sentence)}
+          previewSeries={previewSeries}
+          previewComparison={previewComparison}
+          previewLabel={previewLabel}
+          previewMs={previewMs}
+          fieldErrors={fieldErrors}
+          busy={busy}
+          mode={mode}
+          onModeChange={(m) => {
+            if (m === "advanced") {
+              setJsonText(
+                JSON.stringify(definitionFromSentence(sentence), null, 2)
+              );
+            } else {
+              try {
+                const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+                setSentence(sentenceFromDefinition(parsed));
+              } catch {
+                /* keep sentence */
+              }
+            }
+            setMode(m);
+          }}
+          jsonText={jsonText}
+          onJsonTextChange={(text) => {
+            setJsonText(text);
+            try {
+              const parsed = JSON.parse(text) as Record<string, unknown>;
+              setSentence(sentenceFromDefinition(parsed));
+            } catch {
+              /* keep typing */
+            }
+          }}
+          onSave={() => void runSave()}
+          onCancel={() => setBuilderOpen(false)}
+          editing={!!editingId}
+        />
       ) : null}
+
 
       <div className="space-y-4">
         <section>

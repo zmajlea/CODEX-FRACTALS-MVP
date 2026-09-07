@@ -8,8 +8,8 @@ import type { Database } from "@/lib/database.types";
 import {
   isCashModelParams,
   isCashModelScenarioArray,
+  resolveOpeningBalanceOverride,
   type CashModelDerivedSnapshot,
-  type CashModelParams,
 } from "@/lib/treasury/cash-model-types";
 import { composeCashModelResponse } from "@/lib/treasury/cash-model-compose";
 import { loadCashModelInputs } from "@/lib/server/treasury-cash-model";
@@ -26,12 +26,13 @@ type Admin = SupabaseClient<Database>;
 /**
  * Build a fresh placed snapshot from a treasury_studies row.
  * For cash_model, recomputes timeline from live ledger inputs.
+ * Opening balance: resolved once in loadCashModelInputs via params.openingBalance.
  */
 export async function buildPlacedStudySnapshot(
   admin: Admin,
   clientUserId: string,
   studyRow: Record<string, unknown>,
-  opts?: { manualOpeningBalance?: number | null }
+  opts?: { openingBalance?: number | null }
 ): Promise<PlacedStudySnapshot | null> {
   const type = String(studyRow.type ?? "");
   const id = String(studyRow.id);
@@ -56,22 +57,17 @@ export async function buildPlacedStudySnapshot(
     }
     const scope = studyRow.scope as { accountId?: string } | null;
     const accountId = scope?.accountId ?? null;
-    const inputs = await loadCashModelInputs(admin, clientUserId, accountId);
-    let openingSource: "ledger" | "manual" | "unknown" =
-      inputs.openingBalanceRaw != null ? "ledger" : "unknown";
-
-    const paramsWithManual = params as CashModelParams & {
-      manualOpeningBalance?: number;
-    };
-    if (opts?.manualOpeningBalance != null) {
-      inputs.openingBalance = opts.manualOpeningBalance;
-      inputs.openingBalanceRaw = opts.manualOpeningBalance;
-      openingSource = "manual";
-    } else if (typeof paramsWithManual.manualOpeningBalance === "number") {
-      inputs.openingBalance = paramsWithManual.manualOpeningBalance;
-      inputs.openingBalanceRaw = paramsWithManual.manualOpeningBalance;
-      openingSource = "manual";
-    }
+    const override =
+      opts?.openingBalance != null && Number.isFinite(opts.openingBalance)
+        ? opts.openingBalance
+        : resolveOpeningBalanceOverride(params);
+    const inputs = await loadCashModelInputs(
+      admin,
+      clientUserId,
+      accountId,
+      undefined,
+      { openingBalance: override }
+    );
 
     const composed = composeCashModelResponse(inputs, params, scenarios);
     const derived: CashModelDerivedSnapshot = {
@@ -84,7 +80,7 @@ export async function buildPlacedStudySnapshot(
       name,
       asOf: composed.asOf,
       openingBalanceRaw: inputs.openingBalanceRaw,
-      openingBalanceSource: openingSource,
+      openingBalanceSource: inputs.openingBalanceSource,
       timeline: composed.timeline,
       summaries: composed.summaries,
       params,

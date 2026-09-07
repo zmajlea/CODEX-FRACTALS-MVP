@@ -17,6 +17,7 @@ import {
   bucketEndDate,
   bucketLabel,
   bucketStartForDate,
+  isoWeekYearAndNumber,
   loadBucketedByCategoryFlat,
   nextBucketStart,
 } from "@/lib/treasury/load-bucketed-by-category";
@@ -228,7 +229,7 @@ function finalizeComparison(
   };
 }
 
-/** Build multi-series comparison envelope (Spec B14). */
+/** Build multi-series comparison envelope (Spec B14 / B18). */
 export async function buildComparison(
   admin: Admin,
   tenantId: string,
@@ -245,43 +246,28 @@ export async function buildComparison(
     definition.chart_hint === "multi_line" ? "multi_line" : "grouped_column";
 
   if (definition.compare.by === "year") {
-    const years = resolveCompareYears(definition.compare);
-    if (!years.length) throw new Error("compare years required");
+    return buildYearComparison(
+      admin,
+      clientId,
+      definition,
+      subdivision,
+      bucketOp,
+      chartHint
+    );
+  }
 
-    const axisLabels =
-      subdivision === "quarter" ? [...QUARTER_AXIS] : [...MONTH_AXIS];
-    const start = `${years[0]}-01-01`;
-    const end = `${years[years.length - 1]}-12-31`;
-
-    const rows = await loadBucketedByCategoryFlat(admin, clientId, {
-      accountId: accountFilterFromSource(definition.source),
-      from: start,
-      to: end,
-    });
-
-    const raw = new Map<string, number[]>();
-    for (const row of rows) {
-      if (!matchSource(row, definition.source)) continue;
-      const bucket = bucketStartForDate(row.posted_date, subdivision);
-      const list = raw.get(bucket) ?? [];
-      list.push(row.total);
-      raw.set(bucket, list);
-    }
-
-    const groups: MetricComparison["groups"] = years.map((year) => {
-      const points: MetricComparisonPoint[] = axisLabels.map((label, idx) => {
-        const bucketStart =
-          subdivision === "quarter"
-            ? quarterBucketStart(year, idx)
-            : monthBucketStart(year, idx);
-        const value = applyBucketOp(bucketOp, raw.get(bucketStart) ?? []);
-        const partial = isPartialBucket(bucketStart, subdivision) ? ({ partial: true as const }) : {};
-        return { bucket_label: label, value, ...partial };
-      });
-      return { key: String(year), label: String(year), points };
-    });
-
-    return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+  if (
+    definition.compare.by === "previous" ||
+    definition.compare.by === "range"
+  ) {
+    return buildSpanComparison(
+      admin,
+      clientId,
+      definition,
+      subdivision,
+      bucketOp,
+      chartHint
+    );
   }
 
   const keys = definition.compare.keys ?? [];
@@ -303,7 +289,7 @@ export async function buildComparison(
     });
     for (const row of rows) {
       if (!matchSource(row, source)) continue;
-      const bucket = bucketStartForDate(row.posted_date, subdivision);
+      const bucket = bucketStartForDate(row.posted_date, subdivision, bounds.start);
       const list = raw.get(bucket) ?? [];
       list.push(row.total);
       raw.set(bucket, list);
@@ -324,6 +310,184 @@ export async function buildComparison(
   }
 
   return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+}
+
+async function buildYearComparison(
+  admin: Admin,
+  clientId: string,
+  definition: MetricDefinition,
+  subdivision: MetricSubdivision,
+  bucketOp: MetricBucketOp,
+  chartHint: MetricComparisonChartHint
+): Promise<MetricComparison> {
+  const years = resolveCompareYears(definition.compare!);
+  if (!years.length) throw new Error("compare years required");
+
+  const start = `${years[0]}-01-01`;
+  const end = `${years[years.length - 1]}-12-31`;
+
+  const rows = await loadBucketedByCategoryFlat(admin, clientId, {
+    accountId: accountFilterFromSource(definition.source),
+    from: start,
+    to: end,
+  });
+
+  if (subdivision === "week" || subdivision === "biweek") {
+    // Align by ISO week number (W01↔W01); biweek = floor((week-1)/2).
+    const maxSlots = subdivision === "week" ? 53 : 27;
+    const axisLabels =
+      subdivision === "week"
+        ? Array.from({ length: 53 }, (_, i) => `W${String(i + 1).padStart(2, "0")}`)
+        : Array.from({ length: 27 }, (_, i) => `BW${String(i + 1).padStart(2, "0")}`);
+
+    const raw = new Map<string, number[]>();
+    for (const row of rows) {
+      if (!matchSource(row, definition.source)) continue;
+      const { isoYear, week } = isoWeekYearAndNumber(row.posted_date);
+      const slot =
+        subdivision === "week" ? week : Math.floor((week - 1) / 2) + 1;
+      if (slot < 1 || slot > maxSlots) continue;
+      const key = `${isoYear}:${slot}`;
+      const list = raw.get(key) ?? [];
+      list.push(row.total);
+      raw.set(key, list);
+    }
+
+    const groups: MetricComparison["groups"] = years.map((year) => {
+      const points: MetricComparisonPoint[] = axisLabels.map((label, idx) => {
+        const slot = idx + 1;
+        const value = applyBucketOp(bucketOp, raw.get(`${year}:${slot}`) ?? []);
+        return { bucket_label: label, value };
+      });
+      return { key: String(year), label: String(year), points };
+    });
+
+    return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+  }
+
+  const axisLabels =
+    subdivision === "quarter" ? [...QUARTER_AXIS] : [...MONTH_AXIS];
+
+  const raw = new Map<string, number[]>();
+  for (const row of rows) {
+    if (!matchSource(row, definition.source)) continue;
+    const bucket = bucketStartForDate(row.posted_date, subdivision);
+    const list = raw.get(bucket) ?? [];
+    list.push(row.total);
+    raw.set(bucket, list);
+  }
+
+  const groups: MetricComparison["groups"] = years.map((year) => {
+    const points: MetricComparisonPoint[] = axisLabels.map((label, idx) => {
+      const bucketStart =
+        subdivision === "quarter"
+          ? quarterBucketStart(year, idx)
+          : monthBucketStart(year, idx);
+      const value = applyBucketOp(bucketOp, raw.get(bucketStart) ?? []);
+      const partial = isPartialBucket(bucketStart, subdivision)
+        ? ({ partial: true as const })
+        : {};
+      return { bucket_label: label, value, ...partial };
+    });
+    return { key: String(year), label: String(year), points };
+  });
+
+  return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+}
+
+/** Current window vs previous equal span, or vs fixed ref_start/ref_end. */
+async function buildSpanComparison(
+  admin: Admin,
+  clientId: string,
+  definition: MetricDefinition,
+  subdivision: MetricSubdivision,
+  bucketOp: MetricBucketOp,
+  chartHint: MetricComparisonChartHint
+): Promise<MetricComparison> {
+  const currentBounds = calendarWindowBounds(definition.window);
+  let priorBounds: { start: string; end: string };
+
+  if (definition.compare!.by === "range") {
+    const refStart = definition.compare!.ref_start!;
+    const refEnd = definition.compare!.ref_end!;
+    priorBounds = { start: refStart, end: refEnd };
+  } else {
+    priorBounds = shiftWindowBackByOwnLength(currentBounds);
+  }
+
+  const loadSpan = async (bounds: { start: string; end: string }) => {
+    const raw = new Map<string, number[]>();
+    const rows = await loadBucketedByCategoryFlat(admin, clientId, {
+      accountId: accountFilterFromSource(definition.source),
+      from: bounds.start,
+      to: bounds.end,
+    });
+    for (const row of rows) {
+      if (!matchSource(row, definition.source)) continue;
+      const bucket = bucketStartForDate(
+        row.posted_date,
+        subdivision,
+        bounds.start
+      );
+      const list = raw.get(bucket) ?? [];
+      list.push(row.total);
+      raw.set(bucket, list);
+    }
+    return fillBuckets(raw, subdivision, bounds, bucketOp);
+  };
+
+  const currentPoints = await loadSpan(currentBounds);
+  const priorPoints = await loadSpan(priorBounds);
+  const n = Math.max(currentPoints.length, priorPoints.length);
+  const axisLabels = Array.from({ length: n }, (_, i) => {
+    return currentPoints[i]?.bucket_label ?? priorPoints[i]?.bucket_label ?? `P${i + 1}`;
+  });
+
+  const toAligned = (
+    pts: MetricSeriesPoint[],
+    labels: string[]
+  ): MetricComparisonPoint[] =>
+    labels.map((label, i) => {
+      const p = pts[i];
+      return {
+        bucket_label: label,
+        value: p?.value ?? 0,
+        ...(p?.partial ? { partial: true as const } : {}),
+      };
+    });
+
+  const groups: MetricComparison["groups"] = [
+    {
+      key: "current",
+      label: "Current",
+      points: toAligned(currentPoints, axisLabels),
+    },
+    {
+      key: "previous",
+      label: definition.compare!.by === "range" ? "Reference" : "Previous",
+      points: toAligned(priorPoints, axisLabels),
+    },
+  ];
+
+  return finalizeComparison(definition, subdivision, axisLabels, groups, chartHint);
+}
+
+/** Inclusive day-span shift: prior end = day before current start. */
+function shiftWindowBackByOwnLength(bounds: {
+  start: string;
+  end: string;
+}): { start: string; end: string } {
+  const startMs = Date.parse(`${bounds.start}T00:00:00.000Z`);
+  const endMs = Date.parse(`${bounds.end}T00:00:00.000Z`);
+  const lengthDays = Math.round((endMs - startMs) / 86_400_000) + 1;
+  const priorEnd = new Date(startMs);
+  priorEnd.setUTCDate(priorEnd.getUTCDate() - 1);
+  const priorStart = new Date(priorEnd);
+  priorStart.setUTCDate(priorStart.getUTCDate() - (lengthDays - 1));
+  return {
+    start: priorStart.toISOString().slice(0, 10),
+    end: priorEnd.toISOString().slice(0, 10),
+  };
 }
 
 function accountFilterFromSource(source: MetricSource): string | null {
@@ -524,12 +688,12 @@ function fillBuckets(
   bucketOp: MetricBucketOp
 ): MetricSeriesPoint[] {
   const firstRaw = [...raw.keys()].sort()[0];
-  let cursor = bucketStartForDate(window.start, subdivision);
+  let cursor = bucketStartForDate(window.start, subdivision, window.start);
   // Align to first bucket that can overlap window
   if (firstRaw && firstRaw < cursor) {
     // still start at window-aligned bucket
   }
-  const lastBucket = bucketStartForDate(window.end, subdivision);
+  const lastBucket = bucketStartForDate(window.end, subdivision, window.start);
   const points: MetricSeriesPoint[] = [];
 
   while (cursor <= lastBucket) {
@@ -721,7 +885,7 @@ export async function buildSeries(
   });
   for (const row of rows) {
     if (!matchSource(row, definition.source)) continue;
-    const key = bucketStartForDate(row.posted_date, subdivision);
+    const key = bucketStartForDate(row.posted_date, subdivision, bounds.start);
     const list = raw.get(key) ?? [];
     list.push(row.total);
     raw.set(key, list);

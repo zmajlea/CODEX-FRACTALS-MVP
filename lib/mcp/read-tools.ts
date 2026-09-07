@@ -1,7 +1,8 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   defaultCashModelParams,
   defaultCashModelScenarios,
+  isCashModelParams,
+  isCashModelScenarioArray,
 } from "@/lib/treasury/cash-model-types";
 import { computeTreasuryCashModel } from "@/lib/server/treasury-cash-model";
 import { loadCashModelInputs } from "@/lib/server/treasury-cash-model";
@@ -10,6 +11,7 @@ import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation
 import type { Database } from "@/lib/database.types";
 import type { McpAuthContext } from "@/lib/mcp/types";
 import type { TxStatusFilter } from "@/lib/treasury/tx-predicate";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -295,14 +297,40 @@ export async function mcpGetCashModelBaseline(
   accountId?: string
 ) {
   const acct = accountId?.trim() || null;
+
+  // Spec B18 — honor primary cash_model study params (incl. openingBalance)
+  // so baseline flips when the Studies field is set; fall back to defaults.
+  let params = defaultCashModelParams();
+  let scenarios = defaultCashModelScenarios();
+  let scopeAccountId = acct;
+
+  const { data: primary } = await admin
+    .from("treasury_studies")
+    .select("params, scenarios, scope")
+    .eq("client_user_id", clientId)
+    .eq("type", "cash_model")
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  if (primary) {
+    if (isCashModelParams(primary.params)) params = primary.params;
+    if (isCashModelScenarioArray(primary.scenarios)) {
+      scenarios = primary.scenarios;
+    }
+    const scope = primary.scope as { accountId?: string } | null;
+    if (!scopeAccountId && scope?.accountId) {
+      scopeAccountId = scope.accountId;
+    }
+  }
+
   const result = await computeTreasuryCashModel(admin, clientId, {
-    accountId: acct,
-    params: defaultCashModelParams(),
-    scenarios: defaultCashModelScenarios(),
+    accountId: scopeAccountId,
+    params,
+    scenarios,
   });
   const base = result.summaries.find((s) => s.scenarioId === "base");
   return {
-    account_id: acct,
+    account_id: scopeAccountId,
     as_of: result.asOf,
     opening_balance: result.openingBalance,
     breach_month: base?.breachMonth ?? null,

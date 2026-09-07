@@ -22,6 +22,11 @@ import {
   kindFromDefinition,
   validateMetricDefinition,
 } from "../lib/mcp/metrics-schema";
+import {
+  bucketStartForDate,
+  isoWeekYearAndNumber,
+  nextBucketStart,
+} from "../lib/treasury/load-bucketed-by-category";
 import { createMetric } from "../lib/treasury/metrics-define";
 import {
   computeMetricValue,
@@ -742,6 +747,145 @@ async function main() {
     );
   }
 
+  // ——— Spec B18 Part A ———
+  // 15. Biweek buckets anchored to window start (14-day)
+  {
+    const win = "2026-01-05";
+    const b0 = bucketStartForDate("2026-01-05", "biweek", win);
+    const b1 = bucketStartForDate("2026-01-18", "biweek", win);
+    const b2 = bucketStartForDate("2026-01-19", "biweek", win);
+    const next = nextBucketStart(win, "biweek");
+    const ok =
+      b0 === "2026-01-05" &&
+      b1 === "2026-01-05" &&
+      b2 === "2026-01-19" &&
+      next === "2026-01-19";
+    record(
+      15,
+      "B18 biweek window-start buckets",
+      ok,
+      `b0=${b0} b1=${b1} b2=${b2} next=${next}`
+    );
+  }
+
+  // 16. Schema: previous / range / weekly YoY / illegal range / kindFromDefinition
+  {
+    const baseSrc = {
+      type: "category" as const,
+      key: "Payroll",
+      direction: "out" as const,
+    };
+    const prevOk = validateMetricDefinition({
+      of: "series_compare",
+      source: baseSrc,
+      subdivision: "week",
+      bucket_op: "sum",
+      window: { kind: "trailing", months: 1 },
+      compare: { by: "previous" },
+    });
+    const rangeOk = validateMetricDefinition({
+      of: "series_compare",
+      source: baseSrc,
+      subdivision: "week",
+      bucket_op: "sum",
+      window: { kind: "trailing", months: 1 },
+      compare: {
+        by: "range",
+        ref_start: "2022-03-01",
+        ref_end: "2022-03-31",
+      },
+    });
+    const rangeBad = validateMetricDefinition({
+      of: "series_compare",
+      source: baseSrc,
+      subdivision: "week",
+      bucket_op: "sum",
+      window: { kind: "trailing", months: 1 },
+      compare: { by: "range" },
+    });
+    const weekYoy = validateMetricDefinition({
+      of: "series_compare",
+      source: baseSrc,
+      subdivision: "week",
+      bucket_op: "sum",
+      window: { kind: "all" },
+      compare: { by: "year", last_n_years: 2 },
+    });
+    const biweekYoy = validateMetricDefinition({
+      of: "series_compare",
+      source: baseSrc,
+      subdivision: "biweek",
+      bucket_op: "sum",
+      window: { kind: "all" },
+      compare: { by: "year", last_n_years: 2 },
+    });
+    const kindCmp = kindFromDefinition({
+      of: "series_compare",
+      compare: { by: "previous" },
+    });
+    const iso = isoWeekYearAndNumber("2024-12-30"); // ISO week in 2025 often
+    const ok =
+      prevOk.ok &&
+      rangeOk.ok &&
+      !rangeBad.ok &&
+      weekYoy.ok &&
+      biweekYoy.ok &&
+      kindCmp === "comparison" &&
+      iso.week >= 1 &&
+      iso.week <= 53;
+    record(
+      16,
+      "B18 schema previous/range/weekly-YoY + kind",
+      ok,
+      `prev=${prevOk.ok} range=${rangeOk.ok} bad=${!rangeBad.ok} wYoy=${weekYoy.ok} bw=${biweekYoy.ok} kind=${kindCmp} isoW=${iso.week}`
+    );
+  }
+
+  // 17. Live preview: previous + biweek definitions evaluate (v:3 / v:2)
+  {
+    const prevDef = {
+      of: "series_compare" as const,
+      source: {
+        type: "category" as const,
+        key: "Payroll",
+        direction: "out" as const,
+      },
+      subdivision: "week" as const,
+      bucket_op: "sum" as const,
+      window: { kind: "trailing" as const, months: 1 },
+      compare: { by: "previous" as const },
+    };
+    const biweekDef = {
+      of: "series_totals" as const,
+      source: {
+        type: "category" as const,
+        key: "Payroll",
+        direction: "out" as const,
+      },
+      subdivision: "biweek" as const,
+      bucket_op: "sum" as const,
+      window: { kind: "trailing" as const, months: 3 },
+    };
+    const prev = await previewMetricValue(admin, r1TenantId!, r1ClientId, prevDef);
+    const bi = await previewMetricValue(admin, r1TenantId!, r1ClientId, biweekDef);
+    const prevCmp =
+      prev.ok && prev.kind === "comparison" ? prev.comparison : null;
+    const biSeries = bi.ok && bi.kind === "analytics" ? bi.series : null;
+    const ok =
+      !!prevCmp &&
+      prevCmp.v === 3 &&
+      (prevCmp.groups?.length ?? 0) === 2 &&
+      !!biSeries &&
+      biSeries.v === 2 &&
+      biSeries.subdivision === "biweek";
+    record(
+      17,
+      "B18 preview previous + biweek",
+      ok,
+      `prevV=${prevCmp?.v} groups=${prevCmp?.groups?.length} biV=${biSeries?.v} sub=${biSeries?.subdivision}`
+    );
+  }
+
   for (const id of cleanupIds) {
     if (id) {
       await admin
@@ -753,10 +897,10 @@ async function main() {
 
   log("Running npm run build…");
   execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
-  record(15, "npm run build", true, "green");
+  record(18, "npm run build", true, "green");
 
   log("");
-  log("=== Spec B5/B14 gate: ALL PASS ===");
+  log("=== Spec B5/B14/B18 gate: ALL PASS ===");
   for (const r of results) log(`  ${r.ok ? "✓" : "✗"} ${r.id}. ${r.name}`);
 }
 

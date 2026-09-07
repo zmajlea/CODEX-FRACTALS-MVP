@@ -32,10 +32,14 @@ function quarterStart(d: Date): string {
   return `${d.getUTCFullYear()}-${String(q + 1).padStart(2, "0")}-01`;
 }
 
-/** Bucket key (start date) for a posted date under the given subdivision. */
+/**
+ * Bucket key (start date) for a posted date under the given subdivision.
+ * Biweek: 14-day buckets anchored to `windowStart` (B18 — window-start, not ISO-even).
+ */
 export function bucketStartForDate(
   postedDate: string,
-  subdivision: MetricSubdivision
+  subdivision: MetricSubdivision,
+  windowStart?: string
 ): string {
   const d = new Date(`${postedDate.slice(0, 10)}T00:00:00.000Z`);
   switch (subdivision) {
@@ -43,6 +47,16 @@ export function bucketStartForDate(
       return postedDate.slice(0, 10);
     case "week":
       return isoWeekStart(d);
+    case "biweek": {
+      const anchor = (windowStart ?? postedDate).slice(0, 10);
+      const startMs = Date.parse(`${anchor}T00:00:00.000Z`);
+      const postedMs = Date.parse(`${postedDate.slice(0, 10)}T00:00:00.000Z`);
+      const days = Math.floor((postedMs - startMs) / 86_400_000);
+      const biweekIndex = Math.floor(days / 14);
+      const out = new Date(startMs);
+      out.setUTCDate(out.getUTCDate() + biweekIndex * 14);
+      return out.toISOString().slice(0, 10);
+    }
     case "month":
       return `${postedDate.slice(0, 7)}-01`;
     case "quarter":
@@ -54,6 +68,22 @@ export function bucketStartForDate(
   }
 }
 
+/** ISO week-year + week number (Mon-start) for YoY week/biweek alignment. */
+export function isoWeekYearAndNumber(postedDate: string): {
+  isoYear: number;
+  week: number;
+} {
+  const d = new Date(`${postedDate.slice(0, 10)}T00:00:00.000Z`);
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const isoYear = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7
+  );
+  return { isoYear, week };
+}
+
 export function bucketLabel(
   bucketStart: string,
   subdivision: MetricSubdivision
@@ -63,6 +93,8 @@ export function bucketLabel(
       return bucketStart;
     case "week":
       return `W ${bucketStart}`;
+    case "biweek":
+      return `BW ${bucketStart}`;
     case "month":
       return bucketStart.slice(0, 7);
     case "quarter": {
@@ -89,6 +121,9 @@ export function nextBucketStart(
       break;
     case "week":
       d.setUTCDate(d.getUTCDate() + 7);
+      break;
+    case "biweek":
+      d.setUTCDate(d.getUTCDate() + 14);
       break;
     case "month":
       d.setUTCMonth(d.getUTCMonth() + 1);

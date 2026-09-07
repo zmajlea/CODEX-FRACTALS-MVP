@@ -77,6 +77,7 @@ export function TreasuryCashModelPanel({
     error,
     setSelectedScenarioId,
     setHorizon,
+    setOpeningBalanceOverride,
     updateBucketMap,
     updateScenarioFactor,
     updateScenarioThreshold,
@@ -405,6 +406,60 @@ export function TreasuryCashModelPanel({
                   }`
                 : `Opening ${fmtMoney(result.openingBalance)} as of ${result.asOf}`}
             </p>
+            <div
+              className="cm-ob-override"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 8,
+              }}
+            >
+              <label className="treasury-meta" style={{ fontSize: 12 }}>
+                Opening balance
+                <input
+                  type="number"
+                  className="rcx-input"
+                  style={{ marginLeft: 6, width: 140 }}
+                  value={
+                    params.openingBalance != null &&
+                    Number.isFinite(params.openingBalance)
+                      ? params.openingBalance
+                      : ""
+                  }
+                  placeholder={String(Math.round(result.openingBalance))}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      setOpeningBalanceOverride(null);
+                      return;
+                    }
+                    const n = Number(raw);
+                    if (Number.isFinite(n)) setOpeningBalanceOverride(n);
+                  }}
+                />
+              </label>
+              <span
+                className="chip"
+                title="ledger = account buffer; manual = params.openingBalance"
+              >
+                {params.openingBalance != null &&
+                Number.isFinite(params.openingBalance)
+                  ? "manual"
+                  : "ledger"}
+              </span>
+              {params.openingBalance != null &&
+              Number.isFinite(params.openingBalance) ? (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setOpeningBalanceOverride(null)}
+                >
+                  Reset to ledger
+                </button>
+              ) : null}
+            </div>
             <span className="chip prov-assumed">History ending derived</span>
           </div>
 

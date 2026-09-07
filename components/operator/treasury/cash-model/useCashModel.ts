@@ -46,6 +46,7 @@ export type CashModelModelState = {
   error: string | null;
   setSelectedScenarioId: (id: string) => void;
   setHorizon: (horizon: number) => void;
+  setOpeningBalanceOverride: (value: number | null) => void;
   updateBucketMap: (label: string, bucket: CashModelBucketKey | null) => void;
   updateScenarioFactor: (
     scenarioId: string,
@@ -234,6 +235,10 @@ export function useCashModel(
     setParams((p) => (p ? { ...p, horizon: h } : p));
   }, []);
 
+  const setOpeningBalanceOverride = useCallback((value: number | null) => {
+    setParams((p) => (p ? { ...p, openingBalance: value } : p));
+  }, []);
+
   const updateBucketMap = useCallback(
     (label: string, bucket: CashModelBucketKey | null) => {
       setParams((p) => {
@@ -420,6 +425,7 @@ export function useCashModel(
     error,
     setSelectedScenarioId,
     setHorizon,
+    setOpeningBalanceOverride,
     updateBucketMap,
     updateScenarioFactor,
     updateScenarioThreshold,
