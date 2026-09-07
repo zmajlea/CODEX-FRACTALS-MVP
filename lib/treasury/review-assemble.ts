@@ -18,6 +18,10 @@ import {
   isPinnedWindow,
 } from "@/lib/treasury/pinned-window";
 import type { MetricDefinition } from "@/lib/mcp/metrics-schema";
+import {
+  parseLayoutOrNull,
+  type ReviewBlockLayout,
+} from "@/lib/treasury/review-block-layout";
 
 type Admin = SupabaseClient<Database>;
 
@@ -33,6 +37,8 @@ export type ReviewBlockRow = {
   study_id: string | null;
   pinned_window: Json | null;
   view_mode: ReviewBlockViewMode;
+  /** B17 presentation only — {w,h}; null = full-width legacy. */
+  layout: ReviewBlockLayout | null;
   placed_snapshot: Json | null;
   caption: string;
   body: string;
@@ -108,6 +114,7 @@ export function normalizeBlockRow(row: Record<string, unknown>): ReviewBlockRow 
     study_id: (row.study_id as string | null) ?? null,
     pinned_window: (row.pinned_window as Json | null) ?? null,
     view_mode: viewMode,
+    layout: parseLayoutOrNull(row.layout),
     placed_snapshot: (row.placed_snapshot as Json | null) ?? null,
     caption: String(row.caption ?? ""),
     body: String(row.body ?? ""),
@@ -294,6 +301,7 @@ export async function buildReviewSnapshot(
         value,
         unit,
         caption: block.caption,
+        layout: block.layout,
       });
     } else if (block.role === "exhibit" && block.metric_id) {
       const out = await computeBlockMetric(
@@ -337,6 +345,7 @@ export async function buildReviewSnapshot(
         metric_id: block.metric_id,
         view_mode: block.view_mode ?? "chart",
         pinned_window: block.pinned_window,
+        layout: block.layout,
         computed,
       });
     } else if (block.role === "note") {
@@ -344,6 +353,7 @@ export async function buildReviewSnapshot(
         role: "note",
         title: block.caption || "",
         body: block.body,
+        layout: block.layout,
       });
     } else if (block.role === "narrative" && block.recommendation_id) {
       const { data: rec } = await admin
@@ -359,6 +369,7 @@ export async function buildReviewSnapshot(
           kind: row.kind,
           title: row.title,
           body: row.why,
+          layout: block.layout,
           impact:
             row.impact_amount != null
               ? {
@@ -377,6 +388,7 @@ export async function buildReviewSnapshot(
         name: (placed?.name as string) ?? "Study",
         caption: block.caption,
         view_mode: block.view_mode ?? "chart",
+        layout: block.layout,
         computed: placed,
       });
     }

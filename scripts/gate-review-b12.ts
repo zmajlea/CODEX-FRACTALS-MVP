@@ -2691,7 +2691,128 @@ async function main() {
     record(37, "get_studies + migration study role", ok, `ok=${ok}`);
   }
 
-  log("ALL 37/37 LIVE CHECKS PASSED");
+  // 38 — B17 M1 layout: set_layout persists, no snapshot mutate, series-gated flip, publish carries layout
+  {
+    const {
+      renderMetricAsChart,
+      snapshotHasSeries,
+      resolveLayout,
+      parseLayoutOrNull,
+    } = await import("../lib/treasury/review-block-layout");
+
+    const valueSnap = { kind: "value", value: 17626, computed_at: "2026-09-01" };
+    const seriesSnap = {
+      kind: "analytics",
+      value: 100,
+      series: {
+        points: [
+          { bucket_start: "2026-01-01", bucket_label: "Jan", value: 10 },
+          { bucket_start: "2026-02-01", bucket_label: "Feb", value: 20 },
+        ],
+      },
+      computed_at: "2026-09-01",
+    };
+    const flipOk =
+      !snapshotHasSeries(valueSnap) &&
+      !renderMetricAsChart(resolveLayout({ w: 12, h: 1 }), valueSnap) &&
+      snapshotHasSeries(seriesSnap) &&
+      !renderMetricAsChart(resolveLayout({ w: 3, h: 1 }), seriesSnap) &&
+      renderMetricAsChart(resolveLayout({ w: 6, h: 1 }), seriesSnap);
+
+    const blockRoute = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/blocks/[blockId]/route.ts"
+      ),
+      "utf8"
+    );
+    const panelSrc = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
+      "utf8"
+    );
+    const assembleSrc = readFileSync(
+      join(ROOT, "lib/treasury/review-assemble.ts"),
+      "utf8"
+    );
+    const migLayout = existsSync(
+      join(ROOT, "supabase/migrations/20260907140000_b17_review_block_layout.sql")
+    );
+    const setLayoutIdx = blockRoute.indexOf('action === "set_layout"');
+    const setLayoutChunk =
+      setLayoutIdx >= 0 ? blockRoute.slice(setLayoutIdx, setLayoutIdx + 500) : "";
+    const srcOk =
+      setLayoutIdx >= 0 &&
+      !setLayoutChunk.includes("computeBlockMetric") &&
+      !setLayoutChunk.includes("placed_snapshot") &&
+      panelSrc.includes("set_layout") &&
+      panelSrc.includes("renderMetricAsChart") &&
+      panelSrc.includes("data-bp") &&
+      assembleSrc.includes("layout: block.layout") &&
+      migLayout;
+
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let rid: string | null = null;
+    let persistOk = false;
+    try {
+      const frozenSnap = {
+        kind: "value",
+        value: 42,
+        computed_at: "2026-09-01T00:00:00.000Z",
+      };
+      const { data: rev } = await admin
+        .from("treasury_reviews")
+        .insert({
+          tenant_id: r1TenantId!,
+          client_user_id: r1ClientId,
+          period_month: "2026-01-01",
+          label: `${label}-b17-layout`,
+          title: "B17 Layout",
+          status: "draft",
+          created_by: r1OperatorId,
+        })
+        .select("id")
+        .single();
+      rid = rev?.id ?? null;
+      const { data: block } = await admin
+        .from("treasury_review_blocks")
+        .insert({
+          review_id: rid!,
+          position: 1,
+          role: "note",
+          caption: "layout note",
+          body: "body",
+          proposal_state: "none",
+          provenance: {},
+          placed_snapshot: frozenSnap as unknown as Json,
+          layout: { w: 3, h: 1 } as unknown as Json,
+        })
+        .select("*")
+        .single();
+      const beforeSnap = JSON.stringify(block?.placed_snapshot);
+      const { data: updated } = await admin
+        .from("treasury_review_blocks")
+        .update({ layout: { w: 12, h: 2 } as unknown as Json })
+        .eq("id", block!.id)
+        .select("*")
+        .single();
+      const layout = parseLayoutOrNull(updated?.layout);
+      persistOk =
+        layout?.w === 12 &&
+        layout?.h === 2 &&
+        JSON.stringify(updated?.placed_snapshot) === beforeSnap;
+    } finally {
+      if (rid) await admin.from("treasury_reviews").delete().eq("id", rid);
+    }
+
+    record(
+      38,
+      "B17 layout persist + series gate + snapshot carry",
+      flipOk && srcOk && persistOk,
+      `flip=${flipOk} src=${srcOk} persist=${persistOk}`
+    );
+  }
+
+  log("ALL 38/38 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

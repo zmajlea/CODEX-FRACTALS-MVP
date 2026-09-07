@@ -1977,6 +1977,7 @@ export type Database = {
           caption: string
           created_at: string
           id: string
+          layout: Json | null
           metric_id: string | null
           pinned_window: Json | null
           placed_snapshot: Json | null
@@ -1995,6 +1996,7 @@ export type Database = {
           caption?: string
           created_at?: string
           id?: string
+          layout?: Json | null
           metric_id?: string | null
           pinned_window?: Json | null
           placed_snapshot?: Json | null
@@ -2013,6 +2015,7 @@ export type Database = {
           caption?: string
           created_at?: string
           id?: string
+          layout?: Json | null
           metric_id?: string | null
           pinned_window?: Json | null
           placed_snapshot?: Json | null

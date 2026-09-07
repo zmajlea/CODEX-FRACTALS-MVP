@@ -9,6 +9,7 @@ import {
   normalizeReviewRow,
   toPlacedSnapshot,
 } from "@/lib/treasury/review-assemble";
+import { parseLayoutOrNull } from "@/lib/treasury/review-block-layout";
 import { scanEnvelope } from "@/lib/treasury/envelope-scan";
 import type { Database, Json } from "@/lib/database.types";
 
@@ -43,6 +44,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     body?: string;
     window?: unknown;
     view_mode?: string;
+    layout?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -151,6 +153,20 @@ export async function PATCH(request: Request, context: RouteContext) {
   } else if (action === "set_view_mode") {
     const mode = body.view_mode === "table" ? "table" : "chart";
     update.view_mode = mode;
+  } else if (action === "set_layout") {
+    // Spec B17 M1 — presentation only; never recompute metrics.
+    if (body.layout === null) {
+      update.layout = null;
+    } else {
+      const layout = parseLayoutOrNull(body.layout);
+      if (!layout) {
+        return NextResponse.json(
+          { error: "layout must be { w: 1-12, h: 1-3 } or null" },
+          { status: 400 }
+        );
+      }
+      update.layout = layout as unknown as Json;
+    }
   } else {
     if (body.caption !== undefined) {
       const cap = body.caption.trim();
