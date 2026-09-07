@@ -9,7 +9,6 @@ import {
   MetricSeriesTable,
 } from "@/components/operator/treasury/analytics/MetricTable";
 import { ReviewDraftsPanel } from "@/components/operator/treasury/ReviewDraftsPanel";
-import { StudiesPanel } from "@/components/operator/treasury/StudiesPanel";
 import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import { isPlacedStudySnapshot } from "@/lib/treasury/study-assemble";
@@ -117,6 +116,7 @@ type MetricRow = {
   name: string;
   kind: string;
   computed_at: string | null;
+  client_user_id?: string | null;
 };
 
 type Props = {
@@ -259,8 +259,12 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     const res = await fetch(`${base}/metrics`);
     if (!res.ok) return;
     const json = (await res.json()) as { metrics: MetricRow[] };
-    setMetrics(json.metrics ?? []);
-  }, [base]);
+    // Shelf shows this client's own metrics only — drop tenant-wide "general"
+    // (client_user_id === null) definitions from the library list.
+    setMetrics(
+      (json.metrics ?? []).filter((m) => m.client_user_id === clientUserId)
+    );
+  }, [base, clientUserId]);
 
   const refresh = useCallback(
     async (preferId?: string | null) => {
@@ -1804,7 +1808,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
       {shelfOpen ? (
         <>
           <div className="rcx-shelf-scrim" onClick={() => setShelfOpen(false)} />
-          <aside className="rcx-shelf" data-wiz={builderOpen ? "1" : undefined}>
+          <aside className="rcx-shelf">
           <div className="sh">
             <span className="st">The Shelf</span>
             <button
@@ -1816,43 +1820,13 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               ›
             </button>
           </div>
-          <div style={{ marginBottom: 16 }}>
-            <StudiesPanel
-              clientUserId={clientUserId}
-              reviewId={activeId}
-              reviewStatus={status}
-              busy={busy}
-              onPlaced={() => {
-                if (activeId) void loadReview(activeId);
-              }}
-              onError={setError}
-            />
-          </div>
           <div className="rcx-kick" style={{ marginTop: 8 }}>
             Metrics
           </div>
           <div className="rcx-kick" style={{ margin: "8px 0 2px", fontSize: 10 }}>
             Metric library · {metrics.length}
           </div>
-          {builderOpen ? (
-            <div className="rcx-inline-wiz" data-testid="shelf-metric-wizard">
-              <div className="sh" style={{ marginBottom: 8 }}>
-                <span className="st">New metric</span>
-                <button
-                  type="button"
-                  className="rcx-tool"
-                  onClick={() => {
-                    setBuilderOpen(false);
-                    void loadMetrics();
-                  }}
-                >
-                  Done
-                </button>
-              </div>
-              <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
-            </div>
-          ) : (
-            <>
+          <>
           <div className="rcx-slist">
             {metrics.map((m) => (
               <div key={m.id} className="rcx-sitem">
@@ -1929,13 +1903,46 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               + New metric
             </button>
             <p className="rcx-muted" style={{ fontSize: 11, marginTop: 6 }}>
-              Opens the sentence wizard inline. Never client-visible.
+              Opens the sentence wizard in a popup. Never client-visible.
             </p>
           </div>
             </>
-          )}
           </aside>
         </>
+      ) : null}
+
+      {/* ── New-metric wizard (popup) ─────────────────── */}
+      {builderOpen ? (
+        <div
+          className="rcx-modal-scrim"
+          onClick={() => {
+            setBuilderOpen(false);
+            void loadMetrics();
+          }}
+        >
+          <div
+            className="rcx-modal"
+            data-testid="shelf-metric-wizard"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sh" style={{ marginBottom: 12 }}>
+              <span className="st">New metric</span>
+              <button
+                type="button"
+                className="rcx-tool"
+                onClick={() => {
+                  setBuilderOpen(false);
+                  void loadMetrics();
+                }}
+              >
+                Done
+              </button>
+            </div>
+            <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
+          </div>
+        </div>
       ) : null}
 
       {publishOpen ? (
@@ -2209,6 +2216,9 @@ const RCX_CSS = `
 .rcx-shelf-scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink,#102a47) 28%,transparent);z-index:60;animation:rcxfade .18s ease}
 .rcx-shelf{position:fixed;top:0;right:0;bottom:0;width:min(348px,92vw);z-index:61;background:var(--rail,#fff);border-left:1px solid var(--paper-edge);box-shadow:-18px 0 54px rgba(16,42,71,.18);padding:16px 16px;display:flex;flex-direction:column;overflow:auto;animation:rcxslide .2s ease}
 .rcx-shelf[data-wiz="1"]{width:min(520px,96vw)}
+/* new-metric wizard popup */
+.rcx-modal-scrim{position:fixed;inset:0;z-index:80;background:color-mix(in srgb,var(--ink,#102a47) 40%,transparent);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto;animation:rcxfade .16s ease}
+.rcx-modal{width:min(760px,96vw);background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:14px;box-shadow:0 24px 70px rgba(16,42,71,.28);padding:18px 20px;animation:rcxfade .18s ease}
 .rcx-shelf .sh{display:flex;align-items:center;justify-content:space-between}
 .rcx-shelf .st{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
 .rcx-slist{overflow:auto;margin:6px -2px;padding:2px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto}
