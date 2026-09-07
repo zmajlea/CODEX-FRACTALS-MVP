@@ -236,37 +236,21 @@ export function StudiesPanel({
       </div>
 
       {editorOpen ? (
-        <div
-          style={{
-            border: "1px solid var(--su-line, #DED9D1)",
-            borderRadius: 8,
-            padding: 10,
-            marginBottom: 12,
-            background: "#fff",
-          }}
-        >
-          <StudyAuthorCanvas
-            clientUserId={clientUserId}
-            name={name}
-            typeLabel={typeLabel}
-            openingBalance={openingBalance}
-            onNameChange={setName}
-            onTypeLabelChange={setTypeLabel}
-            onOpeningBalanceChange={setOpeningBalance}
-            value={canvas}
-            onChange={setCanvas}
-            disabled={locked}
-          />
-          <button
-            type="button"
-            className="rcx-btn sm"
-            style={{ marginTop: 8, width: "100%" }}
-            disabled={locked}
-            onClick={() => void saveManual()}
-          >
-            Save study
-          </button>
-        </div>
+        <StudyAuthorCanvas
+          clientUserId={clientUserId}
+          name={name}
+          typeLabel={typeLabel}
+          openingBalance={openingBalance}
+          onNameChange={setName}
+          onTypeLabelChange={setTypeLabel}
+          onOpeningBalanceChange={setOpeningBalance}
+          value={canvas}
+          onChange={setCanvas}
+          disabled={locked}
+          saving={localBusy === "manual"}
+          onSave={() => void saveManual()}
+          onClose={() => setEditorOpen(false)}
+        />
       ) : null}
 
       {loading ? (
