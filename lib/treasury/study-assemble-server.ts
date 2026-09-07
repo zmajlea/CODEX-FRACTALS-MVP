@@ -1,5 +1,6 @@
 /**
  * Spec B16 — server-only placed study builder (live cash-model recompute).
+ * Phase 1 — generic MODEL_KINDS dispatch (no per-type if branches).
  */
 import "server-only";
 
@@ -7,26 +8,40 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import {
   isCashModelParams,
-  isCashModelScenarioArray,
   resolveOpeningBalanceOverride,
-  type CashModelDerivedSnapshot,
 } from "@/lib/treasury/cash-model-types";
-import { composeCashModelResponse } from "@/lib/treasury/cash-model-compose";
-import { loadCashModelInputs } from "@/lib/server/treasury-cash-model";
-import type { ExternalModelDerivedSnapshot } from "@/lib/treasury/studies";
 import {
-  isStudyPlaceable,
-  placedStudyFromCashModelCompute,
-  placedStudyFromExternal,
-  type PlacedStudySnapshot,
-} from "@/lib/treasury/study-assemble";
+  getModelKind,
+  type Confidence,
+  type ModelRowLike,
+} from "@/lib/treasury/model-kinds";
+import { loadInputs } from "@/lib/treasury/model-kinds/load-inputs";
+import type { PlacedStudySnapshot } from "@/lib/treasury/study-assemble";
 
 type Admin = SupabaseClient<Database>;
 
+export type ModelPreviewResult = {
+  snapshot: PlacedStudySnapshot;
+  confidence: Confidence;
+  explain: string;
+};
+
+function asModelRow(studyRow: Record<string, unknown>): ModelRowLike {
+  return {
+    id: studyRow.id != null ? String(studyRow.id) : undefined,
+    name: studyRow.name != null ? String(studyRow.name) : undefined,
+    type: String(studyRow.type ?? ""),
+    status: studyRow.status != null ? String(studyRow.status) : null,
+    params: studyRow.params,
+    scenarios: studyRow.scenarios,
+    scope: studyRow.scope as { accountId?: string } | null,
+    derived_snapshot: studyRow.derived_snapshot,
+  };
+}
+
 /**
- * Build a fresh placed snapshot from a treasury_studies row.
- * For cash_model, recomputes timeline from live ledger inputs.
- * Opening balance: resolved once in loadCashModelInputs via params.openingBalance.
+ * Build a fresh placed snapshot from a treasury_studies row via MODEL_KINDS.
+ * Opening balance: opts.openingBalance wins; else params.openingBalance via loadInputs.
  */
 export async function buildPlacedStudySnapshot(
   admin: Admin,
@@ -34,60 +49,79 @@ export async function buildPlacedStudySnapshot(
   studyRow: Record<string, unknown>,
   opts?: { openingBalance?: number | null }
 ): Promise<PlacedStudySnapshot | null> {
-  const type = String(studyRow.type ?? "");
-  const id = String(studyRow.id);
-  const name = String(studyRow.name ?? "Study");
-  const status = studyRow.status != null ? String(studyRow.status) : null;
+  const out = await runModelKind(admin, clientUserId, studyRow, opts, {
+    requirePlaceable: true,
+  });
+  return out?.snapshot ?? null;
+}
 
-  if (!isStudyPlaceable({ type, status })) return null;
+/**
+ * Same compute path as place — never persists. For Model Studio preview.
+ */
+export async function previewModelKind(
+  admin: Admin,
+  clientUserId: string,
+  studyRow: Record<string, unknown>,
+  opts?: { openingBalance?: number | null }
+): Promise<ModelPreviewResult | null> {
+  return runModelKind(admin, clientUserId, studyRow, opts, {
+    requirePlaceable: false,
+  });
+}
 
-  if (type === "external_model") {
-    return placedStudyFromExternal({
-      id,
-      name,
-      derived_snapshot: studyRow.derived_snapshot as ExternalModelDerivedSnapshot,
-    });
+async function runModelKind(
+  admin: Admin,
+  clientUserId: string,
+  studyRow: Record<string, unknown>,
+  opts: { openingBalance?: number | null } | undefined,
+  flags: { requirePlaceable: boolean }
+): Promise<ModelPreviewResult | null> {
+  const row = asModelRow(studyRow);
+  const kind = getModelKind(row.type);
+  if (!kind) return null;
+  if (flags.requirePlaceable && !kind.placeable(row)) return null;
+  // Preview still refuses kinds that can never place (e.g. spend_plan).
+  if (!flags.requirePlaceable && !kind.listed && !kind.placeable(row)) {
+    return null;
   }
 
-  if (type === "cash_model") {
-    const params = studyRow.params;
-    const scenarios = studyRow.scenarios;
-    if (!isCashModelParams(params) || !isCashModelScenarioArray(scenarios)) {
-      return null;
-    }
-    const scope = studyRow.scope as { accountId?: string } | null;
-    const accountId = scope?.accountId ?? null;
-    const override =
-      opts?.openingBalance != null && Number.isFinite(opts.openingBalance)
-        ? opts.openingBalance
-        : resolveOpeningBalanceOverride(params);
-    const inputs = await loadCashModelInputs(
-      admin,
-      clientUserId,
-      accountId,
-      undefined,
-      { openingBalance: override }
-    );
+  const parsed = kind.params.safeParse(row.params);
+  if (!parsed.success) return null;
 
-    const composed = composeCashModelResponse(inputs, params, scenarios);
-    const derived: CashModelDerivedSnapshot = {
-      ...composed.derived_snapshot,
-      openingBalance: inputs.openingBalanceRaw,
-    };
-
-    return placedStudyFromCashModelCompute({
-      studyId: id,
-      name,
-      asOf: composed.asOf,
-      openingBalanceRaw: inputs.openingBalanceRaw,
-      openingBalanceSource: inputs.openingBalanceSource,
-      timeline: composed.timeline,
-      summaries: composed.summaries,
-      params,
-      scenarios,
-      derived,
-    });
+  let scenarios: unknown = [];
+  if (kind.scenarios) {
+    const s = kind.scenarios.safeParse(row.scenarios ?? []);
+    if (!s.success) return null;
+    scenarios = s.data;
   }
 
-  return null;
+  const paramsForOb = isCashModelParams(parsed.data) ? parsed.data : null;
+  const override =
+    opts?.openingBalance != null && Number.isFinite(opts.openingBalance)
+      ? opts.openingBalance
+      : resolveOpeningBalanceOverride(paramsForOb);
+
+  const inputs = await loadInputs(
+    admin,
+    clientUserId,
+    row.scope,
+    kind.inputs,
+    { openingBalance: override, params: paramsForOb }
+  );
+
+  const result = kind.compute(inputs, parsed.data, scenarios as never, row);
+  if (result == null) return null;
+
+  const snapshot = kind.toSnapshot(
+    row,
+    inputs,
+    parsed.data,
+    scenarios as never,
+    result
+  );
+  return {
+    snapshot,
+    confidence: kind.confidence(inputs, parsed.data, result),
+    explain: kind.explain(parsed.data, result),
+  };
 }

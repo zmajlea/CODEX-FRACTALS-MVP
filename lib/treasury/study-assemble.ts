@@ -495,6 +495,8 @@ export function isStudyPlaceable(study: {
   type: string;
   status?: string | null;
 }): boolean {
+  // Must match MODEL_KINDS.*.placeable (cash_model always; external confirmed;
+  // spend_plan and unknown → false).
   if (study.type === "cash_model") return true;
   if (study.type === "external_model") {
     return study.status === "confirmed";
@@ -503,6 +505,7 @@ export function isStudyPlaceable(study: {
 }
 
 export function studyAsOfFromRow(studyRow: Record<string, unknown>): string {
+  // Must match MODEL_KINDS.*.asOf for registered kinds.
   const type = String(studyRow.type ?? "");
   if (type === "cash_model") {
     const d = studyRow.derived_snapshot as CashModelDerivedSnapshot | null;

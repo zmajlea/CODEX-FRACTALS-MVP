@@ -25,7 +25,8 @@ type Props = {
 
 /**
  * Spec B19-C2 — Models shelf (was B16 "Studies" panel).
- * Lists placeable Models; overlay StudyAuthorCanvas retired (composer is ReviewTabPanel).
+ * Lists placeable Models; author overlay retired (composer is ReviewTabPanel).
+ * Spec B19-C3 — unwired from the Studies shelf; kept for Phase 2 Model Studio restore.
  */
 export function StudiesPanel({
   clientUserId,
