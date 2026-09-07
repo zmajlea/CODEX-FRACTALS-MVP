@@ -368,10 +368,9 @@ async function publishReview(
     .from("treasury_reviews")
     .select("*")
     .eq("id", reviewId)
-    .eq("status", "draft")
     .maybeSingle();
 
-  if (revErr || !reviewRow) throw new Error("Draft review not found");
+  if (revErr || !reviewRow) throw new Error("Review not found");
 
   const preflight = await gatePreflight(admin, reviewId);
   if (preflightBlocked(preflight)) {
@@ -733,12 +732,8 @@ async function main() {
       );
     }
 
-    // 11 — republish v2 supersedes v1
+    // 11 — B19-B1: republish while published (no draft reopen) supersedes v1
     {
-      await admin
-        .from("treasury_reviews")
-        .update({ status: "draft" })
-        .eq("id", reviewId);
       await admin
         .from("treasury_review_blocks")
         .update({ body: "Updated note for v2." })
@@ -750,6 +745,11 @@ async function main() {
         tim.operatorId,
         "Gate v2 change note"
       );
+      const { data: study } = await admin
+        .from("treasury_reviews")
+        .select("status, current_version")
+        .eq("id", reviewId)
+        .maybeSingle();
       const { data: v1 } = await admin
         .from("treasury_review_versions")
         .select("superseded_at")
@@ -764,12 +764,14 @@ async function main() {
         .maybeSingle();
       record(
         11,
-        "republish v2 supersedes v1",
+        "republish v2 supersedes v1 (no draft reopen)",
         pub.ok &&
           pub.version === 2 &&
+          study?.status === "published" &&
+          study?.current_version === 2 &&
           Boolean(v1?.superseded_at) &&
           v2?.change_note === "Gate v2 change note",
-        `v2=${pub.ok ? pub.version : "?"} superseded=${Boolean(v1?.superseded_at)}`
+        `v2=${pub.ok ? pub.version : "?"} status=${study?.status} cv=${study?.current_version} superseded=${Boolean(v1?.superseded_at)}`
       );
     }
 
@@ -2285,7 +2287,7 @@ async function main() {
     }
   }
 
-  // 32 — source: no preflight/stale on non-draft; Recompute gated
+  // 32 — source: stale chips draft-only; Recompute gated; archive success notes
   {
     const panel = readFileSync(
       join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
@@ -2305,11 +2307,15 @@ async function main() {
       panel.includes('"Issue archived."') &&
       panel.includes('"Issue deleted."') &&
       panel.includes('"Issue restored."');
+    // Spec B19-B1 — Publish stays available while published (Edition N+1).
+    const republishUi =
+      panel.includes('status === "draft" || status === "published"') &&
+      panel.includes("canPublish");
     record(
       32,
-      "no stale/preflight on frozen + success notes",
-      skipPreflight && staleGate && recomputeGate && successNotes,
-      `preflight=${skipPreflight} stale=${staleGate} recompute=${recomputeGate} notes=${successNotes}`
+      "no stale chips on frozen + republish UI + success notes",
+      skipPreflight && staleGate && recomputeGate && successNotes && republishUi,
+      `preflight=${skipPreflight} stale=${staleGate} recompute=${recomputeGate} notes=${successNotes} republish=${republishUi}`
     );
   }
 
@@ -3407,12 +3413,7 @@ async function main() {
           Math.abs(snap1Val - fresh1Val) < 0.01 &&
           snap1Val !== -999999;
 
-        // Re-open as draft for second edition over a different window.
-        await admin
-          .from("treasury_reviews")
-          .update({ status: "draft" })
-          .eq("id", rid);
-
+        // Spec B19-B1 — re-publish while still published (no draft reopen).
         const pub2 = await publishReview(
           admin,
           rid,
@@ -3421,6 +3422,24 @@ async function main() {
           { label: "CY 2024", window: w2 }
         );
         if (!pub2.ok) throw new Error("publish W2 blocked");
+
+        const { data: studyAfter } = await admin
+          .from("treasury_reviews")
+          .select("status, current_version")
+          .eq("id", rid)
+          .maybeSingle();
+        const { data: v1row } = await admin
+          .from("treasury_review_versions")
+          .select("version, superseded_at")
+          .eq("review_id", rid)
+          .eq("version", 1)
+          .maybeSingle();
+        const { data: v2row } = await admin
+          .from("treasury_review_versions")
+          .select("version")
+          .eq("review_id", rid)
+          .eq("version", 2)
+          .maybeSingle();
 
         const snap2Val =
           typeof pub2.snapshot.cover_figures[0]?.value === "number"
@@ -3445,18 +3464,23 @@ async function main() {
           Math.abs(snap2Val - fresh2Val) < 0.01;
         const windowsDiffer =
           snap1Val != null && snap2Val != null && snap1Val !== snap2Val;
+        const editionChain =
+          studyAfter?.status === "published" &&
+          studyAfter?.current_version === 2 &&
+          Boolean(v1row?.superseded_at) &&
+          v2row?.version === 2;
 
         record(
           43,
-          "B19B publish snapshot ≡ fresh compute(W); W1≠W2",
-          matchW1 && matchW2 && windowsDiffer,
-          `matchW1=${matchW1} matchW2=${matchW2} differ=${windowsDiffer} v1=${snap1Val} v2=${snap2Val}`
+          "B19-B1 republish W1→W2; snapshot≡compute; prior superseded",
+          matchW1 && matchW2 && windowsDiffer && editionChain,
+          `matchW1=${matchW1} matchW2=${matchW2} differ=${windowsDiffer} chain=${editionChain} v1=${snap1Val} v2=${snap2Val}`
         );
       }
     } catch (e) {
       record(
         43,
-        "B19B publish snapshot ≡ fresh compute(W); W1≠W2",
+        "B19-B1 republish W1→W2; snapshot≡compute; prior superseded",
         false,
         e instanceof Error ? e.message : String(e)
       );
