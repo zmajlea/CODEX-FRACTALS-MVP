@@ -120,6 +120,33 @@ export function definitionWithPinnedWindow(
   };
 }
 
+/**
+ * Spec B19 — cascade: block.pinned_window ?? study effective window ?? definition.window.
+ * Study window is passed as {from,to}; converted to a custom pinned range when no pin.
+ */
+export function definitionWithWindowCascade(
+  definition: MetricDefinition,
+  pinned: PinnedWindow | null | undefined,
+  studyWindow: { from: string; to: string } | null | undefined,
+  now = new Date()
+): MetricDefinition {
+  if (pinned && isPinnedWindow(pinned)) {
+    return definitionWithPinnedWindow(definition, pinned, now);
+  }
+  if (
+    studyWindow &&
+    typeof studyWindow.from === "string" &&
+    typeof studyWindow.to === "string"
+  ) {
+    return definitionWithPinnedWindow(
+      definition,
+      { preset: "custom", start: studyWindow.from, end: studyWindow.to },
+      now
+    );
+  }
+  return definition;
+}
+
 export const PINNED_WINDOW_PRESETS: Array<{
   id: PinnedWindowPreset;
   label: string;

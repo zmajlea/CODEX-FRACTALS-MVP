@@ -7,6 +7,7 @@ import {
   computeBlockMetric,
   normalizeBlockRow,
   normalizeReviewRow,
+  resolveEffectiveStudyWindow,
   toPlacedSnapshot,
 } from "@/lib/treasury/review-assemble";
 import { scanEnvelope } from "@/lib/treasury/envelope-scan";
@@ -254,7 +255,8 @@ export async function POST(request: Request, context: RouteContext) {
       guard.admin,
       review.tenant_id,
       review.client_user_id,
-      blockStub
+      blockStub,
+      resolveEffectiveStudyWindow(null, review.window)
     );
     if (out) placedSnapshot = toPlacedSnapshot(out);
   }

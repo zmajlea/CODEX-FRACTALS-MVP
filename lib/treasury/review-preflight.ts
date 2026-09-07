@@ -5,6 +5,7 @@ import {
   isBlockStale,
   normalizeBlockRow,
   normalizeReviewRow,
+  resolveEffectiveStudyWindow,
   type ReviewBlockRow,
 } from "@/lib/treasury/review-assemble";
 import { normalizeRecommendationRow } from "@/lib/server/treasury-recommendation-evidence";
@@ -57,8 +58,17 @@ export async function computeReviewPreflight(
     .map((b) => b.id);
 
   const stale_block_ids: string[] = [];
+  const studyWindow = resolveEffectiveStudyWindow(null, review.window);
   for (const block of blocks) {
-    if (await isBlockStale(admin, review.tenant_id, review.client_user_id, block)) {
+    if (
+      await isBlockStale(
+        admin,
+        review.tenant_id,
+        review.client_user_id,
+        block,
+        studyWindow
+      )
+    ) {
       stale_block_ids.push(block.id);
     }
   }
