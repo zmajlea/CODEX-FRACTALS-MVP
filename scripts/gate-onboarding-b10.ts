@@ -316,7 +316,8 @@ async function main() {
     await admin.from("user_roles").insert({
       user_id: clientId,
       role: "client",
-      tenant_id: null,
+      // Spec B16F1: same constraint as createTreasuryClient — client role needs tenant.
+      tenant_id: tokens.tim.tenantId,
       granted_by: tokens.tim.operatorId,
     });
     const { data: grant, error: gErr } = await admin
