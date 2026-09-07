@@ -116,6 +116,13 @@ export type TreasuryStudyRow =
   | CashModelStudyRow
   | ExternalModelStudyRow;
 
+/**
+ * Product alias: Model row. Physical table remains treasury_studies.
+ * StudyType stays the explicit union (includes legacy spend_plan) so API
+ * routes keep compiling — do not narrow to keyof MODEL_KINDS alone.
+ */
+export type ModelRow = TreasuryStudyRow;
+
 export type DriftField =
   | "l0"
   | "buffer"

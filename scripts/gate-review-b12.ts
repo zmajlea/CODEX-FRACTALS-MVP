@@ -2304,9 +2304,9 @@ async function main() {
       panel.includes('disabled={busy || status !== "draft"}') &&
       panel.includes('action: "recalculate"');
     const successNotes =
-      panel.includes('"Issue archived."') &&
-      panel.includes('"Issue deleted."') &&
-      panel.includes('"Issue restored."');
+      panel.includes('"Study archived."') &&
+      panel.includes('"Study deleted."') &&
+      panel.includes('"Study restored."');
     // Spec B19-B1 — Publish stays available while published (Edition N+1).
     const republishUi =
       panel.includes('status === "draft" || status === "published"') &&
@@ -2706,11 +2706,26 @@ async function main() {
       join(ROOT, "components/treasury/ClientReviewView.tsx"),
       "utf8"
     );
+    const registry = readFileSync(
+      join(ROOT, "lib/treasury/model-kinds/registry.ts"),
+      "utf8"
+    );
+    const previewRoute = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/studies/preview/route.ts"
+      ),
+      "utf8"
+    );
+    // C3 removed StudiesPanel from the shelf; Models place path returns via
+    // registry + preview (Phase 1). Still require StudyBlockView wiring.
     const wired =
-      panel.includes("StudiesPanel") &&
       panel.includes("StudyBlockView") &&
       client.includes('role === "study"') &&
-      client.includes("StudyBlockView");
+      client.includes("StudyBlockView") &&
+      registry.includes("MODEL_KINDS") &&
+      registry.includes("spend_plan") &&
+      previewRoute.includes("previewModelKind");
     const assemble = readFileSync(
       join(ROOT, "lib/treasury/review-assemble.ts"),
       "utf8"
@@ -2998,8 +3013,10 @@ async function main() {
       join(ROOT, "components/treasury/ClientReviewView.tsx"),
       "utf8"
     );
-    const panelSrc = readFileSync(
-      join(ROOT, "components/operator/treasury/StudiesPanel.tsx"),
+    // C2 retired StudyAuthorCanvas from StudiesPanel; composite authoring
+    // still lives on the canvas module + studies POST.
+    const authorSrc = readFileSync(
+      join(ROOT, "components/operator/treasury/StudyAuthorCanvas.tsx"),
       "utf8"
     );
     const studiesRoute = readFileSync(
@@ -3009,7 +3026,7 @@ async function main() {
     const srcOk =
       clientSrc.includes("collapseLayoutUnits") &&
       clientSrc.includes("readOnly") &&
-      panelSrc.includes("composite") &&
+      authorSrc.includes("composite") &&
       studiesRoute.includes("composite") &&
       !clientSrc.includes("Fractals");
 

@@ -33,7 +33,7 @@
     "gate:analytics-client-scope": "npx tsx scripts/gate-analytics-client-scope.ts",
     "gate:analytics-boards-b7": "npx tsx scripts/gate-analytics-boards-b7.ts",
     "gate:onboarding": "npx tsx scripts/gate-onboarding-b10.ts",
-    "gate:review": "npx tsx scripts/gate-review-b12.ts",
+    "gate:review": "node scripts/run-gate-review.cjs",
     "dedupe:reviews": "node scripts/dedupe-treasury-reviews.mjs",
     "backfill:migrated-reviews": "npx tsx scripts/backfill-migrated-review-snapshots.ts",
     "test:seed:cash-model-demo": "npx tsx scripts/seed-cash-model-demo.ts",
