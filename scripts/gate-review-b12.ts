@@ -3772,7 +3772,160 @@ async function main() {
     );
   }
 
-  log("ALL 45/45 LIVE CHECKS PASSED");
+  // 46 — Models P2: persist forecast + seasonality (CHECK constraint + mapper round-trip)
+  // Preview-only smoke (#45) never writes; this catches treasury_studies_type_check drift.
+  {
+    const migPath = join(
+      ROOT,
+      "supabase/migrations/20260908120000_p2_models_type_check.sql"
+    );
+    const migOk =
+      existsSync(migPath) &&
+      (() => {
+        const t = readFileSync(migPath, "utf8");
+        return (
+          t.includes("forecast") &&
+          t.includes("seasonality") &&
+          t.includes("treasury_studies_type_check")
+        );
+      })();
+
+    const { previewModelKind } = await import(
+      "../lib/treasury/study-assemble-server"
+    );
+    const { asTreasuryStudyRow } = await import(
+      "../lib/server/treasury-study-mapper"
+    );
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+
+    let forecastId: string | null = null;
+    let seasonId: string | null = null;
+    let insertOk = false;
+    let mapOk = false;
+    let errNote = "";
+
+    try {
+      const fcPrev = await previewModelKind(admin, r1ClientId, {
+        id: "gate-persist-fc",
+        name: `gate-persist-forecast-${stamp}`,
+        type: "forecast",
+        status: "confirmed",
+        params: {
+          subject: { kind: "total_out" },
+          method: "run_rate",
+          window: 6,
+          horizon: 3,
+          seasonal: false,
+          excludedMonths: [],
+        },
+        scenarios: [],
+        scope: null,
+      });
+      const sePrev = await previewModelKind(admin, r1ClientId, {
+        id: "gate-persist-se",
+        name: `gate-persist-seasonality-${stamp}`,
+        type: "seasonality",
+        status: "confirmed",
+        params: {
+          subject: { kind: "total_out" },
+          method: "block",
+          excludedMonths: [],
+        },
+        scenarios: [],
+        scope: null,
+      });
+
+      if (!fcPrev?.confidence || !sePrev?.confidence) {
+        errNote = "previewNull";
+      } else {
+        const { data: fcRow, error: fcErr } = await admin
+          .from("treasury_studies")
+          .insert({
+            client_user_id: r1ClientId,
+            operator_tenant_id: r1TenantId!,
+            created_by: r1OperatorId,
+            name: `gate-persist-forecast-${stamp}`,
+            type: "forecast",
+            status: "confirmed",
+            source: "operator",
+            is_primary: false,
+            scope: { accountId: "__all__", label: null } as unknown as Json,
+            params: {
+              subject: { kind: "total_out" },
+              method: "run_rate",
+              window: 6,
+              horizon: 3,
+              seasonal: false,
+              excludedMonths: [],
+            } as unknown as Json,
+            scenarios: [] as unknown as Json,
+            derived_snapshot: {
+              asOf: fcPrev.snapshot.as_of,
+              confidence: fcPrev.confidence,
+            } as unknown as Json,
+          })
+          .select("*")
+          .single();
+
+        const { data: seRow, error: seErr } = await admin
+          .from("treasury_studies")
+          .insert({
+            client_user_id: r1ClientId,
+            operator_tenant_id: r1TenantId!,
+            created_by: r1OperatorId,
+            name: `gate-persist-seasonality-${stamp}`,
+            type: "seasonality",
+            status: "confirmed",
+            source: "operator",
+            is_primary: false,
+            scope: { accountId: "__all__", label: null } as unknown as Json,
+            params: {
+              subject: { kind: "total_out" },
+              method: "block",
+              excludedMonths: [],
+            } as unknown as Json,
+            scenarios: [] as unknown as Json,
+            derived_snapshot: {
+              asOf: sePrev.snapshot.as_of,
+              confidence: sePrev.confidence,
+            } as unknown as Json,
+          })
+          .select("*")
+          .single();
+
+        forecastId = fcRow?.id ?? null;
+        seasonId = seRow?.id ?? null;
+        insertOk = Boolean(fcRow && seRow && !fcErr && !seErr);
+        if (!insertOk) {
+          errNote = `fc=${fcErr?.message ?? "ok"} se=${seErr?.message ?? "ok"}`;
+        } else {
+          const fcMapped = asTreasuryStudyRow(fcRow!);
+          const seMapped = asTreasuryStudyRow(seRow!);
+          mapOk =
+            fcMapped.type === "forecast" &&
+            seMapped.type === "seasonality" &&
+            (fcMapped.derived_snapshot as { confidence?: { grade?: string } })
+              ?.confidence?.grade != null &&
+            (seMapped.derived_snapshot as { confidence?: { grade?: string } })
+              ?.confidence?.grade != null;
+        }
+      }
+    } catch (e) {
+      errNote = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (forecastId) await admin.from("treasury_studies").delete().eq("id", forecastId);
+      if (seasonId) await admin.from("treasury_studies").delete().eq("id", seasonId);
+    }
+
+    record(
+      46,
+      "Models P2 persist forecast/seasonality (type_check + mapper)",
+      migOk && insertOk && mapOk,
+      `mig=${migOk} insert=${insertOk} map=${mapOk} ${errNote}`
+    );
+  }
+
+  log("ALL 46/46 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {
