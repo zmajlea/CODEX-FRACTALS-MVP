@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isStudyPlaceable } from "@/lib/treasury/study-assemble";
+import { getModelKind } from "@/lib/treasury/model-kinds";
 
 type StudyListItem = {
   id: string;
@@ -21,12 +22,33 @@ type Props = {
   busy: boolean;
   onPlaced: () => void;
   onError: (msg: string) => void;
+  /** Open the Model Studio (mounted by the parent composer). */
+  onOpenStudio: () => void;
+  /** Refresh signal — bump to reload the models list after a Studio save. */
+  refreshKey?: number;
+  /** study_ids already placed on the open draft, to mark "placed". */
+  placedStudyIds?: string[];
 };
 
+const GRADE_LABEL: Record<string, string> = {
+  solid: "Solid",
+  indicative: "Indicative",
+  thin: "Thin",
+  refused: "Refused",
+};
+
+function gradeOf(derived: unknown): string | null {
+  if (derived && typeof derived === "object") {
+    const g = (derived as { confidence?: { grade?: string } }).confidence?.grade;
+    return g ?? null;
+  }
+  return null;
+}
+
 /**
- * Spec B19-C2 — Models shelf (was B16 "Studies" panel).
- * Lists placeable Models; author overlay retired (composer is ReviewTabPanel).
- * Spec B19-C3 — unwired from the Studies shelf; kept for Phase 2 Model Studio restore.
+ * Models group in the Studies shelf (Phase 2, Part B).
+ * Lists this client's Models with kind + confidence chips; Place / Confirm / Discard;
+ * "+ New model" opens the Model Studio. Cash model via "Ensure primary cash model".
  */
 export function StudiesPanel({
   clientUserId,
@@ -35,6 +57,9 @@ export function StudiesPanel({
   busy,
   onPlaced,
   onError,
+  onOpenStudio,
+  refreshKey,
+  placedStudyIds,
 }: Props) {
   const base = `/api/operator/treasury/clients/${clientUserId}`;
   const [studies, setStudies] = useState<StudyListItem[]>([]);
@@ -55,7 +80,7 @@ export function StudiesPanel({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   async function ensurePrimary() {
     setLocalBusy("ensure");
@@ -136,14 +161,44 @@ export function StudiesPanel({
   }
 
   const locked = busy || localBusy != null;
+  const placedSet = new Set(placedStudyIds ?? []);
 
   return (
     <div className="studies-panel" data-testid="studies-panel">
-      <div className="rcx-kick">Models</div>
+      <div className="rcx-kick" style={{ display: "flex", alignItems: "center" }}>
+        Models
+        <span className="rcx-muted" style={{ fontSize: 10, marginLeft: 6 }}>
+          · {studies.length}
+        </span>
+        <button
+          type="button"
+          className="rcx-linkbtn"
+          style={{ marginLeft: "auto" }}
+          disabled={locked}
+          onClick={onOpenStudio}
+        >
+          + New model
+        </button>
+      </div>
       <p className="rcx-muted" style={{ fontSize: 11, marginBottom: 8 }}>
-        Cash models and confirmed analyses — place on the Study canvas.
+        Engine-computed from the ledger and your assumptions. Assistant submissions land
+        pending and need your Confirm.
       </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+
+      <button
+        type="button"
+        className="rcx-sitem new"
+        disabled={locked}
+        onClick={onOpenStudio}
+      >
+        <span className="ico">+</span>
+        <span className="sn">New model</span>
+        <span className="sk">
+          Forecast · Seasonality — pick a kind, set the assumptions, watch it compute.
+        </span>
+      </button>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0" }}>
         <button
           type="button"
           className="rcx-tool"
@@ -167,18 +222,29 @@ export function StudiesPanel({
             status: s.status,
             derived_snapshot: s.derived_snapshot,
           });
-          const pending =
-            s.type === "external_model" && s.status === "pending";
+          const pending = s.type === "external_model" && s.status === "pending";
+          const placed = placedSet.has(s.id);
+          const grade = gradeOf(s.derived_snapshot);
+          const kindLabel = getModelKind(s.type)?.label ?? s.type;
           return (
-            <li key={s.id} className="rcx-sitem model">
+            <li
+              key={s.id}
+              className={`rcx-sitem model${pending ? " pending" : ""}`}
+            >
               <div className="sn">
                 {s.name}
-                <span className="chip">{s.type === "cash_model" ? "cash" : "model"}</span>
+                <span className="chip">{kindLabel}</span>
+                {grade ? (
+                  <span className="conf" data-grade={grade}>
+                    {GRADE_LABEL[grade] ?? grade}
+                  </span>
+                ) : null}
               </div>
               <div className="sk">
-                {s.status ?? "ready"}
+                {pending ? "pending" : s.status ?? "ready"}
                 {s.source ? ` · ${s.source}` : ""}
                 {s.is_primary ? " · primary" : ""}
+                {placed ? " · placed" : ""}
               </div>
               <div className="sb">
                 {pending ? (
@@ -195,10 +261,10 @@ export function StudiesPanel({
                   <button
                     type="button"
                     className="rcx-tool"
-                    disabled={locked || reviewStatus !== "draft" || !reviewId}
+                    disabled={locked || reviewStatus !== "draft" || !reviewId || placed}
                     onClick={() => void placeStudy(s.id)}
                   >
-                    Add Model
+                    {placed ? "On the Study" : "Add Model"}
                   </button>
                 ) : null}
                 {s.type === "external_model" ? (
