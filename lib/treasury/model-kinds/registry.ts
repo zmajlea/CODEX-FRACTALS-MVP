@@ -5,12 +5,16 @@
 
 import { cashModelKind } from "@/lib/treasury/model-kinds/cash_model";
 import { externalModelKind } from "@/lib/treasury/model-kinds/external_model";
+import { forecastKind } from "@/lib/treasury/model-kinds/forecast";
+import { seasonalityKind } from "@/lib/treasury/model-kinds/seasonality";
 import { spendPlanKind } from "@/lib/treasury/model-kinds/spend_plan";
 import type { ModelKindDef, ModelRowLike } from "@/lib/treasury/model-kinds/types";
 
 export const MODEL_KINDS = {
   cash_model: cashModelKind,
   external_model: externalModelKind,
+  forecast: forecastKind,
+  seasonality: seasonalityKind,
   spend_plan: spendPlanKind,
 } as const satisfies Record<string, ModelKindDef>;
 

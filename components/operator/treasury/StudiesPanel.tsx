@@ -165,6 +165,7 @@ export function StudiesPanel({
           const placeable = isStudyPlaceable({
             type: s.type,
             status: s.status,
+            derived_snapshot: s.derived_snapshot,
           });
           const pending =
             s.type === "external_model" && s.status === "pending";

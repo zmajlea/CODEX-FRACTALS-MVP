@@ -138,6 +138,7 @@ export async function POST(request: Request, context: RouteContext) {
       !isStudyPlaceable({
         type: String(studyRow.type),
         status: studyRow.status != null ? String(studyRow.status) : null,
+        derived_snapshot: studyRow.derived_snapshot,
       })
     ) {
       return NextResponse.json(

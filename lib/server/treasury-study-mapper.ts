@@ -5,6 +5,7 @@ import type {
 } from "@/lib/treasury/cash-model-types";
 import type {
   DerivedSnapshot,
+  EngineModelDerivedSnapshot,
   ExternalModelDerivedSnapshot,
   StudyParams,
   StudyScope,
@@ -51,6 +52,24 @@ export function asTreasuryStudyRow(row: StudyDbRow): TreasuryStudyRow {
       params: row.params as CashModelParams,
       scenarios: row.scenarios as CashModelScenario[],
       derived_snapshot: row.derived_snapshot as CashModelDerivedSnapshot,
+    };
+  }
+  if (row.type === "forecast") {
+    return {
+      ...baseFields(row),
+      type: "forecast",
+      params: (row.params as Record<string, unknown>) ?? {},
+      scenarios: (row.scenarios as unknown[]) ?? [],
+      derived_snapshot: row.derived_snapshot as EngineModelDerivedSnapshot,
+    };
+  }
+  if (row.type === "seasonality") {
+    return {
+      ...baseFields(row),
+      type: "seasonality",
+      params: (row.params as Record<string, unknown>) ?? {},
+      scenarios: (row.scenarios as unknown[]) ?? [],
+      derived_snapshot: row.derived_snapshot as EngineModelDerivedSnapshot,
     };
   }
   return {

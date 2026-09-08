@@ -3551,7 +3551,228 @@ async function main() {
     );
   }
 
-  log("ALL 44/44 LIVE CHECKS PASSED");
+  log("ALL 44/44 LIVE CHECKS PASSED; running Models P2…");
+
+  // 45 — Models P2: projection + forecast/seasonality registry + form parity + dual placeable
+  {
+    const {
+      projectSeries,
+      olsSlopeIntercept,
+    } = await import("../lib/treasury/projection");
+    const { MODEL_KINDS, listedModelKinds, kindPlaceable } = await import(
+      "../lib/treasury/model-kinds/registry"
+    );
+    const { isStudyPlaceable } = await import("../lib/treasury/study-assemble");
+
+    // OLS known slope: y = 2x + 1 for x=0..4 → values 1,3,5,7,9
+    const { slope, intercept } = olsSlopeIntercept([1, 3, 5, 7, 9]);
+    const olsOk =
+      Math.abs(slope - 2) < 1e-9 && Math.abs(intercept - 1) < 1e-9;
+
+    const series = {
+      "2025-01-01": 100,
+      "2025-02-01": 110,
+      "2025-03-01": 120,
+      "2025-04-01": 130,
+      "2025-05-01": 140,
+      "2025-06-01": 150,
+    };
+    const proj = projectSeries({
+      series,
+      asOf: "2025-07-15",
+      method: "run_rate",
+      window: 3,
+      horizon: 2,
+    });
+    const projOk =
+      typeof projectSeries === "function" &&
+      proj.projected.length === 2 &&
+      proj.historical.length >= 3;
+
+    const regOk =
+      MODEL_KINDS.forecast?.listed === true &&
+      MODEL_KINDS.seasonality?.listed === true &&
+      MODEL_KINDS.spend_plan?.listed === false;
+
+    // form ↔ zod key parity (object schemas)
+    let formParity = true;
+    const formNotes: string[] = [];
+    for (const kind of listedModelKinds()) {
+      const formKeys = kind.form.map((f) => f.key);
+      const schema = kind.params as {
+        shape?: Record<string, unknown>;
+      };
+      if (!schema.shape) {
+        // z.custom (cash_model / external) — only require form keys non-empty
+        if (kind.form.some((f) => !f.key)) {
+          formParity = false;
+          formNotes.push(`${kind.type}:emptyFormKey`);
+        }
+        continue;
+      }
+      const shapeKeys = Object.keys(schema.shape);
+      for (const k of formKeys) {
+        if (!shapeKeys.includes(k)) {
+          formParity = false;
+          formNotes.push(`${kind.type}:form>${k}`);
+        }
+      }
+      for (const k of shapeKeys) {
+        if (!formKeys.includes(k)) {
+          formParity = false;
+          formNotes.push(`${kind.type}:zod>${k}`);
+        }
+      }
+    }
+
+    // Dual ↔ kind.placeable agreement per kind
+    const dualCases: Array<{
+      type: string;
+      status?: string | null;
+      derived_snapshot?: unknown;
+    }> = [
+      { type: "cash_model", status: "confirmed" },
+      { type: "external_model", status: "pending" },
+      { type: "external_model", status: "confirmed" },
+      { type: "spend_plan", status: "confirmed" },
+      {
+        type: "forecast",
+        status: "confirmed",
+        derived_snapshot: {
+          confidence: { grade: "solid", reasons: [], historyMonthCount: 18 },
+        },
+      },
+      {
+        type: "forecast",
+        status: "confirmed",
+        derived_snapshot: {
+          confidence: { grade: "refused", reasons: ["thin"], historyMonthCount: 2 },
+        },
+      },
+      {
+        type: "seasonality",
+        status: "confirmed",
+        derived_snapshot: {
+          confidence: {
+            grade: "indicative",
+            reasons: [],
+            historyMonthCount: 18,
+          },
+        },
+      },
+      {
+        type: "seasonality",
+        status: "confirmed",
+        derived_snapshot: {
+          confidence: { grade: "refused", reasons: ["short"], historyMonthCount: 6 },
+        },
+      },
+    ];
+    let dualOk = true;
+    for (const row of dualCases) {
+      const a = isStudyPlaceable(row);
+      const b = kindPlaceable(row);
+      if (a !== b) {
+        dualOk = false;
+        formNotes.push(`dual≠${row.type}/${row.status}/${JSON.stringify((row.derived_snapshot as { confidence?: { grade?: string } })?.confidence?.grade)}`);
+      }
+    }
+
+    // Source: blocks routes pass derived_snapshot into isStudyPlaceable
+    const blocksPost = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/blocks/route.ts"
+      ),
+      "utf8"
+    );
+    const blocksPatch = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/reviews/[reviewId]/blocks/[blockId]/route.ts"
+      ),
+      "utf8"
+    );
+    const placePassOk =
+      blocksPost.includes("derived_snapshot: studyRow.derived_snapshot") &&
+      blocksPatch.includes("derived_snapshot: studyRow.derived_snapshot");
+
+    // Preview smoke (no DB write) — compute path for both kinds
+    let previewOk = false;
+    try {
+      const { previewModelKind } = await import(
+        "../lib/treasury/study-assemble-server"
+      );
+      const fc = await previewModelKind(admin, r1ClientId, {
+        id: "gate-fc",
+        name: "Gate forecast",
+        type: "forecast",
+        status: "confirmed",
+        params: {
+          subject: { kind: "total_out" },
+          method: "run_rate",
+          window: 6,
+          horizon: 3,
+          seasonal: false,
+          excludedMonths: [],
+        },
+        scenarios: [],
+        scope: null,
+      });
+      const se = await previewModelKind(admin, r1ClientId, {
+        id: "gate-se",
+        name: "Gate seasonality",
+        type: "seasonality",
+        status: "confirmed",
+        params: {
+          subject: { kind: "total_out" },
+          method: "block",
+          excludedMonths: [],
+        },
+        scenarios: [],
+        scope: null,
+      });
+      previewOk = Boolean(
+        fc?.snapshot?.type === "forecast" &&
+          se?.snapshot?.type === "seasonality" &&
+          fc.confidence &&
+          se.confidence
+      );
+    } catch (e) {
+      formNotes.push(
+        `previewErr=${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+
+    // POST /studies widened past spend_plan|cash_model hard reject
+    const studiesPost = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/studies/route.ts"
+      ),
+      "utf8"
+    );
+    const postWidenOk =
+      studiesPost.includes("isRegisteredModelType") &&
+      studiesPost.includes('"forecast"') &&
+      studiesPost.includes('"seasonality"');
+
+    record(
+      45,
+      "Models P2 projection + forecast/seasonality + placeable dual",
+      olsOk &&
+        projOk &&
+        regOk &&
+        formParity &&
+        dualOk &&
+        placePassOk &&
+        previewOk &&
+        postWidenOk,
+      `ols=${olsOk} proj=${projOk} reg=${regOk} form=${formParity} dual=${dualOk} placePass=${placePassOk} preview=${previewOk} post=${postWidenOk} ${formNotes.join(",")}`
+    );
+  }
+
+  log("ALL 45/45 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

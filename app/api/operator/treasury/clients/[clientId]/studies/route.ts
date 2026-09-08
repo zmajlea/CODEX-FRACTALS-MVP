@@ -206,6 +206,117 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ study: asTreasuryStudyRow(data) });
   }
 
+  const studyTypeRaw = body.type ?? "spend_plan";
+  const { isRegisteredModelType, getModelKind } = await import(
+    "@/lib/treasury/model-kinds"
+  );
+  if (!isRegisteredModelType(studyTypeRaw)) {
+    return NextResponse.json(
+      { error: "Unsupported study type — not a registered model kind" },
+      { status: 400 }
+    );
+  }
+  const studyType = studyTypeRaw;
+
+  // Phase 2 engine kinds — validate via kind.params; server-compute derived+confidence.
+  if (studyType === "forecast" || studyType === "seasonality") {
+    const kind = getModelKind(studyType)!;
+    const parsed = kind.params.safeParse(body.params ?? {});
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid params", issues: formatZodIssues(parsed.error) },
+        { status: 400 }
+      );
+    }
+    let scenarios: unknown[] = [];
+    if (kind.scenarios) {
+      const s = kind.scenarios.safeParse(body.scenarios ?? []);
+      if (!s.success) {
+        return NextResponse.json(
+          { error: "Invalid scenarios", issues: formatZodIssues(s.error) },
+          { status: 400 }
+        );
+      }
+      scenarios = s.data as unknown[];
+    }
+
+    const { loadInputs } = await import(
+      "@/lib/treasury/model-kinds/load-inputs"
+    );
+    const scope = body.scope ? { accountId: body.scope.accountId } : null;
+    const row = {
+      id: "save",
+      name,
+      type: studyType,
+      status: "confirmed" as const,
+      params: parsed.data,
+      scenarios,
+      scope,
+      derived_snapshot: null,
+    };
+    const inputs = await loadInputs(
+      guard.admin,
+      clientId,
+      scope,
+      kind.inputs
+    );
+    const result = kind.compute(inputs, parsed.data, scenarios as never, row);
+    if (result == null) {
+      return NextResponse.json(
+        { error: "Compute returned null — check params and ledger inputs" },
+        { status: 400 }
+      );
+    }
+    const confidence = kind.confidence(inputs, parsed.data, result);
+    const derivedSnapshot = {
+      ...(kind.derived
+        ? kind.derived(result, inputs, parsed.data)
+        : { asOf: inputs.cashModel?.asOf ?? "" }),
+      confidence,
+    };
+
+    const insert: Database["public"]["Tables"]["treasury_studies"]["Insert"] = {
+      client_user_id: clientId,
+      operator_tenant_id: guard.grant.tenantId,
+      created_by: guard.user.id,
+      name,
+      type: studyType,
+      status: "confirmed",
+      source: "operator",
+      is_primary: body.is_primary ?? false,
+      scope: {
+        accountId: body.scope?.accountId ?? "__all__",
+        label: body.scope?.label ?? null,
+      } as unknown as Json,
+      params: parsed.data as unknown as Json,
+      scenarios: scenarios as unknown as Json,
+      derived_snapshot: derivedSnapshot as unknown as Json,
+    };
+
+    const { data, error } = await guard.admin
+      .from("treasury_studies")
+      .insert(insert)
+      .select("*")
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    void writeTreasuryAudit(guard.admin, {
+      actorUserId: guard.user.id,
+      eventType: "treasury_study_saved",
+      payload: {
+        client_user_id: clientId,
+        study_id: data.id,
+        name,
+        type: studyType,
+      },
+    });
+
+    return NextResponse.json({ study: asTreasuryStudyRow(data) });
+  }
+
   if (!body.scope?.accountId) {
     return NextResponse.json({ error: "scope.accountId required" }, { status: 400 });
   }
@@ -216,7 +327,6 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const studyType: StudyType = body.type ?? "spend_plan";
   if (studyType !== "spend_plan" && studyType !== "cash_model") {
     return NextResponse.json({ error: "Unsupported study type" }, { status: 400 });
   }

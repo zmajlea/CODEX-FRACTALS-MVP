@@ -11,7 +11,12 @@ import type {
 import type { SpendPlanScenario, SeasonalIndexResult } from "@/lib/treasury/spend-plan";
 import type { StudyPageComposite } from "@/lib/treasury/study-page-composite";
 
-export type StudyType = "spend_plan" | "cash_model" | "external_model";
+export type StudyType =
+  | "spend_plan"
+  | "cash_model"
+  | "external_model"
+  | "forecast"
+  | "seasonality";
 
 export type StudyScope = {
   accountId: string;
@@ -111,10 +116,38 @@ export type ExternalModelStudyRow = TreasuryStudyRowBase & {
   derived_snapshot: ExternalModelDerivedSnapshot;
 };
 
+/** Engine Model kinds (Phase 2) — derived includes confidence. */
+export type EngineModelDerivedSnapshot = {
+  asOf: string;
+  confidence: {
+    grade: "solid" | "indicative" | "thin" | "refused";
+    reasons: string[];
+    historyMonthCount: number;
+    cyclesObserved?: number;
+  };
+  [key: string]: unknown;
+};
+
+export type ForecastStudyRow = TreasuryStudyRowBase & {
+  type: "forecast";
+  params: Record<string, unknown>;
+  scenarios: unknown[];
+  derived_snapshot: EngineModelDerivedSnapshot;
+};
+
+export type SeasonalityStudyRow = TreasuryStudyRowBase & {
+  type: "seasonality";
+  params: Record<string, unknown>;
+  scenarios: unknown[];
+  derived_snapshot: EngineModelDerivedSnapshot;
+};
+
 export type TreasuryStudyRow =
   | SpendPlanStudyRow
   | CashModelStudyRow
-  | ExternalModelStudyRow;
+  | ExternalModelStudyRow
+  | ForecastStudyRow
+  | SeasonalityStudyRow;
 
 /**
  * Product alias: Model row. Physical table remains treasury_studies.

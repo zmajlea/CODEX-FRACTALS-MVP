@@ -1,5 +1,5 @@
 /**
- * Models rethink Phase 1 — kind registry types (pure; no server-only).
+ * Models rethink Phase 1/2 — kind registry types (pure; no server-only).
  * Product word: Model. Physical table: treasury_studies.
  */
 
@@ -25,16 +25,36 @@ export type Confidence = {
   cyclesObserved?: number;
 };
 
-/** Phase 1 loaders backed today; metric_series etc. arrive in Phase 2. */
+/** Phase 1 loaders; metric_series deferred. */
 export type InputLoaderKey =
   | "monthly_by_category"
   | "monthly_by_bucket"
   | "account_buffer";
 
+export type ParamFieldOption = {
+  value: string;
+  label: string;
+  help?: string;
+  disabledReason?: string;
+};
+
 export type ParamField = {
   key: string;
   label: string;
-  kind: "number" | "text" | "select" | "months" | "json";
+  kind:
+    | "number"
+    | "text"
+    | "select"
+    | "months"
+    | "json"
+    | "toggle"
+    | "exclude_months"
+    | "money";
+  options?: ParamFieldOption[];
+  min?: number;
+  max?: number;
+  /** Ledger-seeded hint for Studio source chips. */
+  seed?: boolean;
 };
 
 export type OpeningBalanceSource = "ledger" | "manual" | "unknown";
@@ -65,10 +85,7 @@ export type ModelRowLike = {
 };
 
 /**
- * Phase 1 kind contract. Form/defaults/drift deepen in Phase 2;
- * stubs keep the shape stable for Studio.
- *
- * Generic `S` is the **scenarios array** type (e.g. CashModelScenario[]).
+ * Kind contract. Generic `S` is the scenarios *array* type.
  */
 export type ModelKindDef<P = unknown, S = unknown[], R = unknown> = {
   type: string;
@@ -77,7 +94,6 @@ export type ModelKindDef<P = unknown, S = unknown[], R = unknown> = {
   family: ModelFamily;
   listed: boolean;
   params: z.ZodType<P>;
-  /** Schema for the scenarios array. */
   scenarios?: z.ZodType<S>;
   form: ParamField[];
   inputs: InputLoaderKey[];
@@ -101,8 +117,29 @@ export type ModelKindDef<P = unknown, S = unknown[], R = unknown> = {
   derived?(result: R, inputs: LoadedInputs, params: P): Record<string, unknown>;
 };
 
-/** Cash-model compute result carried through toSnapshot. */
 export type CashModelComputeResult = {
   composed: CashModelComposedResponse;
   openingBalanceSource: OpeningBalanceSource;
 };
+
+/** Read confidence.grade from a stored derived_snapshot (if present). */
+export function confidenceGradeFromDerived(
+  derived: unknown
+): ConfidenceGrade | null {
+  if (!derived || typeof derived !== "object") return null;
+  const c = (derived as { confidence?: { grade?: unknown } }).confidence;
+  const g = c?.grade;
+  if (
+    g === "solid" ||
+    g === "indicative" ||
+    g === "thin" ||
+    g === "refused"
+  ) {
+    return g;
+  }
+  return null;
+}
+
+export function defaultStatusPlaceable(status?: string | null): boolean {
+  return status !== "pending" && status !== "discarded";
+}
