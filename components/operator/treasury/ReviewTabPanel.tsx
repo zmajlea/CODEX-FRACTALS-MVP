@@ -9,6 +9,8 @@ import {
   MetricSeriesTable,
 } from "@/components/operator/treasury/analytics/MetricTable";
 import { ReviewDraftsPanel } from "@/components/operator/treasury/ReviewDraftsPanel";
+import { StudiesPanel } from "@/components/operator/treasury/StudiesPanel";
+import { ModelStudio } from "@/components/operator/treasury/ModelStudio";
 import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import { isPlacedStudySnapshot } from "@/lib/treasury/study-assemble";
@@ -153,6 +155,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [shelfOpen, setShelfOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1820,7 +1824,22 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
               ›
             </button>
           </div>
-          <div className="rcx-kick" style={{ marginTop: 8 }}>
+          <StudiesPanel
+            clientUserId={clientUserId}
+            reviewId={activeId}
+            reviewStatus={status}
+            busy={busy}
+            onPlaced={() => {
+              if (activeId) void loadReview(activeId);
+            }}
+            onError={setError}
+            onOpenStudio={() => setStudioOpen(true)}
+            refreshKey={modelsRefreshKey}
+            placedStudyIds={blocks
+              .filter((b) => b.role === "study" && b.study_id)
+              .map((b) => b.study_id as string)}
+          />
+          <div className="rcx-kick" style={{ marginTop: 12 }}>
             Metrics
           </div>
           <div className="rcx-kick" style={{ margin: "8px 0 2px", fontSize: 10 }}>
@@ -1944,6 +1963,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
           </div>
         </div>
       ) : null}
+
+      <ModelStudio
+        clientUserId={clientUserId}
+        reviewId={activeId}
+        reviewStatus={status}
+        open={studioOpen}
+        onClose={() => setStudioOpen(false)}
+        onSaved={({ placed }) => {
+          setModelsRefreshKey((k) => k + 1);
+          if (placed && activeId) void loadReview(activeId);
+        }}
+        onError={setError}
+      />
 
       {publishOpen ? (
         <>
@@ -2219,6 +2251,64 @@ const RCX_CSS = `
 /* new-metric wizard popup */
 .rcx-modal-scrim{position:fixed;inset:0;z-index:80;background:color-mix(in srgb,var(--ink,#102a47) 40%,transparent);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto;animation:rcxfade .16s ease}
 .rcx-modal{width:min(760px,96vw);background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:14px;box-shadow:0 24px 70px rgba(16,42,71,.28);padding:18px 20px;animation:rcxfade .18s ease}
+/* Models group in the shelf */
+.rcx-linkbtn{font:inherit;font-size:11px;font-weight:700;background:none;border:none;color:var(--cinnabar,#c8452f);cursor:pointer;padding:0;text-transform:none;letter-spacing:0}
+.rcx-linkbtn:disabled{color:var(--mute);cursor:default}
+.rcx-sitem.model .sn{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rcx-sitem.model .conf{margin-left:auto;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.conf[data-grade="solid"]{background:#e6f4ec;color:#1f7a49}
+.conf[data-grade="indicative"]{background:#fdf3e0;color:#a5701a}
+.conf[data-grade="thin"]{background:#fcecec;color:#b03a2e}
+.conf[data-grade="refused"]{background:#f0f0f2;color:#6b6b74}
+.rcx-sitem.pending{border-style:dashed}
+.rcx-sitem.new{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;border-style:dashed;cursor:pointer;text-align:left;width:100%;background:#fff}
+.rcx-sitem.new .ico{grid-row:1/span 2;width:30px;height:30px;border-radius:7px;background:var(--canvas-2,#f4f1ea);display:grid;place-items:center;color:var(--cinnabar,#c8452f);font-weight:700;font-size:16px}
+.rcx-sitem.new .sk{white-space:normal}
+/* Model Studio popup (stepped) */
+.wz-scrim{position:fixed;inset:0;z-index:82;background:color-mix(in srgb,var(--ink,#102a47) 40%,transparent);display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;animation:rcxfade .16s ease}
+.wz-panel{width:min(620px,96vw);background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:14px;box-shadow:0 24px 70px rgba(16,42,71,.28);display:flex;flex-direction:column;animation:rcxfade .18s ease}
+.wz-head{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 8px}
+.wz-head h2{margin:2px 0 0;font-size:18px}
+.wz-kicker{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
+.wz-steps{display:flex;gap:6px;padding:0 18px 10px;border-bottom:1px solid var(--paper-edge)}
+.wz-steps button{font:inherit;font-size:11px;font-weight:700;border:1px solid var(--paper-edge);background:#fff;color:var(--slate);border-radius:999px;padding:4px 10px;cursor:pointer}
+.wz-steps button[aria-selected="true"]{background:var(--ink,#102a47);color:#fff;border-color:var(--ink,#102a47)}
+.wz-steps button:disabled{opacity:.5;cursor:default}
+.wz-body{padding:14px 18px;min-height:180px}
+.wz-kinds{display:grid;gap:10px}
+.wz-kindcard{text-align:left;border:1px solid var(--paper-edge);border-radius:10px;padding:12px 14px;background:#fff;cursor:pointer;display:grid;gap:3px;transition:border-color .15s,box-shadow .15s}
+.wz-kindcard:hover{border-color:var(--cinnabar,#c8452f);box-shadow:var(--paper-shadow)}
+.wz-kk{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);font-weight:700}
+.wz-kindcard strong{font-size:15px}
+.wz-kd{font-size:12px;color:var(--mute)}
+.wz-form{display:grid;gap:12px}
+.wz-fg{display:grid;gap:4px}
+.wz-fg label{font-size:12px;font-weight:600;color:var(--slate);display:flex;align-items:center;gap:6px}
+.wz-fg.toggle{grid-template-columns:1fr auto;align-items:center}
+.wz-fg input,.wz-fg select{font:inherit;font-size:13px;border:1px solid var(--paper-edge);border-radius:7px;padding:6px 9px;background:#fff}
+.wz-ctl{display:grid;gap:6px}
+.wz-chip{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:999px;background:var(--canvas-2,#f4f1ea);color:var(--mute)}
+.wz-help{font-size:11px;color:var(--mute)}
+.wz-prevcard{border:1px solid var(--paper-edge);border-radius:10px;padding:14px;background:var(--canvas,#faf8f3)}
+.wz-prevhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.wz-conf{font-size:10px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.wz-conf[data-grade="solid"]{background:#e6f4ec;color:#1f7a49}
+.wz-conf[data-grade="indicative"]{background:#fdf3e0;color:#a5701a}
+.wz-conf[data-grade="thin"]{background:#fcecec;color:#b03a2e}
+.wz-conf[data-grade="refused"]{background:#f0f0f2;color:#6b6b74}
+.wz-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
+.wz-kpi{border:1px solid var(--paper-edge);border-radius:8px;padding:7px 9px;background:#fff;display:grid;gap:1px}
+.wz-kpi .l{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.wz-kpi .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.wz-kpi .b{font-size:9.5px;color:var(--mute)}
+.wz-spark{width:100%;height:90px;display:block;margin:4px 0 8px}
+.wz-spark polyline{fill:none;stroke:var(--ink,#102a47);stroke-width:1.8}
+.wz-spark polyline.proj{stroke-dasharray:3 3;opacity:.75}
+.wz-spark rect{fill:var(--oxford,#33506b);opacity:.7}
+.wz-note{font-size:12px;color:var(--slate);margin:6px 0}
+.wz-reasons{margin:6px 0 0;padding-left:16px;font-size:11.5px;color:var(--mute)}
+.wz-err{font-size:12px;color:#b03a2e;font-weight:600}
+.wz-foot{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 18px;border-top:1px solid var(--paper-edge)}
 .rcx-shelf .sh{display:flex;align-items:center;justify-content:space-between}
 .rcx-shelf .st{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);font-weight:700}
 .rcx-slist{overflow:auto;margin:6px -2px;padding:2px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto}
