@@ -3772,8 +3772,9 @@ async function main() {
     );
   }
 
-  // 46 — Models P2: persist forecast + seasonality (CHECK constraint + mapper round-trip)
-  // Preview-only smoke (#45) never writes; this catches treasury_studies_type_check drift.
+  // 46 — Models P2: persist + place forecast/seasonality (type_check + non-empty snapshot)
+  // Preview-only smoke (#45) never writes; insert-only missed empty place when
+  // scope.accountId='__all__' was passed through as a literal account filter.
   {
     const migPath = join(
       ROOT,
@@ -3790,18 +3791,29 @@ async function main() {
         );
       })();
 
-    const { previewModelKind } = await import(
+    const loadInputsSrc = readFileSync(
+      join(ROOT, "lib/treasury/model-kinds/load-inputs.ts"),
+      "utf8"
+    );
+    const allSentinelOk =
+      loadInputsSrc.includes('"__all__"') &&
+      loadInputsSrc.includes("rawAccount");
+
+    const { previewModelKind, buildPlacedStudySnapshot } = await import(
       "../lib/treasury/study-assemble-server"
     );
     const { asTreasuryStudyRow } = await import(
       "../lib/server/treasury-study-mapper"
     );
+    const { placedStudyToJson } = await import("../lib/treasury/study-assemble");
     const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
 
     let forecastId: string | null = null;
     let seasonId: string | null = null;
+    let reviewId: string | null = null;
     let insertOk = false;
     let mapOk = false;
+    let placeOk = false;
     let errNote = "";
 
     try {
@@ -3849,6 +3861,7 @@ async function main() {
             status: "confirmed",
             source: "operator",
             is_primary: false,
+            // Sentinel that previously emptied place compute — must map to null.
             scope: { accountId: "__all__", label: null } as unknown as Json,
             params: {
               subject: { kind: "total_out" },
@@ -3908,20 +3921,108 @@ async function main() {
               ?.confidence?.grade != null &&
             (seMapped.derived_snapshot as { confidence?: { grade?: string } })
               ?.confidence?.grade != null;
+
+          // Place: fresh compute from the persisted row (exercises __all__ → null).
+          const placedFc = await buildPlacedStudySnapshot(
+            admin,
+            r1ClientId,
+            fcRow as Record<string, unknown>
+          );
+          const placedSe = await buildPlacedStudySnapshot(
+            admin,
+            r1ClientId,
+            seRow as Record<string, unknown>
+          );
+
+          const fcPoints =
+            (placedFc?.exhibits?.[0]?.points?.length ?? 0) +
+            (placedFc?.timeline?.points?.length ?? 0);
+          const sePoints = placedSe?.exhibits?.[0]?.points?.length ?? 0;
+          const fcKpis = placedFc?.kpis?.length ?? 0;
+          const seKpis = placedSe?.kpis?.length ?? 0;
+          const fcNumeric = placedFc?.kpis?.some(
+            (k) => typeof k.value === "number" && Number.isFinite(k.value)
+          );
+          const snapNonEmpty =
+            Boolean(placedFc && placedSe) &&
+            fcPoints > 0 &&
+            sePoints > 0 &&
+            fcKpis > 0 &&
+            seKpis > 0 &&
+            Boolean(fcNumeric);
+
+          const { data: review } = await admin
+            .from("treasury_reviews")
+            .insert({
+              tenant_id: r1TenantId!,
+              client_user_id: r1ClientId,
+              period_month: "2026-09-01",
+              label: `gate-p2-place-${stamp}`,
+              title: "Gate P2 place forecast",
+              status: "draft",
+              created_by: r1OperatorId,
+            })
+            .select("id")
+            .single();
+          reviewId = review?.id ?? null;
+
+          if (reviewId && placedFc) {
+            const { data: block, error: blockErr } = await admin
+              .from("treasury_review_blocks")
+              .insert({
+                review_id: reviewId,
+                position: 1,
+                role: "study",
+                study_id: forecastId!,
+                metric_id: null,
+                recommendation_id: null,
+                caption: placedFc.name,
+                body: "",
+                placed_snapshot: placedStudyToJson(placedFc),
+                proposal_state: "none",
+                provenance: { study_as_of: placedFc.as_of },
+              })
+              .select("id, placed_snapshot")
+              .single();
+
+            const frozen = block?.placed_snapshot as {
+              kpis?: Array<{ value: number | string }>;
+              exhibits?: Array<{ points?: unknown[] }>;
+              timeline?: { points?: unknown[] };
+            } | null;
+            const frozenPts =
+              (frozen?.exhibits?.[0]?.points?.length ?? 0) +
+              (frozen?.timeline?.points?.length ?? 0);
+            const frozenKpis = frozen?.kpis?.length ?? 0;
+
+            placeOk =
+              snapNonEmpty &&
+              !blockErr &&
+              Boolean(block?.id) &&
+              frozenPts > 0 &&
+              frozenKpis > 0;
+
+            if (!placeOk) {
+              errNote = `place snapNonEmpty=${snapNonEmpty} fcPts=${fcPoints} sePts=${sePoints} frozenPts=${frozenPts} block=${blockErr?.message ?? "ok"}`;
+            }
+          } else {
+            errNote = `reviewOrPlaceNull snapNonEmpty=${snapNonEmpty} fcPts=${fcPoints}`;
+          }
         }
       }
     } catch (e) {
       errNote = e instanceof Error ? e.message : String(e);
     } finally {
+      if (reviewId) await admin.from("treasury_reviews").delete().eq("id", reviewId);
       if (forecastId) await admin.from("treasury_studies").delete().eq("id", forecastId);
       if (seasonId) await admin.from("treasury_studies").delete().eq("id", seasonId);
     }
 
     record(
       46,
-      "Models P2 persist forecast/seasonality (type_check + mapper)",
-      migOk && insertOk && mapOk,
-      `mig=${migOk} insert=${insertOk} map=${mapOk} ${errNote}`
+      "Models P2 persist+place forecast/seasonality (type_check + non-empty snap)",
+      migOk && allSentinelOk && insertOk && mapOk && placeOk,
+      `mig=${migOk} sentinel=${allSentinelOk} insert=${insertOk} map=${mapOk} place=${placeOk} ${errNote}`
     );
   }
 
