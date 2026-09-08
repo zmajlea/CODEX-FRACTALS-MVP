@@ -494,12 +494,22 @@ export function placedStudyFromCashModelCompute(input: {
 export function isStudyPlaceable(study: {
   type: string;
   status?: string | null;
+  derived_snapshot?: unknown;
 }): boolean {
-  // Must match MODEL_KINDS.*.placeable (cash_model always; external confirmed;
-  // spend_plan and unknown → false).
+  // Must match MODEL_KINDS.*.placeable (keep dual honest — gate asserts agreement).
   if (study.type === "cash_model") return true;
   if (study.type === "external_model") {
     return study.status === "confirmed";
+  }
+  if (study.type === "forecast" || study.type === "seasonality") {
+    if (study.status === "pending" || study.status === "discarded") return false;
+    const derived = study.derived_snapshot;
+    if (derived && typeof derived === "object") {
+      const grade = (derived as { confidence?: { grade?: string } }).confidence
+        ?.grade;
+      if (grade === "refused") return false;
+    }
+    return true;
   }
   return false;
 }
@@ -515,6 +525,10 @@ export function studyAsOfFromRow(studyRow: Record<string, unknown>): string {
     const d = studyRow.derived_snapshot as ExternalModelDerivedSnapshot | null;
     const results = d?.results as { as_of?: string } | undefined;
     return String(results?.as_of ?? d?.submittedAt ?? "").slice(0, 10);
+  }
+  if (type === "forecast" || type === "seasonality") {
+    const d = studyRow.derived_snapshot as { asOf?: string } | null;
+    return String(d?.asOf ?? "").slice(0, 10);
   }
   return "";
 }
