@@ -46,7 +46,11 @@ export async function loadInputs(
     keys.includes("account_buffer");
 
   if (needsCash) {
-    const accountId = scope?.accountId ?? null;
+    // "__all__" is the all-accounts sentinel stored on scope (mirrors the
+    // cash_model path); it is NOT a real account id, so map it to null or the
+    // account filter matches nothing and the series loads empty.
+    const rawAccount = scope?.accountId ?? null;
+    const accountId = rawAccount && rawAccount !== "__all__" ? rawAccount : null;
     const override =
       opts?.openingBalance != null && Number.isFinite(opts.openingBalance)
         ? opts.openingBalance
