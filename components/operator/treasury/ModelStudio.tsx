@@ -257,8 +257,11 @@ export function ModelStudio({
   onError,
 }: Props) {
   const base = `/api/operator/treasury/clients/${clientUserId}`;
+  // Studio authors the generated-form engine kinds. cash_model has its own
+  // creation path ("Ensure primary cash model") and needs scope.accountId the
+  // Studio doesn't collect, so it's excluded here.
   const kinds = useMemo(
-    () => listedModelKinds().filter((k) => k.form.length > 0),
+    () => listedModelKinds().filter((k) => k.form.length > 0 && k.type !== "cash_model"),
     []
   );
   const [step, setStep] = useState<Step>("kind");
