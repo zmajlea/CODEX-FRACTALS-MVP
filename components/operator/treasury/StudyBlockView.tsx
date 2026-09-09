@@ -32,6 +32,21 @@ function money(n: number | string): string {
   }).format(n);
 }
 
+/** Spec B21 — placed-block chrome: confidence grade colors (inline so the
+ * client view renders them without depending on the composer stylesheet). */
+const GRADE_LABEL: Record<string, string> = {
+  solid: "Solid",
+  indicative: "Indicative",
+  thin: "Thin",
+  refused: "Refused",
+};
+const GRADE_COLOR: Record<string, { bg: string; fg: string }> = {
+  solid: { bg: "#e6f4ec", fg: "#1f7a49" },
+  indicative: { bg: "#fdf3e0", fg: "#a5701a" },
+  thin: { bg: "#fcecec", fg: "#b03a2e" },
+  refused: { bg: "#f0f0f2", fg: "#6b6b74" },
+};
+
 function formatKpiValue(k: {
   label: string;
   value: number | string;
@@ -55,6 +70,10 @@ export function StudyBlockView({
   const snap: PlacedStudySnapshot = normalizePlacedStudy(snapshot);
   const exhibits = snap.exhibits ?? [];
   const notes = snap.notes ?? [];
+  const assumptions = snap.assumptions ?? [];
+  const confidence = snap.confidence;
+  const methodNote = snap.method_note;
+  const gradeColor = confidence ? GRADE_COLOR[confidence.grade] : undefined;
 
   const collapseItems: CollapseItem[] = [
     ...snap.kpis.map((k, i) => ({
@@ -212,6 +231,54 @@ export function StudyBlockView({
 
   return (
     <div className="study-block" data-study-type={snap.type}>
+      {confidence || assumptions.length ? (
+        <div
+          className="study-chrome"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 10,
+          }}
+        >
+          {confidence ? (
+            <span
+              className="study-conf"
+              data-grade={confidence.grade}
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                padding: "2px 9px",
+                borderRadius: 999,
+                background: gradeColor?.bg ?? "var(--su-paper, #FCFBF9)",
+                color: gradeColor?.fg ?? "var(--mute)",
+              }}
+            >
+              {GRADE_LABEL[confidence.grade] ?? confidence.grade}
+            </span>
+          ) : null}
+          {assumptions.map((a, i) => (
+            <span
+              key={i}
+              className="study-assump"
+              style={{
+                fontSize: 11,
+                color: "var(--mute)",
+                border: "1px solid var(--su-line, #DED9D1)",
+                borderRadius: 999,
+                padding: "1px 8px",
+                background: "var(--su-paper, #FCFBF9)",
+              }}
+            >
+              {a}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       {showProvenance && snap.opening_balance_source ? (
         <p className="rcx-muted" style={{ fontSize: 12, marginBottom: 8 }}>
           Opening balance source: {snap.opening_balance_source}
@@ -289,6 +356,16 @@ export function StudyBlockView({
           );
         })}
       </div>
+
+      {methodNote || confidence?.note ? (
+        <p
+          className="study-methodnote rcx-muted"
+          style={{ fontSize: 11, marginTop: 10, lineHeight: 1.5 }}
+        >
+          {methodNote}
+          {confidence?.note ? `${methodNote ? " · " : ""}${confidence.note}` : ""}
+        </p>
+      ) : null}
 
       {!exhibits.length && !snap.kpis.length && !notes.length ? (
         <p className="rcx-muted">Empty study.</p>
