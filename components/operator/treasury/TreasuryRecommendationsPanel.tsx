@@ -4,20 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { DraftComposer } from "@/components/operator/treasury/DraftComposer";
 import { PickButton } from "@/components/operator/treasury/PickButton";
-import { formatTreasuryAsOf, formatTreasuryMoney } from "@/lib/treasury/format";
+import { ClientRecCard } from "@/components/treasury/TreasuryClientRecommendations";
+import { formatTreasuryAsOf } from "@/lib/treasury/format";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
-import {
-  IMPACT_BASIS_LABELS,
-  RECOMMENDATION_CATEGORY_LABELS,
-  type ImpactBasis,
-} from "@/lib/treasury/recommendation-status";
-import {
-  displayStatusLabel,
-  FrozenEvidenceList,
-  isAnsweredQuestion,
-  isAnsweredUnread,
-  statusBadgeClass,
-} from "@/lib/treasury/recommendation-ui";
+import { isAnsweredUnread } from "@/lib/treasury/recommendation-ui";
 import type {
   ResolvedEvidenceItem,
   TreasuryInstitutionView,
@@ -48,24 +38,8 @@ type OpenDraft = {
   missingCount: number;
 };
 
-function formatImpactLine(rec: TreasuryRecommendationRow): string | null {
-  if (rec.impact_amount == null) return null;
-  const money = formatTreasuryMoney(rec.impact_amount, "USD");
-  const basis = rec.impact_basis
-    ? IMPACT_BASIS_LABELS[rec.impact_basis as ImpactBasis]
-    : "";
-  return basis ? `${money} ${basis}` : money;
-}
-
 function isEmptyDraft(rec: TreasuryRecommendationRow): boolean {
   return !rec.title?.trim() && (rec.evidence?.length ?? 0) === 0;
-}
-
-/** Stage 8a-2 — awaiting is a status read, not a to-do badge. */
-function isAwaitingClient(rec: TreasuryRecommendationRow): boolean {
-  if (rec.status !== "sent") return false;
-  if (rec.kind === "question") return !rec.client_response;
-  return true; // recommendation awaiting accept/decline
 }
 
 function operatorDeskUnread(recs: TreasuryRecommendationRow[]): number {
@@ -244,7 +218,124 @@ export function TreasuryRecommendationsPanel({
     void load();
   }
 
-  const list = desk === "draft" ? drafts : sent;
+  // B24 Part 2 — sent ledger bands by who holds it.
+  const withClient = sent.filter((r) => r.status === "sent");
+  const decided = sent.filter((r) => r.status !== "sent");
+  const noop = () => {};
+
+  function renderDraftCard(rec: TreasuryRecommendationRow) {
+    const empty = isEmptyDraft(rec);
+    const kindLabel = rec.kind === "question" ? "Question" : "Recommendation";
+    return (
+      <article
+        key={rec.id}
+        className={`rec-card rec-card-draft${empty ? " empty" : ""}`}
+      >
+        <div className="rec-top">
+          <span className="rec-kind">{kindLabel}</span>
+          <span className="rec-private-chip">🔒 private</span>
+          {!empty ? (
+            <span className="rec-ev-n">
+              {rec.evidence.length} item{rec.evidence.length === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </div>
+        <h3 className="rec-title">
+          {empty ? "Empty draft" : rec.title?.trim() || "Untitled draft"}
+        </h3>
+        {!empty && rec.why?.trim() ? (
+          <p className="rec-why">
+            <span className="rw-l">{rec.kind === "question" ? "Question" : "Why"}</span>
+            {rec.why}
+          </p>
+        ) : null}
+        <div className="rec-acts">
+          <button
+            type="button"
+            className="btn sm"
+            disabled={openingId === rec.id}
+            onClick={() => void openDraftById(rec.id)}
+          >
+            {openingId === rec.id ? "Opening…" : "Open"}
+          </button>
+          {empty ? (
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => void discardDraft(rec.id)}
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
+
+  function renderSentCard(rec: TreasuryRecommendationRow) {
+    return (
+      <article
+        key={rec.id}
+        className={`rec-op-sent${isAnsweredUnread(rec) ? " unread" : ""}`}
+        onClick={() => {
+          if (isAnsweredUnread(rec)) void patchAction(rec.id, "mark_seen");
+        }}
+      >
+        <div className="rec-op-strap">
+          <span className="rec-op-as">As {clientName} sees it</span>
+          {rec.sealed_at && onPick ? (
+            <PickButton
+              variant="row"
+              pickable={{
+                kind: "recommendation",
+                ref: rec.id,
+                label: rec.title || "Recommendation",
+                sublabel: `sealed · ${formatTreasuryAsOf(rec.sealed_at)}`,
+              }}
+              onPick={onPick}
+            />
+          ) : null}
+        </div>
+        <ClientRecCard
+          rec={rec}
+          readOnly
+          onAccept={noop}
+          onDecline={noop}
+          onAnswer={noop}
+        />
+        <div className="rec-acts" onClick={(e) => e.stopPropagation()}>
+          {rec.status === "accepted" ? (
+            <button
+              type="button"
+              className="btn btn-secondary text-xs"
+              onClick={() => void patchAction(rec.id, "mark_in_progress")}
+            >
+              Mark in progress
+            </button>
+          ) : null}
+          {rec.status === "in_progress" ? (
+            <button
+              type="button"
+              className="btn btn-secondary text-xs"
+              onClick={() => void patchAction(rec.id, "mark_done")}
+            >
+              Mark done
+            </button>
+          ) : null}
+          {(rec.status === "accepted" || rec.status === "declined") &&
+          rec.operator_seen_at == null ? (
+            <button
+              type="button"
+              className="btn btn-secondary text-xs"
+              onClick={() => void patchAction(rec.id, "mark_seen")}
+            >
+              Mark seen
+            </button>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <div>
@@ -305,232 +396,37 @@ export function TreasuryRecommendationsPanel({
 
       {loading ? (
         <p className="text-sm text-codex-muted">Loading…</p>
-      ) : list.length === 0 ? (
-        <p className="rec-empty">
-          {desk === "draft"
-            ? "No drafts yet. Pick evidence into the basket, then open a draft here."
-            : "Nothing sent yet."}
-        </p>
+      ) : desk === "draft" ? (
+        <>
+          <p className="rec-band-note">
+            On your desk · only you. Drafts stay private until you send.
+          </p>
+          {drafts.length === 0 ? (
+            <p className="rec-empty">
+              No drafts yet. Pick evidence anywhere — a study, a rule, a
+              transaction — then open a draft here.
+            </p>
+          ) : (
+            <div className="rec-grid">{drafts.map(renderDraftCard)}</div>
+          )}
+        </>
+      ) : sent.length === 0 ? (
+        <p className="rec-empty">Nothing sent yet.</p>
       ) : (
-        <div className="rec-grid">
-          {list.map((rec) => {
-            const empty = desk === "draft" && isEmptyDraft(rec);
-            const impact = formatImpactLine(rec);
-            const sealed = rec.sealed_at != null;
-            const kindLabel =
-              rec.kind === "question" ? "Question" : "Recommendation";
-
-            if (desk === "draft") {
-              return (
-                <article
-                  key={rec.id}
-                  className={`rec-card rec-card-draft${empty ? " empty" : ""}`}
-                >
-                  <div className="rec-top">
-                    <span className="rec-kind">{kindLabel}</span>
-                    {!empty ? (
-                      <span className="rec-ev-n">
-                        {rec.evidence.length} item
-                        {rec.evidence.length === 1 ? "" : "s"}
-                      </span>
-                    ) : null}
-                  </div>
-                  <h3 className="rec-title">
-                    {empty ? "Empty draft" : rec.title?.trim() || "Untitled draft"}
-                  </h3>
-                  {!empty && rec.why?.trim() ? (
-                    <p className="rec-why">
-                      <span className="rw-l">
-                        {rec.kind === "question" ? "Question" : "Why"}
-                      </span>
-                      {rec.why}
-                    </p>
-                  ) : null}
-                  <div className="rec-acts">
-                    <button
-                      type="button"
-                      className="btn sm"
-                      disabled={openingId === rec.id}
-                      onClick={() => void openDraftById(rec.id)}
-                    >
-                      {openingId === rec.id ? "Opening…" : "Open"}
-                    </button>
-                    {empty ? (
-                      <button
-                        type="button"
-                        className="btn ghost sm"
-                        onClick={() => void discardDraft(rec.id)}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            }
-
-            return (
-              <article
-                key={rec.id}
-                className={`rec-card${isAwaitingClient(rec) ? " awaiting" : ""}${
-                  isAnsweredQuestion(rec)
-                    ? isAnsweredUnread(rec)
-                      ? " answered unread"
-                      : " answered read"
-                    : ""
-                }`}
-                onClick={() => {
-                  if (isAnsweredUnread(rec)) {
-                    void patchAction(rec.id, "mark_seen");
-                  }
-                }}
-              >
-                <div className="rec-top">
-                  <span className="rec-kind">{kindLabel}</span>
-                  {rec.kind === "recommendation" ? (
-                    <span className="rec-cat">
-                      {RECOMMENDATION_CATEGORY_LABELS[rec.category]}
-                    </span>
-                  ) : null}
-                  {isAwaitingClient(rec) ? (
-                    <span className="rec-badge k-proposed">
-                      <span className="rec-bdot" />
-                      Awaiting client
-                    </span>
-                  ) : (
-                    <span
-                      className={`rec-badge ${statusBadgeClass(rec.status, {
-                        answered: isAnsweredQuestion(rec),
-                        answeredUnread: isAnsweredUnread(rec),
-                      })}`}
-                    >
-                      <span className="rec-bdot" />
-                      {displayStatusLabel(rec)}
-                    </span>
-                  )}
-                  {sealed && onPick ? (
-                    <PickButton
-                      variant="row"
-                      pickable={{
-                        kind: "recommendation",
-                        ref: rec.id,
-                        label: rec.title || "Recommendation",
-                        sublabel: `sealed · ${formatTreasuryAsOf(rec.sealed_at)}`,
-                      }}
-                      onPick={onPick}
-                    />
-                  ) : null}
-                </div>
-
-                {isAnsweredQuestion(rec) ? (
-                  <>
-                    <p className="rec-asked-ctx">
-                      You asked · {rec.title?.trim() || "Untitled"}
-                      {rec.sent_at
-                        ? ` · Sent ${formatTreasuryAsOf(rec.sent_at)}`
-                        : ""}
-                    </p>
-                    <div
-                      className={`rec-answer-hero${
-                        isAnsweredUnread(rec) ? " unread" : " read"
-                      }`}
-                    >
-                      <div className="rec-answer-label">Client answer</div>
-                      <p className="rec-answer-body">{rec.client_response}</p>
-                      <p className="rec-answer-attr">
-                        {clientName}
-                        {rec.responded_at
-                          ? ` · ${formatTreasuryAsOf(rec.responded_at)}`
-                          : ""}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="rec-title">{rec.title}</h3>
-                    <p className="rec-why">
-                      <span className="rw-l">
-                        {rec.kind === "question" ? "Question" : "Why"}
-                      </span>
-                      {rec.why}
-                    </p>
-                  </>
-                )}
-
-                {rec.evidence?.length ? (
-                  <FrozenEvidenceList evidence={rec.evidence} />
-                ) : null}
-
-                {impact ? (
-                  <div className="rec-impact">
-                    <span className="ri-l">Estimated impact</span>
-                    <span className="ri-v">{impact}</span>
-                    <span className="ri-b">Attributed to treasurer</span>
-                  </div>
-                ) : null}
-                <div className="rec-foot">
-                  {rec.anchor_type === "general" ? (
-                    <span className="rec-anchor general">General</span>
-                  ) : rec.anchor_ref ? (
-                    <span className="rec-anchor">
-                      {rec.anchor_ref.name ?? "Account"}
-                      {rec.anchor_ref.mask ? ` ····${rec.anchor_ref.mask}` : ""}
-                    </span>
-                  ) : null}
-                  {sealed ? (
-                    <span className="rec-seal-line">
-                      Sealed by {operatorName ?? "you"} ·{" "}
-                      {formatTreasuryAsOf(rec.sealed_at)}
-                    </span>
-                  ) : rec.sent_at && !isAnsweredQuestion(rec) ? (
-                    <span className="rec-seal-line">
-                      Sent · {formatTreasuryAsOf(rec.sent_at)}
-                    </span>
-                  ) : null}
-                </div>
-                {rec.status === "declined" && rec.decline_reason ? (
-                  <div className="rec-decline">
-                    <b>Declined:</b> {rec.decline_reason}
-                    {rec.decline_note ? ` — ${rec.decline_note}` : ""}
-                  </div>
-                ) : null}
-                <div
-                  className="rec-acts"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {rec.status === "accepted" ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary text-xs"
-                      onClick={() => void patchAction(rec.id, "mark_in_progress")}
-                    >
-                      Mark in progress
-                    </button>
-                  ) : null}
-                  {rec.status === "in_progress" ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary text-xs"
-                      onClick={() => void patchAction(rec.id, "mark_done")}
-                    >
-                      Mark done
-                    </button>
-                  ) : null}
-                  {(rec.status === "accepted" || rec.status === "declined") &&
-                  rec.operator_seen_at == null ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary text-xs"
-                      onClick={() => void patchAction(rec.id, "mark_seen")}
-                    >
-                      Mark seen
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <>
+          {withClient.length > 0 ? (
+            <section className="rec-band">
+              <h4 className="rec-band-h">With the client</h4>
+              <div className="rec-grid">{withClient.map(renderSentCard)}</div>
+            </section>
+          ) : null}
+          {decided.length > 0 ? (
+            <section className="rec-band">
+              <h4 className="rec-band-h">Decided &amp; answered</h4>
+              <div className="rec-grid">{decided.map(renderSentCard)}</div>
+            </section>
+          ) : null}
+        </>
       )}
 
       {open ? (
