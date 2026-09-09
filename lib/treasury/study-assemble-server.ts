@@ -6,15 +6,13 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
-import {
-  isCashModelParams,
-  resolveOpeningBalanceOverride,
-} from "@/lib/treasury/cash-model-types";
+import { resolveOpeningBalanceOverride } from "@/lib/treasury/cash-model-types";
 import {
   getModelKind,
   type Confidence,
   type ModelRowLike,
 } from "@/lib/treasury/model-kinds";
+import { coerceCashModelParams } from "@/lib/treasury/model-kinds/cash_model";
 import { loadInputs } from "@/lib/treasury/model-kinds/load-inputs";
 import type { PlacedStudySnapshot } from "@/lib/treasury/study-assemble";
 
@@ -95,7 +93,8 @@ async function runModelKind(
     scenarios = s.data;
   }
 
-  const paramsForOb = isCashModelParams(parsed.data) ? parsed.data : null;
+  const paramsForOb =
+    row.type === "cash_model" ? coerceCashModelParams(parsed.data) : null;
   const override =
     opts?.openingBalance != null && Number.isFinite(opts.openingBalance)
       ? opts.openingBalance

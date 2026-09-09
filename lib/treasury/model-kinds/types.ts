@@ -5,6 +5,10 @@
 
 import type { z } from "zod";
 import type { CashModelComposedResponse } from "@/lib/treasury/cash-model-compose";
+import type {
+  CashModelParams,
+  CashModelScenario,
+} from "@/lib/treasury/cash-model-types";
 import type { MonthlyByCategorySeries } from "@/lib/treasury/load-monthly-by-category";
 import type { PlacedStudySnapshot } from "@/lib/treasury/study-assemble";
 
@@ -120,6 +124,9 @@ export type ModelKindDef<P = unknown, S = unknown[], R = unknown> = {
 export type CashModelComputeResult = {
   composed: CashModelComposedResponse;
   openingBalanceSource: OpeningBalanceSource;
+  /** Coerced params/scenarios used for compose (Studio synthesis). */
+  coercedParams?: CashModelParams;
+  coercedScenarios?: CashModelScenario[];
 };
 
 /** Read confidence.grade from a stored derived_snapshot (if present). */
