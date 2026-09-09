@@ -381,6 +381,40 @@ export function DraftsRail({
     setDraftsDrawerOpenFromUi(false);
   }
 
+  async function createEmptyDraft(kind: DraftKind) {
+    setGroupError((e) => ({ ...e, [kind]: undefined }));
+    setUpdating((u) => ({ ...u, [kind]: true }));
+    try {
+      const res = await fetch(
+        `/api/operator/treasury/clients/${clientUserId}/recommendations`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: kind === "question" ? "Question" : "Recommendation",
+            why: "",
+            category: "liquidity",
+            kind,
+            send: false,
+          }),
+        }
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setGroupError((e) => ({
+          ...e,
+          [kind]: body.error ?? "Could not create draft",
+        }));
+        return;
+      }
+      setExpanded(kind);
+      setDraftsDrawerOpenFromUi(true);
+      await load();
+    } finally {
+      setUpdating((u) => ({ ...u, [kind]: false }));
+    }
+  }
+
   async function removeItem(
     kind: DraftKind,
     id: string,
@@ -775,6 +809,31 @@ export function DraftsRail({
           </p>
         ) : null}
         <div className="dd-body drawer-b">
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              margin: "0 0 12px",
+            }}
+          >
+            <button
+              type="button"
+              className="btng"
+              disabled={!!updating.recommendation}
+              onClick={() => void createEmptyDraft("recommendation")}
+            >
+              + New recommendation
+            </button>
+            <button
+              type="button"
+              className="btng"
+              disabled={!!updating.question}
+              onClick={() => void createEmptyDraft("question")}
+            >
+              + New question
+            </button>
+          </div>
           {renderAccordion(
             "recommendation",
             "Recommendation",
