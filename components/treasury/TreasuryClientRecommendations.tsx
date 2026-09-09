@@ -24,19 +24,22 @@ type Props = {
   readOnly?: boolean;
 };
 
-function ClientRecCard({
-  rec,
-  onAccept,
-  onDecline,
-  onAnswer,
-  readOnly = false,
-}: {
+/** Spec B24 — shared client card for operator Advisory "as client sees it" preview. */
+export type ClientRecCardProps = {
   rec: TreasuryRecommendationRow;
   onAccept: () => void;
   onDecline: () => void;
   onAnswer: () => void;
   readOnly?: boolean;
-}) {
+};
+
+export function ClientRecCard({
+  rec,
+  onAccept,
+  onDecline,
+  onAnswer,
+  readOnly = false,
+}: ClientRecCardProps) {
   const isQuestion = rec.kind === "question";
   const pending = rec.status === "sent";
   const chip = clientStatusChip(rec);

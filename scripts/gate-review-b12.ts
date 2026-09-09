@@ -4687,7 +4687,106 @@ async function main() {
     );
   }
 
-  log("ALL 48/48 LIVE CHECKS PASSED");
+  // 49 — B24 Cursor slice: ClientRecCard export + update_draft persist (no send)
+  {
+    const clientRecSrc = readFileSync(
+      join(ROOT, "components/treasury/TreasuryClientRecommendations.tsx"),
+      "utf8"
+    );
+    const exportOk =
+      /export\s+function\s+ClientRecCard\b/.test(clientRecSrc) &&
+      /export\s+type\s+ClientRecCardProps\b/.test(clientRecSrc);
+
+    const patchSrc = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/recommendations/[recId]/route.ts"
+      ),
+      "utf8"
+    );
+    const updateDraftOk =
+      patchSrc.includes('action === "update_draft"') &&
+      patchSrc.includes("body.kind") &&
+      patchSrc.includes("body.title") &&
+      patchSrc.includes("body.why");
+
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+    let draftId: string | null = null;
+    let persistOk = false;
+    let errNote = "";
+
+    try {
+      const titleA = `Gate B24 draft A ${stamp}`;
+      const titleB = `Gate B24 draft B ${stamp}`;
+      const whyB = "Autosave why — still private.";
+      const { data: created, error: insErr } = await admin
+        .from("treasury_recommendations")
+        .insert({
+          client_user_id: r1ClientId,
+          operator_tenant_id: r1TenantId!,
+          created_by: r1OperatorId,
+          title: titleA,
+          why: "initial",
+          category: "liquidity",
+          kind: "recommendation",
+          status: "draft",
+          evidence: [],
+          anchor_type: "general",
+        })
+        .select("id")
+        .single();
+      draftId = created?.id ?? null;
+      if (!draftId || insErr) {
+        errNote = insErr?.message ?? "insertFail";
+      } else {
+        // Same field set as PATCH update_draft (title/why/kind) — no send.
+        const { error: updErr } = await admin
+          .from("treasury_recommendations")
+          .update({
+            title: titleB,
+            why: whyB,
+            kind: "question",
+          })
+          .eq("id", draftId)
+          .eq("status", "draft")
+          .eq("created_by", r1OperatorId);
+
+        const { data: reloaded } = await admin
+          .from("treasury_recommendations")
+          .select("id, title, why, kind, status, sent_at, sealed_at")
+          .eq("id", draftId)
+          .maybeSingle();
+
+        persistOk =
+          !updErr &&
+          reloaded?.status === "draft" &&
+          reloaded.title === titleB &&
+          reloaded.why === whyB &&
+          reloaded.kind === "question" &&
+          reloaded.sent_at == null &&
+          reloaded.sealed_at == null;
+
+        if (!persistOk) {
+          errNote = `upd=${updErr?.message ?? "ok"} status=${reloaded?.status} title=${reloaded?.title} kind=${reloaded?.kind}`;
+        }
+      }
+    } catch (e) {
+      errNote = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (draftId) {
+        await admin.from("treasury_recommendations").delete().eq("id", draftId);
+      }
+    }
+
+    record(
+      49,
+      "B24 ClientRecCard export + update_draft persist without send",
+      exportOk && updateDraftOk && persistOk,
+      `export=${exportOk} route=${updateDraftOk} persist=${persistOk} ${errNote}`
+    );
+  }
+
+  log("ALL 49/49 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

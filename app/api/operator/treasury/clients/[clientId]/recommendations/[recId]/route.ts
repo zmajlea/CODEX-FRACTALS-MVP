@@ -257,6 +257,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       evidence = [];
       update.evidence = evidenceAsJson([]);
     } else {
+      // Spec B24 Part 3 — autosave / kind-switch without send.
+      // Accepts title, why, category, impact_*, kind on owned drafts only.
       if (body.title !== undefined) update.title = body.title;
       if (body.why !== undefined) update.why = body.why;
       if (body.category !== undefined) {
