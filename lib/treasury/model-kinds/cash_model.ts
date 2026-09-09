@@ -188,9 +188,13 @@ export const cashModelKind: ModelKindDef<
 
     const assumptions: string[] = [];
     if (opening != null && Number.isFinite(opening)) {
-      assumptions.push(`opening ${opening}`);
+      assumptions.push(
+        `opening $${Math.round(opening).toLocaleString("en-US")}`
+      );
     }
-    if (floor != null) assumptions.push(`floor ${floor}`);
+    if (floor != null && Number.isFinite(floor)) {
+      assumptions.push(`floor $${Math.round(floor).toLocaleString("en-US")}`);
+    }
     assumptions.push(`horizon ${coercedParams.horizon} mo`);
 
     return scrubPlacedStudySnapshot(
