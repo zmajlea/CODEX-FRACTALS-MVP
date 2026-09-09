@@ -613,7 +613,7 @@ export function DraftsRail({
                 className="btng dd-open-desk"
                 onClick={() => openInDrafts(bundle.draft.id)}
               >
-                Open in Drafts →
+                Open in Advisory →
               </button>
             ) : null}
             {groupError[kind] ? (

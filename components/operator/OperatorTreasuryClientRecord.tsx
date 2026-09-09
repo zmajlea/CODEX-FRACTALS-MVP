@@ -16,6 +16,7 @@ import { DraftsRail, type EvidenceNavRequest } from "@/components/operator/treas
 import { useOptimisticPick } from "@/components/operator/treasury/useOptimisticPick";
 import { TreasuryRulesPanel } from "@/components/operator/treasury/TreasuryRulesPanel";
 import { ReviewTabPanel } from "@/components/operator/treasury/ReviewTabPanel";
+import { TreasuryRecommendationsPanel } from "@/components/operator/treasury/TreasuryRecommendationsPanel";
 import { PORTAL_LOGIN } from "@/lib/auth/login-flow";
 import { isDemoTenant } from "@/lib/treasury/is-demo-tenant";
 import { txQueryParamsToFilters } from "@/lib/treasury/evidence";
@@ -35,6 +36,7 @@ type Tab =
   | "profile"
   | "overview"
   | "review"
+  | "advisory"
   | "transactions"
   | "rules"
   | "connections";
@@ -43,16 +45,20 @@ const VALID_TABS: Tab[] = [
   "profile",
   "overview",
   "review",
+  "advisory",
   "transactions",
   "rules",
   "connections",
 ];
 
 function parseInitialTab(value: string | undefined): Tab {
+  // Legacy Recommendations deep-links now land on Advisory.
+  if (value === "recommendations") {
+    return "advisory";
+  }
   if (
     value === "analytics" ||
     value === "metrics" ||
-    value === "recommendations" ||
     value === "spend-plan" ||
     value === "summary"
   ) {
@@ -309,8 +315,15 @@ export function OperatorTreasuryClientRecord({
             icon: "chart",
             label: "Studies",
             active: tab === "review",
-            badge: recUnread,
             onClick: () => setTab("review"),
+          },
+          {
+            id: "advisory",
+            icon: "scale",
+            label: "Advisory",
+            active: tab === "advisory",
+            badge: recUnread,
+            onClick: () => switchTab("advisory"),
           },
         ],
       },
@@ -657,6 +670,20 @@ export function OperatorTreasuryClientRecord({
           />
         ) : null}
 
+        {tab === "advisory" ? (
+          <TreasuryRecommendationsPanel
+            clientUserId={clientUserId}
+            clientName={clientName}
+            institutions={data?.institutions ?? []}
+            operatorName={who}
+            onUnreadChange={setRecUnread}
+            onPick={sharedPick}
+            onBasketChanged={bumpBasket}
+            initialDraftId={focusDraftId}
+            onDraftDeepLinkConsumed={() => setFocusDraftId(null)}
+          />
+        ) : null}
+
         {tab === "connections" ? (
           <TreasuryConnectionsPanel
             clientUserId={clientUserId}
@@ -680,10 +707,10 @@ export function OperatorTreasuryClientRecord({
         onClearPickNotice={clearNotice}
         onSetPickNotice={setNotice}
         onOpenDraft={(draftId) => {
-          setTab("review");
+          setTab("advisory");
           setFocusDraftId(draftId);
           router.replace(
-            `/operator/treasury/clients/${clientUserId}?tab=review&draft=${draftId}`,
+            `/operator/treasury/clients/${clientUserId}?tab=advisory&draft=${draftId}`,
             { scroll: false }
           );
         }}

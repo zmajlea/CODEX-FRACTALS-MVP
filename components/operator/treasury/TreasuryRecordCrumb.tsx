@@ -8,6 +8,8 @@ const TAB_LABELS: Record<string, string> = {
   summary: "Analytics",
   analytics: "Analytics",
   recommendations: "Recommendations",
+  review: "Studies",
+  advisory: "Advisory",
 };
 
 type Props = {
