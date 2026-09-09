@@ -17,6 +17,7 @@ export const BCN_ICONS = {
   grid:
     '<rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/>',
   book: '<path d="M5 4.5h9a3 3 0 0 1 3 3V20a2.5 2.5 0 0 0-2.5-2.5H5V4.5Z"/><path d="M5 4.5v13"/>',
+  chart: '<path d="M4 4v16h16"/><path d="M8 15l3-4 3 2 4-6"/>',
   gear:
     '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M4.5 12h2M17.5 12h2M6.4 6.4l1.4 1.4M16.2 16.2l1.4 1.4M17.6 6.4l-1.4 1.4M7.8 16.2l-1.4 1.4"/>',
   pin:
