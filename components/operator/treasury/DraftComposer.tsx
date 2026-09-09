@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
 import {
   IMPACT_BASIS_LABELS,
@@ -77,6 +77,10 @@ export function DraftComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contextN, setContextN] = useState(5);
+  /** B24 Part 3 — autosave + inline send preflight. */
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [confirming, setConfirming] = useState(false);
+  const editedRef = useRef(false);
 
   const showContextN = useMemo(() => {
     if (!isQuestion) return false;
@@ -93,7 +97,59 @@ export function DraftComposer({
     setImpactBasis(draft.impact_basis ?? "");
     setContextN(currentRuleContextN(draft.evidence));
     setError(null);
+    editedRef.current = false;
+    setSaveState("idle");
   }, [draft]);
+
+  /** B24 — persist composer fields to the draft (autosave + flush on close). */
+  const saveDraft = useCallback(async () => {
+    if (!editedRef.current) return;
+    setSaveState("saving");
+    const res = await fetch(
+      `/api/operator/treasury/clients/${clientUserId}/recommendations/${draft.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_draft",
+          title: title.trim(),
+          why: body.trim(),
+          ...(isQuestion ? {} : { category: category || undefined }),
+          impact_amount:
+            !isQuestion && impactAmount ? Number(impactAmount) : null,
+          impact_basis: !isQuestion && impactBasis ? impactBasis : null,
+        }),
+      }
+    );
+    if (res.ok) setSaveState("saved");
+    else setSaveState("idle");
+  }, [
+    clientUserId,
+    draft.id,
+    isQuestion,
+    title,
+    body,
+    category,
+    impactAmount,
+    impactBasis,
+  ]);
+
+  // Debounced autosave once the operator has edited (words never vanish on close).
+  useEffect(() => {
+    if (!editedRef.current) return;
+    const t = setTimeout(() => void saveDraft(), 800);
+    return () => clearTimeout(t);
+  }, [title, body, category, impactAmount, impactBasis, saveDraft]);
+
+  function markEdited() {
+    editedRef.current = true;
+    setSaveState("idle");
+  }
+
+  function closeWithSave() {
+    void saveDraft();
+    onClose();
+  }
 
   const canSend =
     title.trim().length > 0 &&
@@ -148,17 +204,7 @@ export function DraftComposer({
 
   async function send() {
     if (!canSend) return;
-    if (isQuestion) {
-      if (!confirm("Send question to client? Evidence will freeze with the question.")) return;
-    } else {
-      if (
-        !confirm(
-          "Seal & send to client? This freezes the evidence and makes the recommendation immutable."
-        )
-      ) {
-        return;
-      }
-    }
+    setConfirming(false);
     setBusy(true);
     setError(null);
     const res = await fetch(
@@ -189,7 +235,7 @@ export function DraftComposer({
 
   return (
     <>
-      <div className="txinsp-scrim" role="presentation" onClick={onClose} />
+      <div className="txinsp-scrim" role="presentation" onClick={closeWithSave} />
       <div
         className="reqmodal"
         role="dialog"
@@ -199,9 +245,17 @@ export function DraftComposer({
           <div>
             <div className="req-eyebrow">
               {isQuestion ? "Compose question" : "Compose recommendation"}
+              <span className="req-private"> · private until sent</span>
             </div>
             <h3 className="req-title">
               {items.length} item{items.length === 1 ? "" : "s"}
+              <span className="req-savestate" aria-live="polite">
+                {saveState === "saving"
+                  ? " · Saving…"
+                  : saveState === "saved"
+                    ? " · Draft saved"
+                    : ""}
+              </span>
             </h3>
             <p className="doct">
               {isQuestion
@@ -209,7 +263,7 @@ export function DraftComposer({
                 : "A recommendation is sealed — a judgment you put your name to."}
             </p>
           </div>
-          <button type="button" className="txi-close" onClick={onClose}>
+          <button type="button" className="txi-close" onClick={closeWithSave}>
             Close ✕
           </button>
         </div>
@@ -370,7 +424,10 @@ export function DraftComposer({
             id="draft-title"
             className="req-input"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              markEdited();
+            }}
           />
         </div>
 
@@ -383,7 +440,10 @@ export function DraftComposer({
                   key={c}
                   type="button"
                   className={`catp${category === c ? " on" : ""}`}
-                  onClick={() => setCategory(c)}
+                  onClick={() => {
+                    setCategory(c);
+                    markEdited();
+                  }}
                 >
                   {RECOMMENDATION_CATEGORY_LABELS[c]}
                 </button>
@@ -401,7 +461,10 @@ export function DraftComposer({
             className="req-textarea"
             rows={3}
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => {
+              setBody(e.target.value);
+              markEdited();
+            }}
           />
         </div>
 
@@ -458,15 +521,19 @@ export function DraftComposer({
                 type="number"
                 step="0.01"
                 value={impactAmount}
-                onChange={(e) => setImpactAmount(e.target.value)}
+                onChange={(e) => {
+                  setImpactAmount(e.target.value);
+                  markEdited();
+                }}
               />
               <select
                 className="req-input"
                 style={{ maxWidth: 160 }}
                 value={impactBasis}
-                onChange={(e) =>
-                  setImpactBasis((e.target.value || "") as ImpactBasis | "")
-                }
+                onChange={(e) => {
+                  setImpactBasis((e.target.value || "") as ImpactBasis | "");
+                  markEdited();
+                }}
               >
                 <option value="">Basis…</option>
                 {IMPACT_BASIS_OPTIONS.map((b) => (
@@ -485,24 +552,70 @@ export function DraftComposer({
           </p>
         ) : null}
 
-        <div className="req-acts">
-          <button
-            type="button"
-            className="btn sm"
-            disabled={!canSend}
-            onClick={() => void send()}
-          >
-            {isQuestion ? "Send question" : "Seal & send"}
-          </button>
-          <button type="button" className="btn ghost sm" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
-        <p className="req-foot frz">
-          {isQuestion
-            ? "Sending freezes the evidence above with the question."
-            : "Sealing freezes the evidence above under your name."}
-        </p>
+        {confirming ? (
+          <div className="req-preflight" role="group" aria-label="Send preflight">
+            <div className="req-pf-head">
+              {isQuestion ? "Send this question?" : "Seal & send this recommendation?"}
+            </div>
+            <ul className="req-pf-checks">
+              <li className={title.trim() ? "ok" : "miss"}>Title</li>
+              <li className={body.trim() ? "ok" : "miss"}>
+                {isQuestion ? "The question" : "Why"}
+              </li>
+              {!isQuestion ? (
+                <li className={category !== "" ? "ok" : "miss"}>Category</li>
+              ) : null}
+              <li className="ok">
+                {items.length} evidence item{items.length === 1 ? "" : "s"}
+                {missingCount > 0 ? ` · ${missingCount} unavailable` : ""}
+              </li>
+            </ul>
+            <p className="req-pf-vis">
+              <b>Private now</b> → visible to {"the client"} the moment you send.
+              {isQuestion
+                ? " Evidence freezes with the question."
+                : " Evidence freezes under your name and the recommendation becomes immutable."}
+            </p>
+            <div className="req-acts">
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!canSend}
+                onClick={() => void send()}
+              >
+                {isQuestion ? "Send question" : "Seal & send"}
+              </button>
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={() => setConfirming(false)}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="req-acts">
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!canSend}
+                onClick={() => setConfirming(true)}
+              >
+                {isQuestion ? "Review & send" : "Review & seal"}
+              </button>
+              <button type="button" className="btn ghost sm" onClick={closeWithSave}>
+                Close
+              </button>
+            </div>
+            <p className="req-foot frz">
+              {isQuestion
+                ? "Sending freezes the evidence above with the question."
+                : "Sealing freezes the evidence above under your name."}
+            </p>
+          </>
+        )}
       </div>
     </>
   );

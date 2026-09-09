@@ -1883,3 +1883,23 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
   [data-brand="summit"] .ct-hero-grid{ grid-template-columns:1fr; }
   .ct-head-row,.ct-row{ grid-template-columns:1fr; }
 }
+
+/* B24 Advisory — private framing, sent bands, verbatim client card wrapper, send preflight */
+.rec-band-note{font-size:12px;color:var(--mute);margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.rec-private-chip{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);background:var(--su-paper,#FCFBF9);border:1px solid var(--su-line,#DED9D1);border-radius:999px;padding:1px 7px}
+.rec-card-draft{border-style:dashed}
+.rec-band{margin-bottom:18px}
+.rec-band-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--su-line,#DED9D1)}
+.rec-op-sent{margin-bottom:12px}
+.rec-op-sent.unread{outline:2px solid var(--cinnabar,#c8452f);outline-offset:2px;border-radius:12px}
+.rec-op-strap{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.rec-op-as{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+.req-private{font-weight:600;color:var(--mute);text-transform:none;letter-spacing:0}
+.req-savestate{font-size:12px;font-weight:500;color:var(--mute)}
+.req-preflight{margin-top:14px;border:1px solid var(--su-line,#DED9D1);border-radius:12px;background:var(--su-paper,#FCFBF9);padding:14px 16px}
+.req-pf-head{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:10px}
+.req-pf-checks{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.req-pf-checks li{font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--su-line,#DED9D1)}
+.req-pf-checks li.ok{color:#1f7a49;background:#e6f4ec;border-color:#bfe3cd}
+.req-pf-checks li.miss{color:#b03a2e;background:#fcecec;border-color:#f2c9c4}
+.req-pf-vis{font-size:12px;color:var(--slate,#40536b);line-height:1.5;margin:0 0 12px}
