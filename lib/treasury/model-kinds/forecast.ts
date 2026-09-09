@@ -358,7 +358,9 @@ export const forecastKind: ModelKindDef<
     ];
     if (params.seasonal) assumptions.push("seasonal shape");
     if (params.hold != null && Number.isFinite(params.hold)) {
-      assumptions.push(`held at ${params.hold}`);
+      assumptions.push(
+        `held at $${Math.round(params.hold).toLocaleString("en-US")}`
+      );
     }
     if (params.excludedMonths?.length) {
       assumptions.push(

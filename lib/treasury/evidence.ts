@@ -712,11 +712,11 @@ export async function resolveEvidenceLive(
     }
   }
 
-  const studiesById = new Map<string, { id: string; name: string }>();
+  const studiesById = new Map<string, { id: string; name: string; type: string }>();
   if (studyIds.length > 0) {
     const { data } = await admin
       .from("treasury_studies")
-      .select("id, name")
+      .select("id, name, type")
       .eq("client_user_id", clientUserId)
       .in("id", studyIds);
     for (const row of data ?? []) {
@@ -865,8 +865,8 @@ export async function resolveEvidenceLive(
         kind: "study",
         id: ev.id,
         available: true,
-        label: row.name || "Untitled spend plan",
-        sublabel: "study",
+        label: row.name || "Untitled model",
+        sublabel: row.type || "study",
       });
       continue;
     }

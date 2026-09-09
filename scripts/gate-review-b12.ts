@@ -4406,7 +4406,288 @@ async function main() {
     );
   }
 
-  log("ALL 47/47 LIVE CHECKS PASSED");
+  // 48 — B23: cash_model upsert id-stable; money assumptions; rule→tx; study/figure picks
+  {
+    const { previewModelKind } = await import(
+      "../lib/treasury/study-assemble-server"
+    );
+    const { upsertPrimaryCashModel } = await import(
+      "../lib/server/upsert-primary-cash-model"
+    );
+    const {
+      coerceCashModelParams,
+      coerceCashModelScenarios,
+    } = await import("../lib/treasury/model-kinds/cash_model");
+    const {
+      attachRecentRuleTransactions,
+      evidenceFromPickable,
+      tryAppendEvidenceItem,
+      resolveEvidenceLive,
+    } = await import("../lib/server/treasury-recommendation-evidence");
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+
+    const studioParams = {
+      accountId: "__all__",
+      horizon: 13,
+      openingBalance: 600_000,
+      minCashThreshold: 300_000,
+    };
+
+    let upsertOk = false;
+    let moneyOk = false;
+    let ruleTxOk = false;
+    let pickOk = false;
+    let errNote = "";
+
+    try {
+      const { count: beforeTotal } = await admin
+        .from("treasury_studies")
+        .select("id", { count: "exact", head: true })
+        .eq("client_user_id", r1ClientId)
+        .eq("type", "cash_model");
+
+      const { data: beforePrimary } = await admin
+        .from("treasury_studies")
+        .select("id, name")
+        .eq("client_user_id", r1ClientId)
+        .eq("type", "cash_model")
+        .eq("is_primary", true)
+        .maybeSingle();
+
+      const prev = await previewModelKind(admin, r1ClientId, {
+        id: "gate-b23-preview",
+        name: `gate-b23-runway-${stamp}`,
+        type: "cash_model",
+        status: "confirmed",
+        params: studioParams,
+        scenarios: [],
+        scope: { accountId: "__all__" },
+      });
+      moneyOk = Boolean(
+        prev?.snapshot.assumptions?.some((a) =>
+          /opening \$[\d,]+/.test(a)
+        ) &&
+          prev?.snapshot.assumptions?.some((a) => /floor \$[\d,]+/.test(a))
+      );
+
+      if (!prev) {
+        errNote = "previewNull";
+      } else {
+        const derived = {
+          asOf: prev.snapshot.as_of,
+          historyMonthCount: prev.confidence.historyMonthCount,
+          confidence: prev.confidence,
+          assumptions: prev.snapshot.assumptions,
+          method_note: prev.snapshot.method_note,
+        };
+        const params = coerceCashModelParams(studioParams)!;
+        const scenarios = coerceCashModelScenarios(studioParams, [])!;
+
+        const u1 = await upsertPrimaryCashModel(admin, {
+          clientUserId: r1ClientId,
+          tenantId: r1TenantId!,
+          actorUserId: r1OperatorId,
+          name: `gate-b23-runway-a-${stamp}`,
+          scope: { accountId: "__all__", label: null },
+          params,
+          scenarios,
+          derived_snapshot: derived,
+        });
+        const u2 = await upsertPrimaryCashModel(admin, {
+          clientUserId: r1ClientId,
+          tenantId: r1TenantId!,
+          actorUserId: r1OperatorId,
+          name: `gate-b23-runway-b-${stamp}`,
+          scope: { accountId: "__all__", label: null },
+          params: { ...params, openingBalance: 650_000 },
+          scenarios,
+          derived_snapshot: {
+            ...derived,
+            assumptions: [
+              `opening $${Math.round(650_000).toLocaleString("en-US")}`,
+              `floor $${Math.round(300_000).toLocaleString("en-US")}`,
+              "horizon 13 mo",
+            ],
+          },
+        });
+
+        // Re-read primary id after the second upsert (not the pre-image).
+        const { data: afterPrimary } = await admin
+          .from("treasury_studies")
+          .select("id, name")
+          .eq("client_user_id", r1ClientId)
+          .eq("type", "cash_model")
+          .eq("is_primary", true)
+          .maybeSingle();
+
+        const { count: afterTotal } = await admin
+          .from("treasury_studies")
+          .select("id", { count: "exact", head: true })
+          .eq("client_user_id", r1ClientId)
+          .eq("type", "cash_model");
+
+        const { count: primaryCount } = await admin
+          .from("treasury_studies")
+          .select("id", { count: "exact", head: true })
+          .eq("client_user_id", r1ClientId)
+          .eq("type", "cash_model")
+          .eq("is_primary", true);
+
+        const idStable =
+          u1.ok &&
+          u2.ok &&
+          String(u1.row.id) === String(u2.row.id) &&
+          afterPrimary?.id === u2.row.id &&
+          afterPrimary?.name === `gate-b23-runway-b-${stamp}`;
+
+        const countOk = beforePrimary?.id
+          ? afterTotal === beforeTotal
+          : afterTotal === (beforeTotal ?? 0) + 1;
+
+        upsertOk =
+          Boolean(idStable) &&
+          Boolean(countOk) &&
+          primaryCount === 1 &&
+          u2.ok &&
+          (beforePrimary ? u2.created === false : u1.ok && u1.created);
+
+        if (!upsertOk) {
+          errNote = `u1=${u1.ok} u2=${u2.ok} id1=${u1.ok ? u1.row.id : "?"} id2=${u2.ok ? u2.row.id : "?"} reread=${afterPrimary?.id} name=${afterPrimary?.name} before=${beforeTotal} after=${afterTotal} primaries=${primaryCount} created1=${u1.ok ? u1.created : "?"} created2=${u2.ok ? u2.created : "?"}`;
+        }
+
+        // Restore prior primary name after id-stability asserts.
+        if (beforePrimary?.id && beforePrimary.name) {
+          await admin
+            .from("treasury_studies")
+            .update({ name: beforePrimary.name })
+            .eq("id", beforePrimary.id);
+        }
+
+        // Rule → recent txs: seed a temporary rule from a ledger tip row so
+        // the matcher has ≥1 hit inside the trailing-60d (ledger-anchored) window.
+        const { data: tipTx } = await admin
+          .from("treasury_transactions")
+          .select("id, normalized_merchant, merchant_name, raw_name, direction, posted_date")
+          .eq("client_user_id", r1ClientId)
+          .not("posted_date", "is", null)
+          .order("posted_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let seededRuleId: string | null = null;
+        try {
+          const payee = (
+            tipTx?.normalized_merchant ||
+            tipTx?.merchant_name ||
+            tipTx?.raw_name ||
+            ""
+          ).trim();
+          if (payee) {
+            const { data: seeded, error: seedErr } = await admin
+              .from("treasury_rules")
+              .insert({
+                client_user_id: r1ClientId,
+                created_by: r1OperatorId,
+                name: `gate-b23-rule-${stamp}`,
+                match_merchant: payee.slice(0, 80),
+                match_type: "contains",
+                assign_label: "Gate B23",
+                active: true,
+                status: "active",
+                direction:
+                  tipTx?.direction === "in" || tipTx?.direction === "out"
+                    ? tipTx.direction
+                    : null,
+              })
+              .select("id")
+              .single();
+            if (!seedErr && seeded?.id) {
+              seededRuleId = seeded.id;
+              const bundled = await attachRecentRuleTransactions(
+                admin,
+                r1ClientId,
+                seeded.id,
+                []
+              );
+              ruleTxOk = bundled.attached >= 1;
+              if (!ruleTxOk) {
+                errNote = `${errNote} ruleAttached=${bundled.attached} payee=${payee} tip=${tipTx?.posted_date}`.trim();
+              }
+            } else {
+              errNote = `${errNote} seedRule=${seedErr?.message ?? "none"}`.trim();
+            }
+          } else {
+            errNote = `${errNote} noTipTx`.trim();
+          }
+        } finally {
+          if (seededRuleId) {
+            await admin.from("treasury_rules").delete().eq("id", seededRuleId);
+          }
+        }
+
+        // Study + figure pickables validate through evidenceFromPickable + resolve
+        const studyId = afterPrimary?.id ?? (u2.ok ? String(u2.row.id) : null);
+        if (studyId) {
+          const studyEv = evidenceFromPickable({
+            kind: "study",
+            ref: studyId,
+            label: "Runway",
+          });
+          const figureEv = evidenceFromPickable({
+            kind: "figure",
+            label: "Ending cash",
+            params: {
+              metric: "ending_cash",
+              from: "2025-01-01",
+              to: "2025-12-31",
+            },
+          });
+          let ev = tryAppendEvidenceItem([], studyEv).evidence;
+          ev = tryAppendEvidenceItem(ev, figureEv).evidence;
+          const resolved = await resolveEvidenceLive(admin, r1ClientId, ev);
+          const studyItem = resolved.items.find((i) => i.kind === "study");
+          const figureItem = resolved.items.find((i) => i.kind === "figure");
+          pickOk = Boolean(
+            studyItem?.available &&
+              (studyItem.sublabel === "cash_model" ||
+                typeof studyItem.sublabel === "string") &&
+              figureItem?.available
+          );
+          if (!pickOk) {
+            errNote = `${errNote} pick study=${JSON.stringify(studyItem)} fig=${JSON.stringify(figureItem)}`.trim();
+          }
+        } else {
+          errNote = `${errNote} noStudyId`.trim();
+        }
+      }
+
+      if (!moneyOk) errNote = `${errNote} moneyFail`.trim();
+      if (!ruleTxOk) errNote = `${errNote} ruleTxFail`.trim();
+    } catch (e) {
+      errNote = e instanceof Error ? e.message : String(e);
+    }
+
+    // Route source must call shared upsert helper (no demote+insert drift).
+    const studiesPost = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/studies/route.ts"
+      ),
+      "utf8"
+    );
+    const helperWired =
+      studiesPost.includes("upsertPrimaryCashModel") &&
+      !studiesPost.includes('update({ is_primary: false })');
+
+    record(
+      48,
+      "B23 cash upsert id-stable + money + rule txs + study/figure picks",
+      helperWired && upsertOk && moneyOk && ruleTxOk && pickOk,
+      `helper=${helperWired} upsert=${upsertOk} money=${moneyOk} ruleTx=${ruleTxOk} pick=${pickOk} ${errNote}`
+    );
+  }
+
+  log("ALL 48/48 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

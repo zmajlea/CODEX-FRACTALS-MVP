@@ -335,19 +335,44 @@ export async function POST(request: Request, context: RouteContext) {
       );
       storeParams = coerceCashModelParams(parsed.data);
       storeScenarios = coerceCashModelScenarios(parsed.data, scenarios);
-    }
 
-    const makePrimary = studyType === "cash_model" ? true : (body.is_primary ?? false);
-    if (makePrimary && studyType === "cash_model") {
-      const { error: demoteErr } = await guard.admin
-        .from("treasury_studies")
-        .update({ is_primary: false })
-        .eq("client_user_id", clientId)
-        .eq("type", "cash_model")
-        .eq("is_primary", true);
-      if (demoteErr) {
-        return NextResponse.json({ error: demoteErr.message }, { status: 500 });
+      const { upsertPrimaryCashModel } = await import(
+        "@/lib/server/upsert-primary-cash-model"
+      );
+      const upserted = await upsertPrimaryCashModel(guard.admin, {
+        clientUserId: clientId,
+        tenantId: guard.grant.tenantId,
+        actorUserId: guard.user.id,
+        name,
+        scope: {
+          accountId,
+          label: body.scope?.label ?? null,
+        },
+        params: storeParams,
+        scenarios: storeScenarios,
+        derived_snapshot: derivedSnapshot,
+      });
+      if (!upserted.ok) {
+        return NextResponse.json({ error: upserted.error }, { status: 500 });
       }
+
+      void writeTreasuryAudit(guard.admin, {
+        actorUserId: guard.user.id,
+        eventType: "treasury_study_saved",
+        payload: {
+          client_user_id: clientId,
+          study_id: upserted.row.id,
+          name,
+          type: studyType,
+          upsert: !upserted.created,
+        },
+      });
+
+      return NextResponse.json({
+        study: asTreasuryStudyRow(
+          upserted.row as Database["public"]["Tables"]["treasury_studies"]["Row"]
+        ),
+      });
     }
 
     const insert: Database["public"]["Tables"]["treasury_studies"]["Insert"] = {
@@ -358,7 +383,7 @@ export async function POST(request: Request, context: RouteContext) {
       type: studyType,
       status: "confirmed",
       source: "operator",
-      is_primary: makePrimary,
+      is_primary: body.is_primary ?? false,
       scope: {
         accountId,
         label: body.scope?.label ?? null,

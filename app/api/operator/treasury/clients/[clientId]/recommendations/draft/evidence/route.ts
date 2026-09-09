@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/operator-treasury-route";
 import {
   assertTransactionsBelongToClient,
+  attachRecentRuleTransactions,
   buildRuleContextTxQueryParams,
   currentRuleContextN,
   evidenceAsJson,
@@ -28,6 +29,11 @@ type PostBody = {
   draft_kind?: DraftKind;
   /** Spec 40 — portable pick (recipes + refs) */
   pickable?: Pickable;
+  /**
+   * B23 — when picking a rule, attach recent matching txs (default true).
+   * Set false to append the rule alone.
+   */
+  attach_recent_tx?: boolean;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -130,6 +136,22 @@ export async function POST(request: Request, context: RouteContext) {
             rule_context_n: n,
           };
         }
+      }
+
+      // B23 — rule pick → absolute recent matching transaction ids (≤100, ~60d)
+      const attachRecent = body.attach_recent_tx !== false;
+      if (!duplicate && item.kind === "rule" && attachRecent) {
+        const bundled = await attachRecentRuleTransactions(
+          guard.admin,
+          clientId,
+          item.id,
+          nextEvidence
+        );
+        nextEvidence = bundled.evidence;
+        auditDetail = {
+          ...auditDetail,
+          recent_tx_attached: bundled.attached,
+        };
       }
     } catch (e) {
       return NextResponse.json(
