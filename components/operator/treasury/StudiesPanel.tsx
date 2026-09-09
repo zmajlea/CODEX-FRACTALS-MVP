@@ -48,7 +48,7 @@ function gradeOf(derived: unknown): string | null {
 /**
  * Models group in the Studies shelf (Phase 2, Part B).
  * Lists this client's Models with kind + confidence chips; Place / Confirm / Discard;
- * "+ New model" opens the Model Studio. Cash model via "Ensure primary cash model".
+ * "+ New model" opens the Model Studio (Runway, Forecast, Seasonality).
  */
 export function StudiesPanel({
   clientUserId,
@@ -81,26 +81,6 @@ export function StudiesPanel({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
-
-  async function ensurePrimary() {
-    setLocalBusy("ensure");
-    try {
-      const res = await fetch(`${base}/studies/ensure-primary-cash-model`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) {
-        const j = (await res.json()) as { error?: string };
-        throw new Error(j.error ?? "Ensure primary failed");
-      }
-      await load();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Ensure primary failed");
-    } finally {
-      setLocalBusy(null);
-    }
-  }
 
   async function confirmStudy(id: string) {
     setLocalBusy(id);
@@ -194,20 +174,9 @@ export function StudiesPanel({
         <span className="ico">+</span>
         <span className="sn">New model</span>
         <span className="sk">
-          Forecast · Seasonality — pick a kind, set the assumptions, watch it compute.
+          Runway · Forecast · Seasonality — pick a kind, set the assumptions, watch it compute.
         </span>
       </button>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0" }}>
-        <button
-          type="button"
-          className="rcx-tool"
-          disabled={locked}
-          onClick={() => void ensurePrimary()}
-        >
-          Ensure primary cash model
-        </button>
-      </div>
 
       {loading ? (
         <p className="rcx-muted" style={{ fontSize: 12 }}>
