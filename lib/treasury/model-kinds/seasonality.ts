@@ -223,7 +223,7 @@ export const seasonalityKind: ModelKindDef<
       cyclesObserved: result.cyclesObserved,
     };
   },
-  toSnapshot(row, _inputs, _params, _scenarios, result) {
+  toSnapshot(row, inputs, params, _scenarios, result) {
     let peakM = 1;
     let troughM = 1;
     for (let m = 1; m <= 12; m++) {
@@ -266,6 +266,18 @@ export const seasonalityKind: ModelKindDef<
       },
     ];
 
+    const conf = seasonalityKind.confidence(inputs, params, result);
+    const assumptions: string[] = [
+      params.method === "block"
+        ? "whole-year blocks"
+        : "all months ÷ window mean",
+    ];
+    if (params.excludedMonths?.length) {
+      assumptions.push(
+        `${params.excludedMonths.map((m) => m.slice(0, 7)).join(", ")} excluded`
+      );
+    }
+
     const snap: PlacedStudySnapshot = normalizePlacedStudy({
       kind: "study",
       study_id: String(row.id ?? "preview"),
@@ -289,6 +301,12 @@ export const seasonalityKind: ModelKindDef<
       scenarios: null,
       narrative: [],
       recommendations: [],
+      assumptions,
+      method_note: seasonalityKind.explain(params, result),
+      confidence: {
+        grade: conf.grade,
+        note: conf.reasons[0],
+      },
     });
     return scrubPlacedStudySnapshot(snap);
   },

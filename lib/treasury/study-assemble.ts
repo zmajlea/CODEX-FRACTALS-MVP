@@ -95,6 +95,16 @@ export type PlacedStudySnapshot = {
     unit?: string;
     basis?: string;
   }>;
+  /**
+   * Spec B21 — placed-block chrome that survives client scrub.
+   * Optional so cash_model / external / old freezes stay valid.
+   */
+  assumptions?: string[];
+  method_note?: string;
+  confidence?: {
+    grade: "solid" | "indicative" | "thin" | "refused";
+    note?: string;
+  };
 };
 
 const ACCOUNT_KEYS = new Set([
@@ -127,6 +137,27 @@ export function scrubPlacedStudySnapshot(
   }
   for (const n of cleaned.notes ?? []) {
     if (scanEnvelope(n.body).length) n.body = "[redacted]";
+  }
+  // Spec B21 — chrome text must scrub; grade is an enum (never redact).
+  // Keep the assumptions array shape: redact strings in place, don't drop the array.
+  if (Array.isArray(cleaned.assumptions)) {
+    cleaned.assumptions = cleaned.assumptions.map((a) =>
+      typeof a === "string" && scanEnvelope(a).length ? "[redacted]" : a
+    );
+  }
+  if (
+    typeof cleaned.method_note === "string" &&
+    scanEnvelope(cleaned.method_note).length
+  ) {
+    cleaned.method_note = "[redacted]";
+  }
+  if (cleaned.confidence && typeof cleaned.confidence.note === "string") {
+    if (scanEnvelope(cleaned.confidence.note).length) {
+      cleaned.confidence = {
+        grade: cleaned.confidence.grade,
+        note: "[redacted]",
+      };
+    }
   }
   return cleaned;
 }
@@ -176,6 +207,7 @@ export function isPlacedStudySnapshot(value: unknown): value is PlacedStudySnaps
 export function normalizePlacedStudy(snap: PlacedStudySnapshot): PlacedStudySnapshot {
   const next: PlacedStudySnapshot = {
     ...snap,
+    assumptions: snap.assumptions ?? [],
     kpis: snap.kpis.map((k, i) => ({
       ...k,
       id: k.id ?? `kpi-${i}`,
