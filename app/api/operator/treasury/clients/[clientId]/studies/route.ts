@@ -219,7 +219,11 @@ export async function POST(request: Request, context: RouteContext) {
   const studyType = studyTypeRaw;
 
   // Phase 2 engine kinds — validate via kind.params; server-compute derived+confidence.
-  if (studyType === "forecast" || studyType === "seasonality") {
+  if (
+    studyType === "forecast" ||
+    studyType === "seasonality" ||
+    (studyType === "cash_model" && body.derived_snapshot == null)
+  ) {
     const kind = getModelKind(studyType)!;
     const parsed = kind.params.safeParse(body.params ?? {});
     if (!parsed.success) {
@@ -237,13 +241,43 @@ export async function POST(request: Request, context: RouteContext) {
           { status: 400 }
         );
       }
-      scenarios = s.data as unknown[];
+      scenarios = (s.data as unknown[]) ?? [];
+    }
+
+    // Studio cash_model: Floor required when scenarios empty (never invent threshold).
+    if (studyType === "cash_model") {
+      const { coerceCashModelScenarios, coerceCashModelParams } = await import(
+        "@/lib/treasury/model-kinds/cash_model"
+      );
+      if (!coerceCashModelParams(parsed.data)) {
+        return NextResponse.json(
+          { error: "Invalid cash_model params — horizon required" },
+          { status: 400 }
+        );
+      }
+      if (!coerceCashModelScenarios(parsed.data, scenarios)) {
+        return NextResponse.json(
+          {
+            error:
+              "minCashThreshold (Floor) required when scenarios are empty",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const { loadInputs } = await import(
       "@/lib/treasury/model-kinds/load-inputs"
     );
-    const scope = body.scope ? { accountId: body.scope.accountId } : null;
+    const accountId =
+      studyType === "cash_model"
+        ? String(
+            (parsed.data as { accountId?: string }).accountId ??
+              body.scope?.accountId ??
+              "__all__"
+          )
+        : (body.scope?.accountId ?? "__all__");
+    const scope = { accountId };
     const row = {
       id: "save",
       name,
@@ -268,12 +302,53 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
     const confidence = kind.confidence(inputs, parsed.data, result);
-    const derivedSnapshot = {
-      ...(kind.derived
-        ? kind.derived(result, inputs, parsed.data)
-        : { asOf: inputs.cashModel?.asOf ?? "" }),
-      confidence,
-    };
+    const snapshot = kind.toSnapshot(
+      row,
+      inputs,
+      parsed.data,
+      scenarios as never,
+      result
+    );
+    const derivedSnapshot =
+      studyType === "cash_model"
+        ? {
+            ...(kind.derived
+              ? kind.derived(result, inputs, parsed.data)
+              : { asOf: inputs.cashModel?.asOf ?? "" }),
+            confidence,
+            assumptions: snapshot.assumptions,
+            method_note: snapshot.method_note,
+          }
+        : {
+            ...(kind.derived
+              ? kind.derived(result, inputs, parsed.data)
+              : { asOf: inputs.cashModel?.asOf ?? "" }),
+            confidence,
+          };
+
+    // Persist coerced cash params/scenarios (RPC parity), not Studio-only keys alone.
+    let storeParams: unknown = parsed.data;
+    let storeScenarios: unknown = scenarios;
+    if (studyType === "cash_model") {
+      const { coerceCashModelParams, coerceCashModelScenarios } = await import(
+        "@/lib/treasury/model-kinds/cash_model"
+      );
+      storeParams = coerceCashModelParams(parsed.data);
+      storeScenarios = coerceCashModelScenarios(parsed.data, scenarios);
+    }
+
+    const makePrimary = studyType === "cash_model" ? true : (body.is_primary ?? false);
+    if (makePrimary && studyType === "cash_model") {
+      const { error: demoteErr } = await guard.admin
+        .from("treasury_studies")
+        .update({ is_primary: false })
+        .eq("client_user_id", clientId)
+        .eq("type", "cash_model")
+        .eq("is_primary", true);
+      if (demoteErr) {
+        return NextResponse.json({ error: demoteErr.message }, { status: 500 });
+      }
+    }
 
     const insert: Database["public"]["Tables"]["treasury_studies"]["Insert"] = {
       client_user_id: clientId,
@@ -283,13 +358,13 @@ export async function POST(request: Request, context: RouteContext) {
       type: studyType,
       status: "confirmed",
       source: "operator",
-      is_primary: body.is_primary ?? false,
+      is_primary: makePrimary,
       scope: {
-        accountId: body.scope?.accountId ?? "__all__",
+        accountId,
         label: body.scope?.label ?? null,
       } as unknown as Json,
-      params: parsed.data as unknown as Json,
-      scenarios: scenarios as unknown as Json,
+      params: storeParams as unknown as Json,
+      scenarios: storeScenarios as unknown as Json,
       derived_snapshot: derivedSnapshot as unknown as Json,
     };
 

@@ -4152,7 +4152,261 @@ async function main() {
     );
   }
 
-  log("ALL 46/46 LIVE CHECKS PASSED");
+  // 47 — B22: Studio cash_model preview+save+place chrome; one-primary invariant
+  {
+    const migPath = join(
+      ROOT,
+      "supabase/migrations/20260909130000_b22_cash_model_dedupe.sql"
+    );
+    const migOk =
+      existsSync(migPath) &&
+      (() => {
+        const t = readFileSync(migPath, "utf8");
+        return (
+          t.includes("treasury_studies_one_primary_per_kind") &&
+          t.includes("treasury_studies_primary_cash_model_uniq") &&
+          t.includes("treasury_ensure_primary_cash_model") &&
+          t.includes("__all__")
+        );
+      })();
+
+    const studiesPost = readFileSync(
+      join(
+        ROOT,
+        "app/api/operator/treasury/clients/[clientId]/studies/route.ts"
+      ),
+      "utf8"
+    );
+    const studioBranchOk =
+      studiesPost.includes('studyType === "cash_model"') &&
+      studiesPost.includes("minCashThreshold") &&
+      studiesPost.includes("coerceCashModelScenarios");
+
+    const { previewModelKind, buildPlacedStudySnapshot } = await import(
+      "../lib/treasury/study-assemble-server"
+    );
+    const { asTreasuryStudyRow } = await import(
+      "../lib/server/treasury-study-mapper"
+    );
+    const { scrubPlacedStudySnapshot } = await import(
+      "../lib/treasury/study-assemble"
+    );
+    const {
+      coerceCashModelParams,
+      coerceCashModelScenarios,
+      cashModelKind,
+    } = await import("../lib/treasury/model-kinds/cash_model");
+    const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
+
+    const formKeys = cashModelKind.form.map((f) => f.key).sort().join(",");
+    const formOk =
+      formKeys === "accountId,horizon,minCashThreshold,openingBalance";
+
+    const studioParams = {
+      accountId: "__all__",
+      horizon: 13,
+      openingBalance: 1_000_000,
+      minCashThreshold: 250_000,
+    };
+
+    let previewOk = false;
+    let saveOk = false;
+    let placeOk = false;
+    let chromeOk = false;
+    let primaryOk = false;
+    let floorRefuseOk = false;
+    let studyId: string | null = null;
+    let errNote = "";
+
+    function hasChrome(snap: {
+      assumptions?: string[];
+      method_note?: string;
+      confidence?: { grade?: string };
+    } | null): boolean {
+      const g = snap?.confidence?.grade;
+      return Boolean(
+        snap &&
+          (snap.assumptions?.length ?? 0) > 0 &&
+          typeof snap.method_note === "string" &&
+          snap.method_note.trim().length > 0 &&
+          (g === "solid" || g === "indicative" || g === "thin")
+      );
+    }
+
+    try {
+      floorRefuseOk =
+        coerceCashModelScenarios({ horizon: 13 }, []) == null &&
+        coerceCashModelParams(studioParams) != null;
+
+      const prev = await previewModelKind(admin, r1ClientId, {
+        id: "gate-b22-preview",
+        name: `gate-b22-runway-${stamp}`,
+        type: "cash_model",
+        status: "confirmed",
+        params: studioParams,
+        scenarios: [],
+        scope: { accountId: "__all__" },
+      });
+      const prevPts =
+        (prev?.snapshot?.exhibits?.[0]?.points?.length ?? 0) +
+        (prev?.snapshot?.timeline?.points?.length ?? 0);
+      previewOk = Boolean(
+        prev?.snapshot?.type === "cash_model" &&
+          prevPts > 0 &&
+          hasChrome(prev.snapshot) &&
+          prev.confidence
+      );
+      if (!previewOk) {
+        errNote = `preview pts=${prevPts} chrome=${hasChrome(prev?.snapshot ?? null)}`;
+      } else {
+        // Mirror Studio POST: demote existing primaries, insert one primary.
+        await admin
+          .from("treasury_studies")
+          .update({ is_primary: false })
+          .eq("client_user_id", r1ClientId)
+          .eq("type", "cash_model")
+          .eq("is_primary", true);
+
+        const { data: row, error: insErr } = await admin
+          .from("treasury_studies")
+          .insert({
+            client_user_id: r1ClientId,
+            operator_tenant_id: r1TenantId!,
+            created_by: r1OperatorId,
+            name: `gate-b22-runway-${stamp}`,
+            type: "cash_model",
+            status: "confirmed",
+            source: "operator",
+            is_primary: true,
+            scope: { accountId: "__all__", label: null } as unknown as Json,
+            params: coerceCashModelParams(studioParams) as unknown as Json,
+            scenarios: coerceCashModelScenarios(
+              studioParams,
+              []
+            ) as unknown as Json,
+            derived_snapshot: {
+              asOf: prev!.snapshot.as_of,
+              historyMonthCount: prev!.confidence.historyMonthCount,
+              confidence: prev!.confidence,
+              assumptions: prev!.snapshot.assumptions,
+              method_note: prev!.snapshot.method_note,
+            } as unknown as Json,
+          })
+          .select("*")
+          .single();
+
+        studyId = row?.id ?? null;
+        saveOk = Boolean(row && !insErr);
+        if (!saveOk) {
+          errNote = insErr?.message ?? "insertFail";
+        } else {
+          const mapped = asTreasuryStudyRow(row!);
+          const placed = await buildPlacedStudySnapshot(
+            admin,
+            r1ClientId,
+            row as Record<string, unknown>
+          );
+          const pts =
+            (placed?.exhibits?.[0]?.points?.length ?? 0) +
+            (placed?.timeline?.points?.length ?? 0);
+          placeOk = Boolean(placed && pts > 0 && mapped.type === "cash_model");
+          const scrubbed = placed ? scrubPlacedStudySnapshot(placed) : null;
+          chromeOk = hasChrome(placed) && hasChrome(scrubbed);
+
+          const { error: dupErr } = await admin.from("treasury_studies").insert({
+            client_user_id: r1ClientId,
+            operator_tenant_id: r1TenantId!,
+            created_by: r1OperatorId,
+            name: `gate-b22-dup-${stamp}`,
+            type: "cash_model",
+            status: "confirmed",
+            source: "operator",
+            is_primary: true,
+            scope: { accountId: "csv:gate", label: null } as unknown as Json,
+            params: coerceCashModelParams({
+              horizon: 13,
+              openingBalance: 1,
+              minCashThreshold: 100,
+            }) as unknown as Json,
+            scenarios: coerceCashModelScenarios(
+              { minCashThreshold: 100, horizon: 13 },
+              []
+            ) as unknown as Json,
+            derived_snapshot: {
+              asOf: prev!.snapshot.as_of,
+              historyMonthCount: 0,
+              confidence: prev!.confidence,
+            } as unknown as Json,
+          });
+
+          const { count: primaryCount } = await admin
+            .from("treasury_studies")
+            .select("id", { count: "exact", head: true })
+            .eq("client_user_id", r1ClientId)
+            .eq("type", "cash_model")
+            .eq("is_primary", true);
+
+          primaryOk = primaryCount === 1 && dupErr != null;
+          if (dupErr == null) {
+            await admin
+              .from("treasury_studies")
+              .delete()
+              .eq("client_user_id", r1ClientId)
+              .eq("name", `gate-b22-dup-${stamp}`);
+          }
+          if (!placeOk || !chromeOk || !primaryOk) {
+            errNote = `place=${placeOk} chrome=${chromeOk} primary=${primaryCount} dup=${dupErr?.code ?? dupErr?.message ?? "none"}`;
+          }
+        }
+      }
+    } catch (e) {
+      errNote = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (studyId) {
+        await admin.from("treasury_studies").delete().eq("id", studyId);
+      }
+      // Restore a primary if we demoted the client's runway and deleted our gate row.
+      const { count: left } = await admin
+        .from("treasury_studies")
+        .select("id", { count: "exact", head: true })
+        .eq("client_user_id", r1ClientId)
+        .eq("type", "cash_model")
+        .eq("is_primary", true);
+      if ((left ?? 0) === 0) {
+        const { data: anyCash } = await admin
+          .from("treasury_studies")
+          .select("id")
+          .eq("client_user_id", r1ClientId)
+          .eq("type", "cash_model")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (anyCash?.id) {
+          await admin
+            .from("treasury_studies")
+            .update({ is_primary: true })
+            .eq("id", anyCash.id);
+        }
+      }
+    }
+
+    record(
+      47,
+      "B22 Studio cash_model preview+save+place + one-primary",
+      migOk &&
+        studioBranchOk &&
+        formOk &&
+        previewOk &&
+        floorRefuseOk &&
+        saveOk &&
+        placeOk &&
+        chromeOk &&
+        primaryOk,
+      `mig=${migOk} studio=${studioBranchOk} form=${formOk} preview=${previewOk} floorRefuse=${floorRefuseOk} save=${saveOk} place=${placeOk} chrome=${chromeOk} primary=${primaryOk} ${errNote}`
+    );
+  }
+
+  log("ALL 47/47 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {
