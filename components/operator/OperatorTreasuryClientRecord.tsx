@@ -611,7 +611,11 @@ export function OperatorTreasuryClientRecord({
         ) : null}
 
         {tab === "review" ? (
-          <ReviewTabPanel clientUserId={clientUserId} dataThrough={dataThrough} />
+          <ReviewTabPanel
+            clientUserId={clientUserId}
+            dataThrough={dataThrough}
+            onPick={sharedPick}
+          />
         ) : null}
 
         {tab === "transactions" ? (

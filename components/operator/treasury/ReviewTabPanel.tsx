@@ -8,14 +8,13 @@ import {
   MetricComparisonTable,
   MetricSeriesTable,
 } from "@/components/operator/treasury/analytics/MetricTable";
-import { ReviewDraftsPanel } from "@/components/operator/treasury/ReviewDraftsPanel";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import { StudiesPanel } from "@/components/operator/treasury/StudiesPanel";
 import { ModelStudio } from "@/components/operator/treasury/ModelStudio";
 import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import { isPlacedStudySnapshot } from "@/lib/treasury/study-assemble";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
-import { postPickableToDraft } from "@/lib/treasury/post-pickable";
 import {
   PINNED_WINDOW_PRESETS,
   type PinnedWindow,
@@ -124,6 +123,8 @@ type MetricRow = {
 type Props = {
   clientUserId: string;
   dataThrough?: string | null;
+  /** Spec B23 — pick into DraftsRail (recommendation / question). */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 type PendingAction =
@@ -144,7 +145,7 @@ function stateChip(
   return "READY";
 }
 
-export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
+export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -161,7 +162,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
   const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [draftKindTarget, setDraftKindTarget] = useState<DraftKind>("recommendation");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmTyped, setConfirmTyped] = useState("");
@@ -434,33 +434,36 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
     }
   }
 
-  async function addExhibitToDraft(block: BlockItem) {
-    if (!block.metric_id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const pickable: Pickable = {
-        kind: "figure",
-        ref: block.metric_id,
+  function figurePickable(block: BlockItem): Pickable | null {
+    if (!block.metric_id) return null;
+    return {
+      kind: "figure",
+      ref: block.metric_id,
+      label: block.metric_name ?? "Exhibit",
+      params: {
+        metric: block.metric_name ?? block.metric_id,
+        from: "2000-01-01",
+        to: new Date().toISOString().slice(0, 10),
+      },
+      snap: {
         label: block.metric_name ?? "Exhibit",
-        params: {
-          metric: block.metric_name ?? block.metric_id,
-          from: "2000-01-01",
-          to: new Date().toISOString().slice(0, 10),
-        },
-        snap: {
-          label: block.metric_name ?? "Exhibit",
-          name: block.metric_name ?? "Exhibit",
-          snapshot: block.placed_snapshot ?? null,
-        },
-      };
-      await postPickableToDraft(clientUserId, draftKindTarget, pickable);
-      setError(`Cited in ${draftKindTarget} draft.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Add to draft failed");
-    } finally {
-      setBusy(false);
-    }
+        name: block.metric_name ?? "Exhibit",
+        snapshot: block.placed_snapshot ?? null,
+      },
+    };
+  }
+
+  function studyPickable(block: BlockItem): Pickable | null {
+    if (!block.study_id) return null;
+    const snap = isPlacedStudySnapshot(block.placed_snapshot)
+      ? block.placed_snapshot
+      : null;
+    return {
+      kind: "study",
+      ref: block.study_id,
+      label: snap?.name ?? block.metric_name ?? "Model",
+      sublabel: snap?.type,
+    };
   }
 
   function presetFromPinned(pinned: unknown): PinnedWindowPreset | "" {
@@ -1490,15 +1493,22 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                           ))}
                         </select>
                       ) : null}
-                      {hasMetric ? (
-                        <button
-                          type="button"
-                          className="rcx-tool"
+                      {hasMetric && onPick && figurePickable(block) ? (
+                        <PickButton
+                          variant="header"
+                          pickable={figurePickable(block)!}
                           disabled={busy}
-                          onClick={() => void addExhibitToDraft(block)}
-                        >
-                          ＋ Add to draft
-                        </button>
+                          onPick={onPick}
+                        />
+                      ) : null}
+                      {isStudy && onPick && studyPickable(block) ? (
+                        <PickButton
+                          variant="header"
+                          pickable={studyPickable(block)!}
+                          disabled={busy}
+                          ariaLabel="Add this model to a draft"
+                          onPick={onPick}
+                        />
                       ) : null}
                       {hasMetric || isStudy ? (
                         <button
@@ -1545,6 +1555,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
                       snapshot={block.placed_snapshot}
                       viewMode={viewMode}
                       showProvenance
+                      onPick={onPick}
                     />
                   ) : null}
 
@@ -1761,42 +1772,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough }: Props) {
             </div>
             ) : null}
 
-            {status === "draft" ? (
-              <div className="rcx-drafts-wrap" style={{ marginTop: 16 }}>
-                <ReviewDraftsPanel
-                  clientUserId={clientUserId}
-                  draftKindTarget={draftKindTarget}
-                  onDraftKindChange={setDraftKindTarget}
-                />
-              </div>
-            ) : null}
-
-            {status === "draft" ? (
-              <div className="rcx-addbar">
-                <span className="al">Add</span>
-                <button
-                  type="button"
-                  className="rcx-tool"
-                  onClick={() => openShelfFor("figure")}
-                >
-                  + Figure
-                </button>
-                <button
-                  type="button"
-                  className="rcx-tool"
-                  onClick={() => openShelfFor("exhibit")}
-                >
-                  + Exhibit
-                </button>
-                <button
-                  type="button"
-                  className="rcx-tool"
-                  onClick={() => void addNote()}
-                >
-                  + Note
-                </button>
-              </div>
-            ) : null}
           </div>
         )}
       </section>

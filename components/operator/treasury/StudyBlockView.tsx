@@ -1,12 +1,17 @@
 "use client";
 
+import { type ReactNode } from "react";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricSeriesTable } from "@/components/operator/treasury/analytics/MetricTable";
+import { PickButton } from "@/components/operator/treasury/PickButton";
 import {
   isPlacedStudySnapshot,
   normalizePlacedStudy,
+  type PlacedStudyExhibit,
+  type PlacedStudyKpi,
   type PlacedStudySnapshot,
 } from "@/lib/treasury/study-assemble";
+import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import {
   gridColumnSpan,
   resolveLayout,
@@ -21,6 +26,8 @@ type Props = {
   viewMode?: "chart" | "table";
   /** Operator chrome (opening-balance provenance). */
   showProvenance?: boolean;
+  /** Spec B23 — per-section pick into DraftsRail. */
+  onPick?: (draftKind: DraftKind, pickable: Pickable) => void | Promise<void>;
 };
 
 function money(n: number | string): string {
@@ -58,11 +65,82 @@ function formatKpiValue(k: {
   return String(k.value);
 }
 
+function pointRange(e: PlacedStudyExhibit): { from: string; to: string } {
+  const months: string[] = [];
+  for (const p of e.points) {
+    if ("month" in p && typeof p.month === "string") {
+      months.push(p.month.slice(0, 7));
+    } else if ("label" in p && typeof (p as { label?: string }).label === "string") {
+      months.push(String((p as { label: string }).label).slice(0, 10));
+    }
+  }
+  const from = months[0] ?? "2000-01-01";
+  const to = months[months.length - 1] ?? from;
+  return {
+    from: from.length === 7 ? `${from}-01` : from,
+    to: to.length === 7 ? `${to}-28` : to,
+  };
+}
+
+function exhibitPickable(
+  snap: PlacedStudySnapshot,
+  e: PlacedStudyExhibit
+): Pickable {
+  const { from, to } = pointRange(e);
+  const label = e.title || snap.name || "Section";
+  if (snap.type === "forecast" || snap.type === "seasonality") {
+    return {
+      kind: "forecast",
+      label,
+      params: {
+        metric: label,
+        from,
+        to,
+        study_id: snap.study_id,
+        exhibit_id: e.id,
+      },
+      snap: { label, study_id: snap.study_id, exhibit_id: e.id },
+    };
+  }
+  return {
+    kind: "figure",
+    label,
+    params: {
+      metric: label,
+      from,
+      to,
+      study_id: snap.study_id,
+      exhibit_id: e.id,
+    },
+    snap: { label, study_id: snap.study_id, exhibit_id: e.id },
+  };
+}
+
+function kpiPickable(snap: PlacedStudySnapshot, k: PlacedStudyKpi): Pickable {
+  const asOf = snap.as_of?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  return {
+    kind: "figure",
+    label: k.label,
+    params: {
+      metric: k.label,
+      from: asOf,
+      to: asOf,
+      study_id: snap.study_id,
+    },
+    snap: {
+      label: k.label,
+      value: k.value,
+      study_id: snap.study_id,
+    },
+  };
+}
+
 /** Spec B16/B17 M2 — shared study block renderer (operator + client). */
 export function StudyBlockView({
   snapshot,
   viewMode = "chart",
   showProvenance = false,
+  onPick,
 }: Props) {
   if (!isPlacedStudySnapshot(snapshot)) {
     return <p className="rcx-muted">Study snapshot unavailable.</p>;
@@ -96,6 +174,35 @@ export function StudyBlockView({
     })),
   ];
   const units = collapseLayoutUnits(collapseItems);
+
+  function sectionPick(item: CollapseItem) {
+    if (!onPick) return null;
+    if (item.role === "exhibit") {
+      const e = exhibits.find((x) => x.id === item.id);
+      if (!e) return null;
+      return (
+        <PickButton
+          variant="row"
+          pickable={exhibitPickable(snap, e)}
+          onPick={onPick}
+          ariaLabel={`Add ${e.title || "section"} to a draft`}
+        />
+      );
+    }
+    if (item.role === "figure") {
+      const k = snap.kpis[item.sourceIndex];
+      if (!k) return null;
+      return (
+        <PickButton
+          variant="row"
+          pickable={kpiPickable(snap, k)}
+          onPick={onPick}
+          ariaLabel={`Add ${k.label} to a draft`}
+        />
+      );
+    }
+    return null;
+  }
 
   function renderExhibit(id: string, forceTile?: boolean) {
     const e = exhibits.find((x) => x.id === id);
@@ -229,6 +336,26 @@ export function StudyBlockView({
     return null;
   }
 
+  function wrapWithPick(item: CollapseItem, body: ReactNode) {
+    const pick = sectionPick(item);
+    if (!pick) return body;
+    return (
+      <div style={{ position: "relative" }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            right: 4,
+            zIndex: 2,
+          }}
+        >
+          {pick}
+        </div>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <div className="study-block" data-study-type={snap.type}>
       {confidence || assumptions.length ? (
@@ -303,7 +430,9 @@ export function StudyBlockView({
                 }}
               >
                 {u.items.map((it) => (
-                  <div key={it.id}>{renderItem(it, true)}</div>
+                  <div key={it.id}>
+                    {wrapWithPick(it, renderItem(it, true))}
+                  </div>
                 ))}
               </div>
             );
@@ -319,7 +448,7 @@ export function StudyBlockView({
                   alignItems: "start",
                 }}
               >
-                <div>{renderItem(u.primary)}</div>
+                <div>{wrapWithPick(u.primary, renderItem(u.primary))}</div>
                 <aside
                   style={{
                     background: "color-mix(in srgb, #0e7490 8%, #fff)",
@@ -328,7 +457,7 @@ export function StudyBlockView({
                     border: "1px solid color-mix(in srgb, #0e7490 20%, #DED9D1)",
                   }}
                 >
-                  {renderItem(u.side)}
+                  {wrapWithPick(u.side, renderItem(u.side, true))}
                 </aside>
               </div>
             );
@@ -343,15 +472,18 @@ export function StudyBlockView({
                   gap: 12,
                 }}
               >
-                <div>{renderItem(u.left)}</div>
-                <div>{renderItem(u.right)}</div>
+                <div>{wrapWithPick(u.left, renderItem(u.left))}</div>
+                <div>{wrapWithPick(u.right, renderItem(u.right))}</div>
               </div>
             );
           }
           const span = gridColumnSpan(u.item.layout, "desktop");
           return (
-            <div key={`full-${ui}`} style={{ maxWidth: span <= 6 ? "50%" : "100%" }}>
-              {renderItem(u.item)}
+            <div
+              key={`full-${ui}`}
+              style={{ maxWidth: span <= 6 ? "50%" : "100%" }}
+            >
+              {wrapWithPick(u.item, renderItem(u.item))}
             </div>
           );
         })}
@@ -363,7 +495,9 @@ export function StudyBlockView({
           style={{ fontSize: 11, marginTop: 10, lineHeight: 1.5 }}
         >
           {methodNote}
-          {confidence?.note ? `${methodNote ? " · " : ""}${confidence.note}` : ""}
+          {confidence?.note
+            ? `${methodNote ? " · " : ""}${confidence.note}`
+            : ""}
         </p>
       ) : null}
 
