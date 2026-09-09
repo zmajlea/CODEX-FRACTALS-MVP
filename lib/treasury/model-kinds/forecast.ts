@@ -295,7 +295,7 @@ export const forecastKind: ModelKindDef<
 
     return conf;
   },
-  toSnapshot(row, _inputs, params, _scenarios, result) {
+  toSnapshot(row, inputs, params, _scenarios, result) {
     const pts = [...result.historical, ...result.projected];
     const next1 = result.projected[0]?.value ?? null;
     const next3 = result.projected
@@ -351,6 +351,21 @@ export const forecastKind: ModelKindDef<
       chart_hint: "line" as const,
     };
 
+    const conf = forecastKind.confidence(inputs, params, result);
+    const assumptions: string[] = [
+      `${params.method.replace(/_/g, " ")}, last ${params.window}`,
+      `horizon ${params.horizon} mo`,
+    ];
+    if (params.seasonal) assumptions.push("seasonal shape");
+    if (params.hold != null && Number.isFinite(params.hold)) {
+      assumptions.push(`held at ${params.hold}`);
+    }
+    if (params.excludedMonths?.length) {
+      assumptions.push(
+        `${params.excludedMonths.map((m) => m.slice(0, 7)).join(", ")} excluded`
+      );
+    }
+
     const snap: PlacedStudySnapshot = normalizePlacedStudy({
       kind: "study",
       study_id: String(row.id ?? "preview"),
@@ -374,6 +389,12 @@ export const forecastKind: ModelKindDef<
       scenarios: null,
       narrative: [],
       recommendations: [],
+      assumptions,
+      method_note: forecastKind.explain(params, result),
+      confidence: {
+        grade: conf.grade,
+        note: conf.reasons[0],
+      },
     });
     return scrubPlacedStudySnapshot(snap);
   },

@@ -3772,9 +3772,10 @@ async function main() {
     );
   }
 
-  // 46 — Models P2: persist + place forecast/seasonality (type_check + non-empty snapshot)
+  // 46 — Models P2: persist + place forecast/seasonality (type_check + chrome envelope)
   // Preview-only smoke (#45) never writes; insert-only missed empty place when
   // scope.accountId='__all__' was passed through as a literal account filter.
+  // Spec B21: assert assumptions/method_note/confidence on place + client assembly.
   {
     const migPath = join(
       ROOT,
@@ -3805,7 +3806,15 @@ async function main() {
     const { asTreasuryStudyRow } = await import(
       "../lib/server/treasury-study-mapper"
     );
-    const { placedStudyToJson } = await import("../lib/treasury/study-assemble");
+    const {
+      placedStudyToJson,
+      scrubPlacedStudySnapshot,
+    } = await import("../lib/treasury/study-assemble");
+    const {
+      buildReviewSnapshot,
+      normalizeBlockRow,
+      normalizeReviewRow,
+    } = await import("../lib/treasury/review-assemble");
     const r1OperatorId = await resolveUserId(admin, R1_OPERATOR_EMAIL);
 
     let forecastId: string | null = null;
@@ -3814,7 +3823,25 @@ async function main() {
     let insertOk = false;
     let mapOk = false;
     let placeOk = false;
+    let chromeOk = false;
+    let scrubOk = false;
+    let clientOk = false;
     let errNote = "";
+
+    function hasChrome(snap: {
+      assumptions?: string[];
+      method_note?: string;
+      confidence?: { grade?: string; note?: string };
+    } | null): boolean {
+      return Boolean(
+        snap &&
+          (snap.assumptions?.length ?? 0) > 0 &&
+          typeof snap.method_note === "string" &&
+          snap.method_note.trim().length > 0 &&
+          typeof snap.confidence?.grade === "string" &&
+          snap.confidence.grade.length > 0
+      );
+    }
 
     try {
       const fcPrev = await previewModelKind(admin, r1ClientId, {
@@ -3861,7 +3888,6 @@ async function main() {
             status: "confirmed",
             source: "operator",
             is_primary: false,
-            // Sentinel that previously emptied place compute — must map to null.
             scope: { accountId: "__all__", label: null } as unknown as Json,
             params: {
               subject: { kind: "total_out" },
@@ -3922,7 +3948,6 @@ async function main() {
             (seMapped.derived_snapshot as { confidence?: { grade?: string } })
               ?.confidence?.grade != null;
 
-          // Place: fresh compute from the persisted row (exercises __all__ → null).
           const placedFc = await buildPlacedStudySnapshot(
             admin,
             r1ClientId,
@@ -3938,18 +3963,37 @@ async function main() {
             (placedFc?.exhibits?.[0]?.points?.length ?? 0) +
             (placedFc?.timeline?.points?.length ?? 0);
           const sePoints = placedSe?.exhibits?.[0]?.points?.length ?? 0;
-          const fcKpis = placedFc?.kpis?.length ?? 0;
-          const seKpis = placedSe?.kpis?.length ?? 0;
+          const seAnalytics =
+            placedSe?.exhibits?.[0]?.series_kind === "analytics" &&
+            sePoints >= 12;
+          const seHasPeakTrough =
+            placedSe?.kpis?.some((k) => k.label === "Peak month") &&
+            placedSe?.kpis?.some((k) => k.label === "Trough month");
           const fcNumeric = placedFc?.kpis?.some(
             (k) => typeof k.value === "number" && Number.isFinite(k.value)
           );
           const snapNonEmpty =
             Boolean(placedFc && placedSe) &&
             fcPoints > 0 &&
-            sePoints > 0 &&
-            fcKpis > 0 &&
-            seKpis > 0 &&
+            seAnalytics &&
+            Boolean(seHasPeakTrough) &&
             Boolean(fcNumeric);
+
+          chromeOk = hasChrome(placedFc) && hasChrome(placedSe);
+
+          if (placedFc && placedSe) {
+            const scrubbedFc = scrubPlacedStudySnapshot(placedFc);
+            const scrubbedSe = scrubPlacedStudySnapshot(placedSe);
+            scrubOk =
+              hasChrome(scrubbedFc) &&
+              hasChrome(scrubbedSe) &&
+              scrubbedFc.confidence!.grade === placedFc.confidence!.grade &&
+              scrubbedSe.confidence!.grade === placedSe.confidence!.grade &&
+              Array.isArray(scrubbedFc.assumptions) &&
+              Array.isArray(scrubbedSe.assumptions) &&
+              !scrubbedFc.assumptions.includes("[redacted]") &&
+              scrubbedFc.method_note !== "[redacted]";
+          }
 
           const { data: review } = await admin
             .from("treasury_reviews")
@@ -3962,12 +4006,12 @@ async function main() {
               status: "draft",
               created_by: r1OperatorId,
             })
-            .select("id")
+            .select("*")
             .single();
           reviewId = review?.id ?? null;
 
-          if (reviewId && placedFc) {
-            const { data: block, error: blockErr } = await admin
+          if (reviewId && placedFc && placedSe) {
+            const { data: fcBlock, error: fcBlockErr } = await admin
               .from("treasury_review_blocks")
               .insert({
                 review_id: reviewId,
@@ -3985,28 +4029,103 @@ async function main() {
               .select("id, placed_snapshot")
               .single();
 
-            const frozen = block?.placed_snapshot as {
-              kpis?: Array<{ value: number | string }>;
+            const { data: seBlock, error: seBlockErr } = await admin
+              .from("treasury_review_blocks")
+              .insert({
+                review_id: reviewId,
+                position: 2,
+                role: "study",
+                study_id: seasonId!,
+                metric_id: null,
+                recommendation_id: null,
+                caption: placedSe.name,
+                body: "",
+                placed_snapshot: placedStudyToJson(placedSe),
+                proposal_state: "none",
+                provenance: { study_as_of: placedSe.as_of },
+              })
+              .select("id, placed_snapshot")
+              .single();
+
+            const frozenFc = fcBlock?.placed_snapshot as {
+              kpis?: unknown[];
               exhibits?: Array<{ points?: unknown[] }>;
               timeline?: { points?: unknown[] };
+              assumptions?: string[];
+              method_note?: string;
+              confidence?: { grade?: string };
+            } | null;
+            const frozenSe = seBlock?.placed_snapshot as {
+              exhibits?: Array<{ points?: unknown[] }>;
+              assumptions?: string[];
+              method_note?: string;
+              confidence?: { grade?: string };
             } | null;
             const frozenPts =
-              (frozen?.exhibits?.[0]?.points?.length ?? 0) +
-              (frozen?.timeline?.points?.length ?? 0);
-            const frozenKpis = frozen?.kpis?.length ?? 0;
+              (frozenFc?.exhibits?.[0]?.points?.length ?? 0) +
+              (frozenFc?.timeline?.points?.length ?? 0);
+            const seFrozenPts = frozenSe?.exhibits?.[0]?.points?.length ?? 0;
 
             placeOk =
               snapNonEmpty &&
-              !blockErr &&
-              Boolean(block?.id) &&
+              !fcBlockErr &&
+              !seBlockErr &&
+              Boolean(fcBlock?.id && seBlock?.id) &&
               frozenPts > 0 &&
-              frozenKpis > 0;
+              seFrozenPts >= 12 &&
+              hasChrome(frozenFc) &&
+              hasChrome(frozenSe);
 
-            if (!placeOk) {
-              errNote = `place snapNonEmpty=${snapNonEmpty} fcPts=${fcPoints} sePts=${sePoints} frozenPts=${frozenPts} block=${blockErr?.message ?? "ok"}`;
+            // Client path: buildReviewSnapshot → blocks[].computed carries chrome.
+            const { data: blockRows } = await admin
+              .from("treasury_review_blocks")
+              .select("*")
+              .eq("review_id", reviewId)
+              .order("position", { ascending: true });
+            const reviewNorm = normalizeReviewRow(
+              review as Record<string, unknown>
+            );
+            const blocksNorm = (blockRows ?? []).map((r) =>
+              normalizeBlockRow(r as Record<string, unknown>)
+            );
+            const edition = await buildReviewSnapshot(
+              admin,
+              reviewNorm,
+              blocksNorm,
+              1,
+              "gate-b21",
+              new Date().toISOString().slice(0, 10)
+            );
+            const studyBlocks = edition.blocks.filter(
+              (b) => (b as { role?: string }).role === "study"
+            ) as Array<{
+              computed?: {
+                assumptions?: string[];
+                method_note?: string;
+                confidence?: { grade?: string };
+                exhibits?: Array<{ points?: unknown[] }>;
+              };
+            }>;
+            const fcClient = studyBlocks.find(
+              (b) =>
+                (b.computed?.exhibits?.[0]?.points?.length ?? 0) > 0 &&
+                hasChrome(b.computed ?? null)
+            );
+            const seClient = studyBlocks.find(
+              (b) =>
+                (b.computed?.exhibits?.[0]?.points?.length ?? 0) >= 12 &&
+                hasChrome(b.computed ?? null)
+            );
+            clientOk =
+              studyBlocks.length >= 2 &&
+              Boolean(fcClient) &&
+              Boolean(seClient);
+
+            if (!placeOk || !chromeOk || !scrubOk || !clientOk) {
+              errNote = `place=${placeOk} chrome=${chromeOk} scrub=${scrubOk} client=${clientOk} fcPts=${fcPoints} sePts=${sePoints} frozenPts=${frozenPts}`;
             }
           } else {
-            errNote = `reviewOrPlaceNull snapNonEmpty=${snapNonEmpty} fcPts=${fcPoints}`;
+            errNote = `reviewOrPlaceNull snapNonEmpty=${snapNonEmpty} chrome=${chromeOk}`;
           }
         }
       }
@@ -4020,9 +4139,16 @@ async function main() {
 
     record(
       46,
-      "Models P2 persist+place forecast/seasonality (type_check + non-empty snap)",
-      migOk && allSentinelOk && insertOk && mapOk && placeOk,
-      `mig=${migOk} sentinel=${allSentinelOk} insert=${insertOk} map=${mapOk} place=${placeOk} ${errNote}`
+      "Models P2 persist+place chrome envelope (type_check + client computed)",
+      migOk &&
+        allSentinelOk &&
+        insertOk &&
+        mapOk &&
+        placeOk &&
+        chromeOk &&
+        scrubOk &&
+        clientOk,
+      `mig=${migOk} sentinel=${allSentinelOk} insert=${insertOk} map=${mapOk} place=${placeOk} chrome=${chromeOk} scrub=${scrubOk} client=${clientOk} ${errNote}`
     );
   }
 
