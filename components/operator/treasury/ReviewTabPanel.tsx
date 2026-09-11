@@ -2129,7 +2129,7 @@ const RCX_CSS = `
 .rcx-shead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 24px;align-items:start;padding-bottom:16px;border-bottom:1px solid var(--paper-edge);margin-bottom:16px}
 .rcx-kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;display:flex;align-items:center;gap:8px}
 .rcx-kicker .tl{text-transform:none;letter-spacing:0;font-weight:600;color:var(--slate,#364657)}
-.rcx-stitle{display:block;font-size:26px;font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:2px 0;margin:6px 0 4px}
+.rcx-stitle{display:block;font-size:clamp(20px,5.2cqi,26px);font-weight:700;letter-spacing:-.01em;border:none;outline:none;width:100%;max-width:100%;background:transparent;color:var(--ink);font-family:inherit;padding:2px 0;margin:6px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-stitle:disabled{opacity:.85}
 .rcx-smeta{font-size:12.5px;color:var(--mute);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .rcx-ob{background:color-mix(in srgb,var(--canvas-2,#eef3f9) 80%,#fff);border:1px solid var(--paper-edge);border-radius:8px;padding:12px 14px;min-width:240px}

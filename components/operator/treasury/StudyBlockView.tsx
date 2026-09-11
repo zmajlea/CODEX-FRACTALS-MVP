@@ -39,19 +39,12 @@ function money(n: number | string): string {
   }).format(n);
 }
 
-/** Spec B21 — placed-block chrome: confidence grade colors (inline so the
- * client view renders them without depending on the composer stylesheet). */
+/** Spec B21 — confidence grade labels (colors via CSS `[data-grade]`). */
 const GRADE_LABEL: Record<string, string> = {
   solid: "Solid",
   indicative: "Indicative",
   thin: "Thin",
   refused: "Refused",
-};
-const GRADE_COLOR: Record<string, { bg: string; fg: string }> = {
-  solid: { bg: "#e6f4ec", fg: "#1f7a49" },
-  indicative: { bg: "#fdf3e0", fg: "#a5701a" },
-  thin: { bg: "#fcecec", fg: "#b03a2e" },
-  refused: { bg: "#f0f0f2", fg: "#6b6b74" },
 };
 
 function formatKpiValue(k: {
@@ -151,7 +144,6 @@ export function StudyBlockView({
   const assumptions = snap.assumptions ?? [];
   const confidence = snap.confidence;
   const methodNote = snap.method_note;
-  const gradeColor = confidence ? GRADE_COLOR[confidence.grade] : undefined;
 
   const collapseItems: CollapseItem[] = [
     ...snap.kpis.map((k, i) => ({
@@ -237,9 +229,7 @@ export function StudyBlockView({
       const last = points[points.length - 1]?.value;
       return (
         <div>
-          <div className="rcx-muted" style={{ fontSize: 11, fontWeight: 700 }}>
-            {e.title}
-          </div>
+          <div className="rcx-muted study-ex-title">{e.title}</div>
           <div className="rcx-figval">
             {last != null ? money(last) : "—"}
             <span className="rcx-fighint"> · summary</span>
@@ -249,9 +239,7 @@ export function StudyBlockView({
     }
     return (
       <div>
-        <div className="rcx-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-          {e.title}
-        </div>
+        <div className="rcx-muted study-ex-title-lg">{e.title}</div>
         {viewMode === "table" ? (
           <MetricSeriesTable points={points} referenceLines={refs} />
         ) : (
@@ -265,7 +253,7 @@ export function StudyBlockView({
           </div>
         )}
         {e.breach_month ? (
-          <p className="rcx-muted" style={{ fontSize: 12 }}>
+          <p className="rcx-muted study-breach">
             Breach · {e.breach_month}
             {e.runway_months != null ? ` · runway ${e.runway_months} mo` : ""}
           </p>
@@ -278,42 +266,16 @@ export function StudyBlockView({
     const k = snap.kpis[index];
     if (!k) return null;
     return (
-      <div
-        style={{
-          minWidth: 0,
-          border: "1px solid var(--su-line, #DED9D1)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          background: "var(--su-paper, #FCFBF9)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--mute)",
-            fontWeight: 700,
-          }}
-        >
-          {k.label}
-        </div>
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            color: k.flag === "warn" ? "var(--su-neg, #B42318)" : "var(--ink)",
-          }}
-        >
+      <div className={`study-kpi${k.flag === "warn" ? " warn" : ""}`}>
+        <div className="study-kpi-label">{k.label}</div>
+        <div className="study-kpi-value">
           {formatKpiValue(k)}
           {k.unit && k.unit !== "usd" ? (
-            <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>
-              {k.unit}
-            </span>
+            <span className="study-kpi-unit">{k.unit}</span>
           ) : null}
         </div>
         {showProvenance && k.basis ? (
-          <div style={{ fontSize: 11, color: "var(--mute)" }}>{k.basis}</div>
+          <div className="study-kpi-basis">{k.basis}</div>
         ) : null}
       </div>
     );
@@ -323,9 +285,7 @@ export function StudyBlockView({
     const n = notes.find((x) => x.id === id);
     if (!n) return null;
     return (
-      <p className="rcx-note" style={{ margin: 0 }}>
-        {n.body}
-      </p>
+      <p className="rcx-note study-note">{n.body}</p>
     );
   }
 
@@ -340,66 +300,27 @@ export function StudyBlockView({
     const pick = sectionPick(item);
     if (!pick) return body;
     return (
-      <div style={{ position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            top: 4,
-            right: 4,
-            zIndex: 2,
-          }}
-        >
-          {pick}
-        </div>
+      <div className="study-pickwrap">
+        <div className="study-pickslot">{pick}</div>
         {body}
       </div>
     );
   }
 
+  const methodBody =
+    [methodNote, confidence?.note].filter(Boolean).join(" · ") || "";
+
   return (
     <div className="study-block" data-study-type={snap.type}>
       {confidence || assumptions.length ? (
-        <div
-          className="study-chrome"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 10,
-          }}
-        >
+        <div className="study-chrome">
           {confidence ? (
-            <span
-              className="study-conf"
-              data-grade={confidence.grade}
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                padding: "2px 9px",
-                borderRadius: 999,
-                background: gradeColor?.bg ?? "var(--su-paper, #FCFBF9)",
-                color: gradeColor?.fg ?? "var(--mute)",
-              }}
-            >
+            <span className="study-conf" data-grade={confidence.grade}>
               {GRADE_LABEL[confidence.grade] ?? confidence.grade}
             </span>
           ) : null}
           {assumptions.map((a, i) => (
-            <span
-              key={i}
-              className="study-assump"
-              style={{
-                fontSize: 11,
-                color: "var(--mute)",
-                border: "1px solid var(--su-line, #DED9D1)",
-                borderRadius: 999,
-                padding: "1px 8px",
-                background: "var(--su-paper, #FCFBF9)",
-              }}
-            >
+            <span key={i} className="study-assump">
               {a}
             </span>
           ))}
@@ -407,7 +328,7 @@ export function StudyBlockView({
       ) : null}
 
       {showProvenance && snap.opening_balance_source ? (
-        <p className="rcx-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        <p className="rcx-muted study-ob-source">
           Opening balance source: {snap.opening_balance_source}
           {snap.opening_balance_source === "unknown"
             ? " — set a manual opening balance before trusting runway"
@@ -415,20 +336,12 @@ export function StudyBlockView({
         </p>
       ) : null}
 
-      <div className="study-collapse" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="study-collapse">
         {units.map((u, ui) => {
           if (u.kind === "figrow") {
             const cols = Math.min(4, Math.max(1, u.items.length));
             return (
-              <div
-                key={`fig-${ui}`}
-                className={`study-figrow n${cols}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                  gap: 12,
-                }}
-              >
+              <div key={`fig-${ui}`} className={`study-figrow n${cols}`}>
                 {u.items.map((it) => (
                   <div key={it.id}>
                     {wrapWithPick(it, renderItem(it, true))}
@@ -439,24 +352,9 @@ export function StudyBlockView({
           }
           if (u.kind === "r84") {
             return (
-              <div
-                key={`r84-${ui}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr",
-                  gap: 12,
-                  alignItems: "start",
-                }}
-              >
+              <div key={`r84-${ui}`} className="study-row r84">
                 <div>{wrapWithPick(u.primary, renderItem(u.primary))}</div>
-                <aside
-                  style={{
-                    background: "color-mix(in srgb, #0e7490 8%, #fff)",
-                    borderRadius: 8,
-                    padding: 12,
-                    border: "1px solid color-mix(in srgb, #0e7490 20%, #DED9D1)",
-                  }}
-                >
+                <aside className="study-aside">
                   {wrapWithPick(u.side, renderItem(u.side, true))}
                 </aside>
               </div>
@@ -464,14 +362,7 @@ export function StudyBlockView({
           }
           if (u.kind === "r66") {
             return (
-              <div
-                key={`r66-${ui}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+              <div key={`r66-${ui}`} className="study-row r66">
                 <div>{wrapWithPick(u.left, renderItem(u.left))}</div>
                 <div>{wrapWithPick(u.right, renderItem(u.right))}</div>
               </div>
@@ -481,7 +372,7 @@ export function StudyBlockView({
           return (
             <div
               key={`full-${ui}`}
-              style={{ maxWidth: span <= 6 ? "50%" : "100%" }}
+              className={span <= 6 ? "study-half" : "study-full"}
             >
               {wrapWithPick(u.item, renderItem(u.item))}
             </div>
@@ -489,16 +380,11 @@ export function StudyBlockView({
         })}
       </div>
 
-      {methodNote || confidence?.note ? (
-        <p
-          className="study-methodnote rcx-muted"
-          style={{ fontSize: 11, marginTop: 10, lineHeight: 1.5 }}
-        >
-          {methodNote}
-          {confidence?.note
-            ? `${methodNote ? " · " : ""}${confidence.note}`
-            : ""}
-        </p>
+      {methodBody ? (
+        <details className="study-methodnote">
+          <summary>How this was computed</summary>
+          <p className="study-methodnote-body rcx-muted">{methodBody}</p>
+        </details>
       ) : null}
 
       {!exhibits.length && !snap.kpis.length && !notes.length ? (

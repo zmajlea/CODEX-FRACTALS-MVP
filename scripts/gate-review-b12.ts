@@ -4831,7 +4831,48 @@ async function main() {
     );
   }
 
-  log("ALL 50/50 LIVE CHECKS PASSED");
+  // 51 — B25 Part 2: StudyBlockView classes + Bug A left=older (source-level)
+  {
+    const studySrc = readFileSync(
+      join(ROOT, "components/operator/treasury/StudyBlockView.tsx"),
+      "utf8"
+    );
+    const clientSrc = readFileSync(
+      join(ROOT, "components/treasury/ClientReviewView.tsx"),
+      "utf8"
+    );
+    const cssSrc = readFileSync(join(ROOT, "app/styles/continuity.css"), "utf8");
+
+    const classesOk =
+      studySrc.includes("study-figrow") &&
+      studySrc.includes("study-row r84") &&
+      studySrc.includes("study-row r66") &&
+      studySrc.includes("study-half") &&
+      studySrc.includes("study-methodnote") &&
+      !studySrc.includes("gridTemplateColumns");
+    const cqOk =
+      cssSrc.includes("container-type:inline-size") &&
+      cssSrc.includes("@container study") &&
+      cssSrc.includes(".study-figrow");
+    // Bug A: left button loads older (selectedIdx + 1 in DESC list), right loads newer (idx - 1).
+    const bugAOk =
+      clientSrc.includes('aria-label="Older edition"') &&
+      clientSrc.includes('aria-label="Newer edition"') &&
+      clientSrc.includes("review-edbar") &&
+      /olderEd[\s\S]*selectedIdx \+ 1/.test(clientSrc) &&
+      /newerEd[\s\S]*selectedIdx - 1/.test(clientSrc);
+    const noBpRo =
+      !clientSrc.includes("ResizeObserver") && !/\bsetBp\b/.test(clientSrc);
+
+    record(
+      51,
+      "B25 StudyBlockView classes + client edition bar Bug A (no inline figrow)",
+      classesOk && cqOk && bugAOk && noBpRo,
+      `classes=${classesOk} cq=${cqOk} bugA=${bugAOk} noBpRo=${noBpRo}`
+    );
+  }
+
+  log("ALL 51/51 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {
