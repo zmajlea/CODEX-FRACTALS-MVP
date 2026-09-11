@@ -4872,7 +4872,41 @@ async function main() {
     );
   }
 
-  log("ALL 51/51 LIVE CHECKS PASSED");
+  // 52 — B25 Part 3: study switcher + phone block sheet + drawer→sheet hooks
+  {
+    const panelSrc = readFileSync(
+      join(ROOT, "components/operator/treasury/ReviewTabPanel.tsx"),
+      "utf8"
+    );
+    const cssTail = panelSrc.includes("rcx-switch") && panelSrc.includes("rcx-actsheet");
+    const switcherOk =
+      panelSrc.includes('className="rcx-switch"') &&
+      panelSrc.includes("switcherOpen") &&
+      panelSrc.includes("rcx-sw-sheet");
+    const actOk =
+      panelSrc.includes('className="rcx-more"') &&
+      panelSrc.includes("actBlockId") &&
+      panelSrc.includes('moveBlock(actBlockId, "up")') &&
+      panelSrc.includes('if (canvasBp === "phone") return');
+    const sheetOk =
+      panelSrc.includes("rcx-shelf-fab") &&
+      /@media\s*\(\s*max-width:\s*639px\s*\)/.test(panelSrc) &&
+      panelSrc.includes("border-radius:16px 16px 0 0");
+    const continuity = readFileSync(join(ROOT, "app/styles/continuity.css"), "utf8");
+    const draftsOk =
+      continuity.includes("B25 Part 3") &&
+      continuity.includes(".drawer.open") &&
+      continuity.includes(".req-preflight");
+
+    record(
+      52,
+      "B25 composer switcher + phone act sheet + drawer→sheet",
+      cssTail && switcherOk && actOk && sheetOk && draftsOk,
+      `switcher=${switcherOk} act=${actOk} sheet=${sheetOk} drafts=${draftsOk}`
+    );
+  }
+
+  log("ALL 52/52 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

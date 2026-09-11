@@ -168,6 +168,8 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
   const [canvasBp, setCanvasBp] = useState<"desktop" | "tablet" | "phone">(
     "desktop"
   );
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [actBlockId, setActBlockId] = useState<string | null>(null);
   /** Spec B19 — Study live from–to (drives preview; default trailing-12 when empty). */
   const [windowFrom, setWindowFrom] = useState("");
   const [windowTo, setWindowTo] = useState("");
@@ -814,11 +816,51 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
 
   function onBlockPointerDown(e: PointerEvent, blockId: string) {
     if (status !== "draft") return;
+    // B25 — phone: reorder via ⋯ action sheet only (no touch drag).
+    if (canvasBp === "phone") return;
     const handle = (e.target as HTMLElement).closest("[data-drag-handle]");
     if (!handle) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDragId(blockId);
+  }
+
+  function moveBlock(blockId: string, where: "up" | "down" | "top") {
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx < 0) return;
+    const next = [...blocks];
+    const [moved] = next.splice(idx, 1);
+    if (!moved) return;
+    if (where === "top") next.unshift(moved);
+    else if (where === "up") next.splice(Math.max(0, idx - 1), 0, moved);
+    else next.splice(Math.min(next.length, idx + 1), 0, moved);
+    const withPos = next.map((b, i) => ({ ...b, position: i + 1 }));
+    setBlocks(withPos);
+    setActBlockId(null);
+    void persistBlockOrder(withPos).catch((err) => {
+      setError(err instanceof Error ? err.message : "Reorder failed");
+      if (activeId) void loadReview(activeId);
+    });
+  }
+
+  function removeBlock(blockId: string) {
+    if (!activeId) return;
+    if (!confirm("Remove block?")) return;
+    setActBlockId(null);
+    void fetch(`${base}/reviews/${activeId}/blocks/${blockId}`, {
+      method: "DELETE",
+    }).then(() => loadReview(activeId));
+  }
+
+  function focusBlockCaption(blockId: string) {
+    setActBlockId(null);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(
+        `[data-block-id="${blockId}"] .rcx-cap`
+      ) as HTMLTextAreaElement | null;
+      el?.focus();
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   }
 
   function onBlockPointerMove(e: PointerEvent) {
@@ -901,6 +943,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       data-builder={builderOpen ? "open" : "closed"}
       onClick={() => {
         if (menuOpenId) setMenuOpenId(null);
+        if (switcherOpen) setSwitcherOpen(false);
       }}
     >
       <style>{RCX_CSS}</style>
@@ -1023,6 +1066,21 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       {/* ── Document (centre) ───────────────────────── */}
       <section className="rcx-doc">
         <div className="rcx-gate" data-level={gateLevel}>
+          <button
+            type="button"
+            className="rcx-switch"
+            aria-haspopup="dialog"
+            aria-expanded={switcherOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSwitcherOpen((v) => !v);
+            }}
+          >
+            <span className="sw-t">{title || "Studies"}</span>
+            <span className="sw-chev" aria-hidden>
+              ▾
+            </span>
+          </button>
           <span className="gt">{title || "Draft study"}</span>
           <span className={`gc${gateLevel === "blocked" ? " warn" : ""}`}>
             {preflight
@@ -1087,7 +1145,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
               </label>
               <button
                 type="button"
-                className={`rcx-btn sm ghost${previewAsClient ? " on" : ""}`}
+                className={`rcx-btn sm ghost rcx-preview${previewAsClient ? " on" : ""}`}
                 disabled={busy || blocks.length === 0}
                 onClick={() => void togglePreviewAsClient()}
               >
@@ -1104,6 +1162,72 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             {canPublish ? `Publish v${nextVersion}` : "Published"}
           </button>
         </div>
+
+        {switcherOpen ? (
+          <>
+            <button
+              type="button"
+              className="rcx-sw-scrim"
+              aria-label="Close study switcher"
+              onClick={() => setSwitcherOpen(false)}
+            />
+            <div
+              className="rcx-sw-sheet"
+              role="dialog"
+              aria-label="Studies"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="rcx-sw-h">
+                <strong>Studies</strong>
+                <button
+                  type="button"
+                  className="rcx-tool"
+                  onClick={() => setSwitcherOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <label className="rcx-sw-arch">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                />
+                Show archived
+              </label>
+              <div className="rcx-sw-list">
+                {reviews.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`rcx-issue${activeId === r.id ? " on" : ""}`}
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      void loadReview(r.id, r.title || r.period_month);
+                    }}
+                  >
+                    <div className="t">{r.title || r.period_month}</div>
+                    <div className="m">
+                      {r.status}
+                      {r.current_version ? ` · v${r.current_version}` : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="rcx-btn ghost sm"
+                disabled={busy}
+                onClick={() => {
+                  setSwitcherOpen(false);
+                  void createDraft();
+                }}
+              >
+                + New study
+              </button>
+            </div>
+          </>
+        ) : null}
 
         {preflight?.envelope_violations.length ? (
           <ul className="rcx-viol">
@@ -1399,6 +1523,19 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                           </button>
                         ))}
                       </span>
+                    ) : null}
+                    {status === "draft" ? (
+                      <button
+                        type="button"
+                        className="rcx-more"
+                        aria-label="Block actions"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActBlockId(block.id);
+                        }}
+                      >
+                        ⋯
+                      </button>
                     ) : null}
                     <div className="rcx-tools">
                       {isProposed ? (
@@ -1776,7 +1913,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
         )}
       </section>
 
-      {/* ── Shelf (right drawer) ────────────────────── */}
+      {/* ── Shelf (right drawer → phone sheet) ────────────────────── */}
       <button
         type="button"
         className="rcx-shelf-mini"
@@ -1784,10 +1921,18 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       >
         The Shelf · {metrics.length}
       </button>
+      <button
+        type="button"
+        className="rcx-shelf-fab"
+        onClick={() => setShelfOpen(true)}
+      >
+        Shelf · {metrics.length}
+      </button>
       {shelfOpen ? (
         <>
           <div className="rcx-shelf-scrim" onClick={() => setShelfOpen(false)} />
           <aside className="rcx-shelf">
+          <div className="grab" aria-hidden />
           <div className="sh">
             <span className="st">The Shelf</span>
             <button
@@ -2017,6 +2162,75 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
         </>
       ) : null}
 
+      {/* ── B25 phone block action sheet ───────────── */}
+      {actBlockId ? (
+        <>
+          <button
+            type="button"
+            className="rcx-act-scrim"
+            aria-label="Close block actions"
+            onClick={() => setActBlockId(null)}
+          />
+          <div className="rcx-actsheet" role="dialog" aria-label="Block actions">
+            <div className="rcx-act-h">
+              <strong>
+                {blocks.find((b) => b.id === actBlockId)?.role ?? "Block"}
+              </strong>
+              <span className="rcx-muted">
+                {blocks.find((b) => b.id === actBlockId)?.metric_name ||
+                  blocks.find((b) => b.id === actBlockId)?.caption ||
+                  ""}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="rcx-act"
+              disabled={
+                blocks.findIndex((b) => b.id === actBlockId) <= 0
+              }
+              onClick={() => moveBlock(actBlockId, "up")}
+            >
+              Move up
+            </button>
+            <button
+              type="button"
+              className="rcx-act"
+              disabled={
+                blocks.findIndex((b) => b.id === actBlockId) >=
+                blocks.length - 1
+              }
+              onClick={() => moveBlock(actBlockId, "down")}
+            >
+              Move down
+            </button>
+            <button
+              type="button"
+              className="rcx-act"
+              disabled={
+                blocks.findIndex((b) => b.id === actBlockId) <= 0
+              }
+              onClick={() => moveBlock(actBlockId, "top")}
+            >
+              Move to top
+            </button>
+            <button
+              type="button"
+              className="rcx-act"
+              onClick={() => focusBlockCaption(actBlockId)}
+            >
+              Edit caption
+            </button>
+            <button
+              type="button"
+              className="rcx-act danger"
+              onClick={() => removeBlock(actBlockId)}
+            >
+              Remove
+            </button>
+          </div>
+        </>
+      ) : null}
+
       {/* ── Lifecycle confirm (single-owner) ────────── */}
       {pendingAction ? (
         <>
@@ -2086,7 +2300,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
 
 const RCX_CSS = `
 .rcx-stage{display:grid;gap:20px;margin:0;padding:2px 2px 48px;align-items:start;grid-template-columns:196px minmax(0,1fr) 46px;font-family:var(--font-ui,'Arimo',Arial,sans-serif);color:var(--ink)}
-@media(max-width:820px){.rcx-stage{grid-template-columns:1fr}}
 .rcx-muted{color:var(--mute);font-size:13px}
 .rcx-kick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;margin-bottom:10px}
 /* rail */
@@ -2124,7 +2337,7 @@ const RCX_CSS = `
 .rcx-err{background:color-mix(in srgb,var(--su-neg,#b23a2e) 7%,#fff);border:1px solid color-mix(in srgb,var(--su-neg,#b23a2e) 28%,var(--line));color:var(--su-neg);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:14px}
 /* paper */
 .rcx-doc{min-width:0}
-.rcx-paper{max-width:960px;margin:0 auto;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:12px;box-shadow:var(--paper-shadow);padding:28px 36px}
+.rcx-paper{max-width:960px;margin:0 auto;background:var(--paper,#fff);border:1px solid var(--paper-edge);border-radius:12px;box-shadow:var(--paper-shadow);padding:28px 36px;container-type:inline-size;container-name:doc}
 /* B19-C2 study header (mockup .s-head / .ob) */
 .rcx-shead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 24px;align-items:start;padding-bottom:16px;border-bottom:1px solid var(--paper-edge);margin-bottom:16px}
 .rcx-kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:700;display:flex;align-items:center;gap:8px}
@@ -2303,4 +2516,64 @@ const RCX_CSS = `
 .study-shelf{border:1px solid var(--su-line,#DED9D1);border-radius:8px;padding:10px;background:var(--rail,#fff);position:sticky;top:8px}
 @keyframes rcxslide{from{transform:translateX(40px);opacity:.4}to{transform:translateX(0);opacity:1}}
 @keyframes rcxfade{from{opacity:0}to{opacity:1}}
+/* B25 Part 3 — composer chrome + drawer→sheet */
+.rcx-switch{display:none;align-items:center;gap:6px;min-width:0;max-width:100%;border:1px solid var(--paper-edge);background:#fff;border-radius:8px;padding:7px 10px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
+.rcx-switch .sw-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rcx-switch .sw-chev{color:var(--mute);flex:0 0 auto}
+.rcx-winchip{display:none}
+.rcx-shelf-fab{display:none;position:fixed;right:14px;bottom:18px;z-index:40;border:1px solid var(--paper-edge);background:var(--rail,#fff);border-radius:999px;padding:10px 14px;font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--slate);box-shadow:var(--paper-shadow);cursor:pointer}
+.rcx-shelf .grab{display:none;width:36px;height:4px;border-radius:99px;background:var(--line,#DED9D1);margin:4px auto 8px}
+.rcx-more{display:none;font:inherit;font-size:16px;line-height:1;border:1px solid var(--line);background:#fff;color:var(--slate);border-radius:7px;padding:4px 10px;cursor:pointer;margin-left:auto}
+.rcx-sw-scrim,.rcx-act-scrim{position:fixed;inset:0;z-index:72;background:color-mix(in srgb,var(--ink,#102a47) 35%,transparent);border:0;padding:0;cursor:pointer}
+.rcx-sw-sheet{position:fixed;z-index:73;left:50%;top:14%;transform:translateX(-50%);width:min(380px,92vw);max-height:72vh;overflow:auto;background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:14px;box-shadow:0 24px 70px rgba(16,42,71,.22);padding:12px 14px 16px;display:flex;flex-direction:column;gap:8px}
+.rcx-sw-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rcx-sw-arch{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mute)}
+.rcx-sw-list{display:flex;flex-direction:column;gap:4px;overflow:auto}
+.rcx-actsheet{position:fixed;z-index:74;left:50%;top:22%;transform:translateX(-50%);width:min(360px,92vw);background:var(--rail,#fff);border:1px solid var(--paper-edge);border-radius:14px;box-shadow:0 24px 70px rgba(16,42,71,.22);padding:10px;display:flex;flex-direction:column;gap:4px}
+.rcx-act-h{display:flex;flex-direction:column;gap:2px;padding:6px 8px 10px;border-bottom:1px solid var(--paper-edge);margin-bottom:4px}
+.rcx-act{font:inherit;font-size:14px;font-weight:600;text-align:left;border:0;background:transparent;border-radius:8px;padding:12px 12px;cursor:pointer;color:var(--ink);min-height:44px}
+.rcx-act:hover:not(:disabled){background:color-mix(in srgb,var(--brand) 7%,transparent)}
+.rcx-act:disabled{opacity:.4;cursor:default}
+.rcx-act.danger{color:var(--su-neg,#B42318)}
+@container doc (max-width:799px){
+  .rcx-shead{grid-template-columns:minmax(0,1fr)}
+  .rcx-ob{min-width:0;width:100%}
+}
+@media(max-width:1023px){
+  .rcx-stage{grid-template-columns:minmax(0,1fr)}
+  .rcx-rail{display:none}
+  .rcx-switch{display:inline-flex;order:0}
+  .rcx-gate .gt{display:none}
+  .rcx-shelf-mini{display:none}
+  .rcx-shelf-fab{display:inline-flex}
+  .rcx-paper{padding:22px 24px}
+}
+@media(max-width:639px){
+  .rcx-gate{gap:6px 8px;padding:8px 10px}
+  .rcx-switch{flex:1 1 auto;order:1}
+  .rcx-gate > .rcx-btn.sm:last-of-type{order:2}
+  .rcx-gate .gc{order:3;flex-basis:100%}
+  .rcx-gate .hint,.rcx-gate .spacer,.rcx-win,.rcx-preview{display:none}
+  .rcx-paper{padding:16px 14px;border-radius:10px}
+  .rcx-ob{min-width:0}
+  .rcx-editions{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  .rcx-editions .ed-list{flex-wrap:nowrap}
+  .rcx-canvas[data-bp="phone"] .rcx-drag,
+  .rcx-canvas[data-bp="phone"] .rcx-sz{display:none}
+  .rcx-canvas[data-bp="phone"] .rcx-more{display:inline-flex}
+  .rcx-canvas[data-bp="phone"] .rcx-tools{display:none}
+  .rcx-shelf{inset:auto 0 0 0;top:auto;width:100%;height:88%;max-width:none;border-left:0;border-top:1px solid var(--paper-edge);border-radius:16px 16px 0 0;box-shadow:0 -18px 54px rgba(16,42,71,.18);animation:rcxsheet .2s ease}
+  .rcx-shelf[data-wiz="1"]{width:100%}
+  .rcx-shelf .grab{display:block}
+  .rcx-sw-sheet,.rcx-actsheet{left:0;right:0;top:auto;bottom:0;transform:none;width:100%;max-height:88%;border-radius:16px 16px 0 0}
+  .wz-scrim{padding:0;align-items:stretch}
+  .wz-panel{width:100%;min-height:100%;max-width:none;border-radius:0;box-shadow:none}
+  .wz-steps{gap:0;padding:0;border-bottom:1px solid var(--paper-edge)}
+  .wz-steps button{flex:1;border:0;border-radius:0;border-bottom:2px solid transparent;background:transparent;padding:12px 8px}
+  .wz-steps button[aria-selected="true"]{background:transparent;color:var(--ink);border-bottom-color:var(--cinnabar,#c8452f)}
+  .wz-kinds{grid-template-columns:1fr}
+  .wz-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .wz-foot{position:sticky;bottom:0;background:var(--rail,#fff)}
+}
+@keyframes rcxsheet{from{transform:translateY(24px);opacity:.5}to{transform:none;opacity:1}}
 `;

@@ -2058,3 +2058,21 @@ button.dtile{ cursor:pointer; text-align:left; font:inherit; color:inherit; }
   .study-figrow.n4{ grid-template-columns:minmax(0,1fr); }
   .study-figrow.n3 > :last-child{ grid-column:auto; }
 }
+
+/* B25 Part 3 — DraftsRail + Advisory send-gate as sheets under 640 */
+@media (max-width:639px){
+  .drawer{
+    top:auto; bottom:0; left:0; right:0; width:100%; max-width:none; height:88%;
+    border-left:0; border-top:1px solid var(--line); border-radius:16px 16px 0 0;
+    transform:translateY(105%); box-shadow:0 -18px 54px rgba(16,42,71,.18);
+  }
+  .drawer.open{ transform:none; }
+  .app.drafts-drawer-open .app-main{ padding-right:42px; }
+  .railtab{ top:auto; bottom:88px; transform:none; right:12px; border-radius:999px; writing-mode:horizontal-tb; flex-direction:row; padding:10px 14px; height:auto; }
+  .railtab .vt{ writing-mode:horizontal-tb; transform:none; }
+  .drawer .railtab.close-twin{ display:none; }
+  .req-preflight{
+    position:fixed; left:0; right:0; bottom:0; z-index:80; max-height:88%; overflow:auto;
+    border-radius:16px 16px 0 0; box-shadow:0 -18px 54px rgba(16,42,71,.18); margin:0;
+  }
+}
