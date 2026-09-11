@@ -37,9 +37,19 @@ type Props = {
   dataBrand?: string;
   onTogglePin?: () => void;
   onLogout?: () => void;
+  /** B25 — close mobile nav drawer after a real nav action (not pin). */
+  onNavigate?: () => void;
 };
 
-function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }) {
+function RailItem({
+  item,
+  dataBrand,
+  onNavigate,
+}: {
+  item: BcnRailItem;
+  dataBrand?: string;
+  onNavigate?: () => void;
+}) {
   const summit = dataBrand === "summit";
   const className = [
     "ritem",
@@ -64,6 +74,11 @@ function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }
     </>
   );
 
+  const handleClick = () => {
+    item.onClick?.();
+    if (item.id !== "pin") onNavigate?.();
+  };
+
   if (item.stub) {
     return (
       <span className={className} aria-disabled="true" title="Settings">
@@ -74,14 +89,14 @@ function RailItem({ item, dataBrand }: { item: BcnRailItem; dataBrand?: string }
 
   if (item.href) {
     return (
-      <a className={className} href={item.href} onClick={item.onClick}>
+      <a className={className} href={item.href} onClick={handleClick}>
         {content}
       </a>
     );
   }
 
   return (
-    <button type="button" className={className} onClick={item.onClick}>
+    <button type="button" className={className} onClick={handleClick}>
       {content}
     </button>
   );
@@ -97,6 +112,7 @@ export function BcnRail({
   dataBrand,
   onTogglePin,
   onLogout,
+  onNavigate,
 }: Props) {
   const sysFoot: BcnRailItem[] = [
     ...(onTogglePin
@@ -133,7 +149,12 @@ export function BcnRail({
               {group.reveal ? <span className="reveal">{group.reveal}</span> : null}
             </div>
             {group.items.map((item) => (
-              <RailItem key={item.id} item={item} dataBrand={dataBrand} />
+              <RailItem
+                key={item.id}
+                item={item}
+                dataBrand={dataBrand}
+                onNavigate={onNavigate}
+              />
             ))}
           </div>
         ))}
@@ -141,12 +162,22 @@ export function BcnRail({
 
       <div className="rfoot">
         {footItems.map((item) => (
-          <RailItem key={item.id} item={item} dataBrand={dataBrand} />
+          <RailItem
+            key={item.id}
+            item={item}
+            dataBrand={dataBrand}
+            onNavigate={onNavigate}
+          />
         ))}
         {sysFoot.length > 0 ? (
           <div className="rfoot-sys">
             {sysFoot.map((item) => (
-              <RailItem key={item.id} item={item} dataBrand={dataBrand} />
+              <RailItem
+                key={item.id}
+                item={item}
+                dataBrand={dataBrand}
+                onNavigate={onNavigate}
+              />
             ))}
           </div>
         ) : null}

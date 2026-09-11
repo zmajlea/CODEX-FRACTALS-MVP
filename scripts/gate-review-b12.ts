@@ -4786,7 +4786,52 @@ async function main() {
     );
   }
 
-  log("ALL 49/49 LIVE CHECKS PASSED");
+  // 50 — B25 Part 1: shell hamburger + navOpen drawer (source-level)
+  {
+    const shellSrc = readFileSync(
+      join(ROOT, "components/bcn/BcnContinuityShell.tsx"),
+      "utf8"
+    );
+    const topbarSrc = readFileSync(
+      join(ROOT, "components/bcn/BcnTopbarContinuity.tsx"),
+      "utf8"
+    );
+    const cssSrc = readFileSync(join(ROOT, "app/styles/continuity.css"), "utf8");
+    const clientShellSrc = readFileSync(
+      join(ROOT, "components/platform/ClientShellFrame.tsx"),
+      "utf8"
+    );
+
+    const shellOk =
+      /\bnavOpen\b/.test(shellSrc) &&
+      shellSrc.includes("nav-open") &&
+      shellSrc.includes("app-nav-scrim") &&
+      shellSrc.includes("onNavToggle");
+    const topbarOk =
+      topbarSrc.includes('className="navbtn"') &&
+      topbarSrc.includes("onNavToggle") &&
+      topbarSrc.includes("aria-controls=\"rail\"");
+    const cssOk =
+      /@media\s*\(\s*max-width:\s*1023px\s*\)/.test(cssSrc) &&
+      cssSrc.includes(".app.nav-open .app-rail") &&
+      cssSrc.includes(".topbar .navbtn") &&
+      !/@media\s*\(\s*max-width:\s*880px\s*\)\s*\{\s*\.app-rail\s*\{\s*display:\s*none/.test(
+        cssSrc
+      );
+    const clientOk =
+      /\bnavOpen\b/.test(clientShellSrc) &&
+      clientShellSrc.includes('className="navbtn"') &&
+      clientShellSrc.includes("nav-open");
+
+    record(
+      50,
+      "B25 shell navOpen + hamburger under 1024 (no display:none rail)",
+      shellOk && topbarOk && cssOk && clientOk,
+      `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk}`
+    );
+  }
+
+  log("ALL 50/50 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {
