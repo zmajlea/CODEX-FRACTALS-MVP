@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BcnRail, type BcnRailGroup, type BcnRailItem } from "@/components/bcn/BcnRail";
 import { BcnTopbarContinuity } from "@/components/bcn/BcnTopbarContinuity";
 import { SealFx } from "@/components/bcn/SealFx";
@@ -61,12 +61,38 @@ export function BcnContinuityShell({
   tokenOverrides = {},
 }: Props) {
   const [railPinned, setRailPinned] = useState(dataR1 ?? false);
+  const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => {
+      if (mq.matches) setNavOpen(false);
+    };
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [navOpen]);
 
   const appClass = [
     "app",
     "cs",
     railPinned ? "rail-pinned" : "",
     sectionSealed ? "sec-sealed" : "",
+    navOpen ? "nav-open" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -88,6 +114,13 @@ export function BcnContinuityShell({
           recordPill={recordPill}
           who={who}
           keyUnlocked={keyUnlocked}
+          navOpen={navOpen}
+          onNavToggle={() => setNavOpen((v) => !v)}
+        />
+        <div
+          className={`app-nav-scrim${navOpen ? " on" : ""}`}
+          aria-hidden={!navOpen}
+          onClick={() => setNavOpen(false)}
         />
         <div className="app-row">
           <aside className="rail app-rail" id="rail">
@@ -99,6 +132,7 @@ export function BcnContinuityShell({
               dataBrand={dataBrand}
               onTogglePin={() => setRailPinned((v) => !v)}
               onLogout={onLogout}
+              onNavigate={() => setNavOpen(false)}
               showPoweredBy
               showBcnSolutionLine={showBcnSolutionLine}
             />

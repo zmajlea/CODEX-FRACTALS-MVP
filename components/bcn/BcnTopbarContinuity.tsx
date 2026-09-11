@@ -17,6 +17,9 @@ type Props = {
   keyUnlocked?: boolean;
   who?: string | null;
   showTextScale?: boolean;
+  /** B25 — hamburger under 1024; omitted = no nav control (legacy topbars). */
+  navOpen?: boolean;
+  onNavToggle?: () => void;
 };
 
 const TEXT_SCALE_KEY = "fractals-textscale";
@@ -40,6 +43,8 @@ export function BcnTopbarContinuity({
   keyUnlocked = true,
   who,
   showTextScale = true,
+  navOpen = false,
+  onNavToggle,
 }: Props) {
   const [textScale, setTextScale] = useState(1);
   const isFractals = dataBrand === "fractals";
@@ -84,6 +89,25 @@ export function BcnTopbarContinuity({
 
   return (
     <header className="topbar appbar" id="topbar">
+      {onNavToggle ? (
+        <button
+          type="button"
+          className="navbtn"
+          aria-label={navOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={navOpen}
+          aria-controls="rail"
+          onClick={onNavToggle}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            {navOpen ? (
+              <path d="M4 4l12 12M16 4L4 16" />
+            ) : (
+              <path d="M3 5h14M3 10h14M3 15h14" />
+            )}
+          </svg>
+        </button>
+      ) : null}
+
       {homeHref.startsWith("#") ? (
         <a className={`wm${isFractals ? " fr" : ""}`} href={homeHref} aria-label={`${wordmark} — home`}>
           {wm}
@@ -104,7 +128,7 @@ export function BcnTopbarContinuity({
 
       <span className="keypill">
         <span className="kd" style={keyUnlocked ? undefined : { background: "var(--mute)", boxShadow: "none" }} />
-        {keyUnlocked ? keyLabel : "Key locked"}
+        <span className="kp-t">{keyUnlocked ? keyLabel : "Key locked"}</span>
       </span>
 
       <span className="spacer" />
