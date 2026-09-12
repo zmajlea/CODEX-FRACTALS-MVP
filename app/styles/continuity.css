@@ -620,8 +620,14 @@ textarea.letter:focus{ border-color:var(--brand); }
   .topbar .who{ display:none; }
   .topbar .keypill{ padding:4px 7px; }
   .topbar .keypill .kp-t{ display:none; }
-  .app-main{ margin-left:0 !important; }
-  .app-rail{
+  .app-main,
+  [data-r1] .app-main,
+  [data-r1] .app.rail-pinned .app-main{ margin-left:0 !important; }
+  /* Beat [data-r1] .app-rail { z-index:30 } so the drawer sits above .app-nav-scrim (55).
+     Otherwise the dark scrim paints over the open rail and the sidebar looks dark. */
+  .app-rail,
+  [data-r1] .app-rail,
+  [data-r1] .app.rail-pinned .app-rail{
     width:280px !important;
     max-width:84%;
     transform:translateX(-102%);
@@ -629,17 +635,28 @@ textarea.letter:focus{ border-color:var(--brand); }
     z-index:59;
     box-shadow:none;
     overflow:auto;
+    background:var(--rail);
   }
-  .app:not(.rail-pinned) .app-rail:hover{ width:280px !important; box-shadow:none; }
-  .app.nav-open .app-rail{
+  .app:not(.rail-pinned) .app-rail:hover,
+  [data-r1] .app:not(.rail-pinned) .app-rail:hover{ width:280px !important; box-shadow:none; }
+  .app.nav-open .app-rail,
+  [data-r1].app.nav-open .app-rail,
+  .app.nav-open[data-r1] .app-rail{
     transform:none;
     box-shadow:12px 0 40px rgba(26,26,27,.18);
   }
+  /* R1 topbar is 52px — align scrim so it doesn't leave a gap or cover the bar. */
+  [data-r1] .app-nav-scrim,
+  .app[data-r1] .app-nav-scrim{ inset:52px 0 0 0; }
   /* Drawer always shows labels (override mini-rail collapse). */
-  .app .app-rail :is(.ri-t,.rlabel,.ri-dot,.ri-badge,.rbadge,.sealnib,.mod-chev,.modswitch,.ms-here){ display:revert !important; }
-  .app .app-rail .ritem{ justify-content:flex-start; padding-left:14px; padding-right:14px; gap:8px; min-height:44px; }
-  .app .app-rail .ritem.on{ border-left-width:2px; }
-  .app .app-rail :is(.ritem > svg){ width:16px; height:16px; }
+  .app .app-rail :is(.ri-t,.rlabel,.ri-dot,.ri-badge,.rbadge,.sealnib,.mod-chev,.modswitch,.ms-here),
+  [data-r1] .app .app-rail :is(.ri-t,.rlabel,.ri-dot,.ri-badge,.rbadge,.sealnib,.mod-chev,.modswitch,.ms-here){ display:revert !important; }
+  .app .app-rail .ritem,
+  [data-r1] .app .app-rail .ritem{ justify-content:flex-start; padding-left:14px; padding-right:14px; gap:8px; min-height:44px; }
+  .app .app-rail .ritem.on,
+  [data-r1] .app .app-rail .ritem.on{ border-left-width:2px; }
+  .app .app-rail :is(.ritem > svg),
+  [data-r1] .app .app-rail :is(.ritem > svg){ width:16px; height:16px; }
 }
 @media (max-width:880px){
   .cards3, .hub-actions{ grid-template-columns:1fr 1fr; }
