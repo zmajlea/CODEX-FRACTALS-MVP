@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { RuleAmountAnalyzePopup } from "@/components/operator/treasury/RuleAmountAnalyzePopup";
+import { RuleQueuePhoneSheet } from "@/components/operator/treasury/RuleQueuePhoneSheet";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import { formatRuleConstraintSummary } from "@/lib/treasury/rule-predicate";
 import type { TreasuryRuleRow, TreasuryTransactionRow } from "@/lib/treasury/types";
+import { useRulesPhone } from "@/lib/ui/useMaxWidth";
 
 type Props = {
   clientUserId: string;
@@ -131,6 +133,8 @@ export function TreasuryRulesPanel({
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [labels, setLabels] = useState<string[]>([]);
+  const isPhone = useRulesPhone();
+  const [phoneQueueRuleId, setPhoneQueueRuleId] = useState<string | null>(null);
 
   function rulePickable(r: TreasuryRuleRow): Pickable {
     const suggested = r.suggested_count ?? 0;
@@ -173,9 +177,14 @@ export function TreasuryRulesPanel({
 
   useEffect(() => {
     if (!draftRule) return;
-    setName(draftRule.name ?? `Rule: ${draftRule.assign_label ?? "transaction"}`);
-    setMatchMerchant(draftRule.match_merchant ?? "");
-    setAssignLabel(draftRule.assign_label ?? "");
+    const payee = draftRule.match_merchant ?? "";
+    const cat = draftRule.assign_label ?? "";
+    setName(
+      draftRule.name ??
+        (payee && cat ? `${payee} → ${cat}` : `Rule: ${cat || "transaction"}`)
+    );
+    setMatchMerchant(payee);
+    setAssignLabel(cat);
     setAmountMin("");
     setAmountMax("");
     setDirection((draftRule.direction as "in" | "out") ?? "");
@@ -201,11 +210,16 @@ export function TreasuryRulesPanel({
 
   useEffect(() => {
     if (!openRuleQueueId) return;
-    setExpandedId(openRuleQueueId);
+    if (isPhone) {
+      setPhoneQueueRuleId(openRuleQueueId);
+      setExpandedId(openRuleQueueId);
+    } else {
+      setExpandedId(openRuleQueueId);
+    }
     setFacetSel(null);
     setQueuePage(0);
     onOpenRuleQueueConsumed?.();
-  }, [openRuleQueueId, onOpenRuleQueueConsumed]);
+  }, [openRuleQueueId, onOpenRuleQueueConsumed, isPhone]);
 
   const loadFacets = useCallback(
     async (ruleId: string): Promise<RuleQueueFacets | null> => {
@@ -258,11 +272,15 @@ export function TreasuryRulesPanel({
           transactions: TreasuryTransactionRow[];
           total: number;
         };
-        setQueueRows(data.transactions);
+        setQueueRows((prev) =>
+          page > 0 ? [...prev, ...data.transactions] : data.transactions
+        );
         setQueueTotal(data.total ?? 0);
       } else {
-        setQueueRows([]);
-        setQueueTotal(0);
+        if (page === 0) {
+          setQueueRows([]);
+          setQueueTotal(0);
+        }
       }
       setQueueLoading(false);
     },
@@ -342,6 +360,7 @@ export function TreasuryRulesPanel({
       setExpandedId(opts.ruleId);
       setFacetSel(null);
       setQueuePage(0);
+      if (isPhone) setPhoneQueueRuleId(opts.ruleId);
     }
     clearForm();
     void load();
@@ -556,9 +575,10 @@ export function TreasuryRulesPanel({
   }
 
   const queuePageCount = Math.max(1, Math.ceil(queueTotal / 50));
+  const phoneQueueRule = rules.find((r) => r.id === phoneQueueRuleId) ?? null;
 
   return (
-    <>
+    <div className="rules-screen">
       <div className="hubhead">
         <div>
           <div className="eyebrow">Treasury record</div>
@@ -576,6 +596,22 @@ export function TreasuryRulesPanel({
           </>
         ) : null}
       </p>
+
+      <div className="rules-phone-bar">
+        <p className="rm-hint" style={{ margin: 0 }}>
+          {rules.length} rule{rules.length === 1 ? "" : "s"}
+        </p>
+        <button
+          type="button"
+          className="rm-btn primary sm"
+          onClick={() => {
+            clearForm();
+            setAnalyzeOpen(true);
+          }}
+        >
+          ＋ New rule
+        </button>
+      </div>
 
       <div className="explainer">
         <h2>How categorization rules work</h2>
@@ -621,6 +657,43 @@ export function TreasuryRulesPanel({
         onSaved={handlePopupSaved}
       />
 
+      {phoneQueueRule ? (
+        <RuleQueuePhoneSheet
+          open={Boolean(phoneQueueRuleId)}
+          onClose={() => {
+            setPhoneQueueRuleId(null);
+            setExpandedId(null);
+          }}
+          payee={phoneQueueRule.match_merchant}
+          category={phoneQueueRule.assign_label}
+          suggestedCount={phoneQueueRule.suggested_count ?? 0}
+          facets={facets}
+          facetSel={facetSel}
+          onFacetSel={(sel) => {
+            setFacetSel(sel);
+            setQueuePage(0);
+          }}
+          rows={queueRows}
+          queueLoading={queueLoading}
+          confirmBusy={confirmBusy}
+          onConfirmAll={() => void confirmAllSuggested(phoneQueueRule)}
+          onConfirm={(tx) =>
+            void patchTx(tx.id, {
+              confirmSuggestion: true,
+              ruleId: phoneQueueRule.id,
+            })
+          }
+          onReject={(tx) =>
+            void patchTx(tx.id, {
+              rejectSuggestion: true,
+              ruleId: phoneQueueRule.id,
+            })
+          }
+          hasMore={queueTotal > queueRows.length}
+          onLoadMore={() => setQueuePage((p) => p + 1)}
+        />
+      ) : null}
+
       {notice ? (
         notice.kind === "success" ? (
           <div className="callout" role="status" aria-live="polite">
@@ -654,7 +727,44 @@ export function TreasuryRulesPanel({
       ) : (
         <div className="space-y-3">
           {rules.map((r) => {
-            const open = expandedId === r.id;
+            const suggested = r.suggested_count ?? 0;
+            return (
+              <button
+                key={`rm-${r.id}`}
+                type="button"
+                className={`rm-rule${suggested > 0 ? " pending" : ""}`}
+                onClick={() => {
+                  setPhoneQueueRuleId(r.id);
+                  setExpandedId(r.id);
+                  setFacetSel(null);
+                  setQueuePage(0);
+                }}
+              >
+                <div className="top">
+                  <span className="payee">{r.match_merchant}</span>
+                  <span className="arr" aria-hidden>
+                    →
+                  </span>
+                  <span className="cat">{r.assign_label}</span>
+                  {suggested > 0 ? (
+                    <span className="pill">{suggested}</span>
+                  ) : null}
+                </div>
+                <div className="line">
+                  <span>
+                    {suggested} suggested · {r.confirmed_count ?? 0} confirmed
+                  </span>
+                  {r.last_applied_at ? (
+                    <span className="when">
+                      applied {formatAppliedAt(r.last_applied_at)}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+          {rules.map((r) => {
+            const open = expandedId === r.id && !isPhone;
             return (
               <div key={r.id} className="rule-card">
                 <button
@@ -1012,6 +1122,6 @@ export function TreasuryRulesPanel({
         Suggested and Confirmed mean exactly what they mean on Transactions. Nothing
         labels itself: a rule proposes, you confirm.
       </p>
-    </>
+    </div>
   );
 }

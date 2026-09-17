@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
+import { CategoryPhoneSheet } from "@/components/operator/treasury/CategoryPhoneSheet";
+import { RulePhonePortal } from "@/components/operator/treasury/RulePhonePortal";
 import type {
   RulePayeePeriodStat,
   RulePayeeStats,
@@ -10,6 +12,7 @@ import type {
 import { intersectDateRanges } from "@/lib/treasury/period-bounds";
 import type { TreasuryTransactionRow } from "@/lib/treasury/types";
 import { formatTreasuryMoney } from "@/lib/treasury/format";
+import { useRulesPhone } from "@/lib/ui/useMaxWidth";
 
 export type AnalyzeBandState = {
   amountMin: string;
@@ -102,6 +105,12 @@ export function RuleAmountAnalyzePopup({
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipDebounceRef = useRef(false);
+  const isPhone = useRulesPhone();
+  const [phoneStep, setPhoneStep] = useState<"edit" | "review">("edit");
+  const [conditionsOpen, setConditionsOpen] = useState(false);
+  const [catSheetOpen, setCatSheetOpen] = useState(false);
+  const [showAllMatches, setShowAllMatches] = useState(false);
+  const [looseTotal, setLooseTotal] = useState<number | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -213,6 +222,15 @@ export function RuleAmountAnalyzePopup({
       try {
         await loadStats(scope, payee);
         await loadPreview(scope, payee, period);
+        const loose =
+          !scope.amountMin &&
+          !scope.amountMax &&
+          !scope.direction &&
+          !scope.dateFrom &&
+          !scope.dateTo;
+        if (loose) {
+          // looseTotal set after stats via effect below
+        }
       } catch (e) {
         setStats(null);
         setSamples([]);
@@ -249,6 +267,19 @@ export function RuleAmountAnalyzePopup({
     setSelectedPeriod(null);
     setPeriodTotal(null);
     setError(null);
+    setPhoneStep("edit");
+    setConditionsOpen(
+      Boolean(
+        initial.amountMin ||
+          initial.amountMax ||
+          initial.direction ||
+          initial.dateFrom ||
+          initial.dateTo
+      )
+    );
+    setCatSheetOpen(false);
+    setShowAllMatches(false);
+    setLooseTotal(null);
     if (!payeeQueryProp.trim()) {
       setStats(null);
       setSamples([]);
@@ -291,12 +322,12 @@ export function RuleAmountAnalyzePopup({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void refreshAll(currentScope(), localPayee, null);
-    }, 350);
+    }, isPhone ? 250 : 350);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filterKey drives reload
-  }, [open, filterKey, refreshAll]);
+  }, [open, filterKey, refreshAll, isPhone]);
 
   function selectPeriod(p: RulePayeePeriodStat) {
     const next = selectedPeriod?.period === p.period ? null : p;
@@ -323,7 +354,11 @@ export function RuleAmountAnalyzePopup({
     setError(null);
     try {
       const body = {
-        name: localName.trim() || `Rule: ${localLabel.trim()}`,
+        name:
+          localName.trim() ||
+          (localPayee.trim() && localLabel.trim()
+            ? `${localPayee.trim()} → ${localLabel.trim()}`
+            : `Rule: ${localLabel.trim()}`),
         match_merchant: localPayee.trim(),
         assign_label: localLabel.trim(),
         match_type: matchType || "contains",
@@ -393,7 +428,389 @@ export function RuleAmountAnalyzePopup({
   const categorizedSamples = samples.filter((tx) => tx.label != null);
   const degenerate = !stats || (stats.total === 0 && suggestN === 0);
 
+  const hasConditions = Boolean(
+    localMin || localMax || localDir || dateFrom || dateTo
+  );
+
+  useEffect(() => {
+    if (!stats) return;
+    if (!hasConditions) {
+      setLooseTotal(stats.total);
+    }
+  }, [stats, hasConditions]);
+
+  const excludedByConditions =
+    hasConditions && looseTotal != null
+      ? Math.max(0, looseTotal - (stats?.total ?? 0))
+      : 0;
+
+  const defaultRuleName = () => {
+    const payee = localPayee.trim();
+    const cat = localLabel.trim();
+    if (payee && cat) return `${payee} → ${cat}`;
+    return localName.trim() || (cat ? `Rule: ${cat}` : "Rule");
+  };
+
   if (!open || !mounted) return null;
+
+  if (isPhone) {
+    const matchN = stats?.total ?? willSuggest ?? 0;
+    const willN = willSuggest ?? stats?.will_suggest ?? 0;
+    const visible = showAllMatches ? samples : samples.slice(0, 6);
+    const footCount =
+      hasConditions && excludedByConditions > 0
+        ? `Matches ${matchN.toLocaleString()} transactions · ${excludedByConditions.toLocaleString()} excluded by conditions`
+        : `Matches ${matchN.toLocaleString()} transactions`;
+
+    return (
+      <>
+        <RulePhonePortal open={open} aria-label={editingRuleId ? "Edit rule" : "New rule"}>
+          <div className="rm-sheet">
+            <div className="rm-appbar">
+              <button
+                type="button"
+                className="rm-ic"
+                onClick={() => {
+                  if (phoneStep === "review") setPhoneStep("edit");
+                  else onClose();
+                }}
+                aria-label={phoneStep === "review" ? "Back" : "Cancel"}
+              >
+                {phoneStep === "review" ? "‹" : "×"}
+              </button>
+              <div className="rm-ttl">
+                <h2>
+                  {phoneStep === "review"
+                    ? "Review rule"
+                    : editingRuleId
+                      ? "Edit rule"
+                      : "New rule"}
+                </h2>
+                {localPayee.trim() && localLabel.trim() ? (
+                  <small>
+                    {localPayee.trim()} → {localLabel.trim()}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+
+            {phoneStep === "edit" ? (
+              <>
+                <div className="rm-body">
+                  {error ? <p className="rule-analyze-err">{error}</p> : null}
+                  <div className="rm-field">
+                    <div className="rm-lbl">Match merchant / payee</div>
+                    <input
+                      className="rm-input"
+                      value={localPayee}
+                      onChange={(e) => setLocalPayee(e.target.value)}
+                      placeholder="When description contains"
+                      autoFocus
+                    />
+                    <p className="rm-hint">
+                      Transactions whose description contains this text
+                    </p>
+                  </div>
+                  <div className="rm-field">
+                    <div className="rm-lbl">Assign category</div>
+                    <button
+                      type="button"
+                      className="rm-pick"
+                      onClick={() => setCatSheetOpen(true)}
+                    >
+                      {localLabel.trim() ? (
+                        <span className="val">{localLabel}</span>
+                      ) : (
+                        <span className="ph">Choose category</span>
+                      )}
+                      <span className="chev" aria-hidden>
+                        ›
+                      </span>
+                    </button>
+                  </div>
+
+                  {!conditionsOpen ? (
+                    <button
+                      type="button"
+                      className="rm-addrow"
+                      onClick={() => setConditionsOpen(true)}
+                    >
+                      Add conditions
+                      <span style={{ fontWeight: 500, color: "var(--mute)" }}>
+                        · Amount, direction, dates · optional
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="rm-cond">
+                        <button
+                          type="button"
+                          className="rm-x"
+                          aria-label="Remove direction"
+                          onClick={() => setLocalDir("")}
+                        >
+                          ×
+                        </button>
+                        <div className="rm-lbl">Direction</div>
+                        <div className="rm-seg">
+                          <button
+                            type="button"
+                            className={!localDir ? "on" : undefined}
+                            onClick={() => setLocalDir("")}
+                          >
+                            Any
+                          </button>
+                          <button
+                            type="button"
+                            className={localDir === "in" ? "on" : undefined}
+                            onClick={() => setLocalDir("in")}
+                          >
+                            Money in
+                          </button>
+                          <button
+                            type="button"
+                            className={localDir === "out" ? "on" : undefined}
+                            onClick={() => setLocalDir("out")}
+                          >
+                            Money out
+                          </button>
+                        </div>
+                      </div>
+                      <div className="rm-cond">
+                        <button
+                          type="button"
+                          className="rm-x"
+                          aria-label="Remove amount"
+                          onClick={() => {
+                            setLocalMin("");
+                            setLocalMax("");
+                          }}
+                        >
+                          ×
+                        </button>
+                        <div className="rm-lbl">Amount</div>
+                        <div className="rm-amtrow">
+                          <input
+                            className="rm-input"
+                            value={localMin}
+                            onChange={(e) => setLocalMin(e.target.value)}
+                            inputMode="decimal"
+                            placeholder="Min"
+                          />
+                          <input
+                            className="rm-input"
+                            value={localMax}
+                            onChange={(e) => setLocalMax(e.target.value)}
+                            inputMode="decimal"
+                            placeholder="Max"
+                          />
+                        </div>
+                        {stats?.min != null && stats?.max != null ? (
+                          <p className="rm-hint">
+                            Matched range {Number(stats.min).toFixed(0)}–
+                            {Number(stats.max).toFixed(0)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="rm-cond">
+                        <button
+                          type="button"
+                          className="rm-x"
+                          aria-label="Remove dates"
+                          onClick={() => {
+                            setDateFrom("");
+                            setDateTo("");
+                          }}
+                        >
+                          ×
+                        </button>
+                        <div className="rm-lbl">Date</div>
+                        <div className="rm-amtrow">
+                          <input
+                            type="date"
+                            className="rm-input"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                          />
+                          <input
+                            type="date"
+                            className="rm-input"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="rm-foot">
+                  <p className="rm-count">
+                    <b>{footCount}</b>
+                  </p>
+                  <button
+                    type="button"
+                    className="rm-btn primary"
+                    disabled={
+                      !localPayee.trim() || !localLabel.trim() || busy
+                    }
+                    onClick={() => {
+                      if (!localName.trim()) setLocalName(defaultRuleName());
+                      setPhoneStep("review");
+                      setShowAllMatches(false);
+                    }}
+                  >
+                    Review {willN > 0 ? willN.toLocaleString() : matchN.toLocaleString()}{" "}
+                    matches
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rm-body">
+                  {error ? <p className="rule-analyze-err">{error}</p> : null}
+                  <div className="rm-card">
+                    <div className="rm-k">This rule</div>
+                    <p style={{ margin: "0 0 6px" }}>
+                      Match merchant / payee contains <b>{localPayee.trim()}</b>
+                    </p>
+                    {localDir ? (
+                      <p style={{ margin: "0 0 6px" }}>
+                        Direction:{" "}
+                        <b>{localDir === "in" ? "Money in" : "Money out"}</b>
+                      </p>
+                    ) : null}
+                    {localMin || localMax ? (
+                      <p style={{ margin: "0 0 6px" }}>
+                        Amount:{" "}
+                        <b>
+                          {localMin || "any"} – {localMax || "any"}
+                        </b>
+                      </p>
+                    ) : null}
+                    {dateFrom || dateTo ? (
+                      <p style={{ margin: "0 0 6px" }}>
+                        Date:{" "}
+                        <b>
+                          {dateFrom || "…"} → {dateTo || "…"}
+                        </b>
+                      </p>
+                    ) : null}
+                    <p style={{ margin: 0 }}>
+                      Assign → <b>{localLabel.trim()}</b>
+                    </p>
+                  </div>
+
+                  <div className="rm-card">
+                    <div className="rm-hero-n">{willN.toLocaleString()}</div>
+                    <div className="rm-hero-s">
+                      transactions will be suggested
+                    </div>
+                    <div className="rm-stats">
+                      <div className="rm-stat">
+                        <b>
+                          {stats?.min != null
+                            ? formatTreasuryMoney(Number(stats.min), "USD")
+                            : "—"}
+                        </b>
+                        <span>Min</span>
+                      </div>
+                      <div className="rm-stat">
+                        <b>
+                          {stats?.median != null
+                            ? formatTreasuryMoney(Number(stats.median), "USD")
+                            : "—"}
+                        </b>
+                        <span>Median</span>
+                      </div>
+                      <div className="rm-stat">
+                        <b>
+                          {stats?.max != null
+                            ? formatTreasuryMoney(Number(stats.max), "USD")
+                            : "—"}
+                        </b>
+                        <span>Max</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rm-field">
+                    <div className="rm-lbl">
+                      Rule name <span className="opt">optional</span>
+                    </div>
+                    <input
+                      className="rm-input"
+                      value={localName}
+                      onChange={(e) => setLocalName(e.target.value)}
+                      placeholder={defaultRuleName()}
+                    />
+                  </div>
+
+                  {visible.map((tx) => (
+                    <div key={tx.id} className="rm-txcard">
+                      <div className="rm-tx-top">
+                        <span className="rm-tx-d">{tx.posted_date ?? "—"}</span>
+                        <span
+                          className={
+                            tx.direction === "in" ? "rm-tx-a in" : "rm-tx-a"
+                          }
+                        >
+                          {tx.direction === "out" ? "−" : ""}
+                          {formatTreasuryMoney(
+                            Math.abs(Number(tx.amount)),
+                            "USD"
+                          )}
+                        </span>
+                      </div>
+                      <div className="rm-tx-p">
+                        {tx.merchant_name ??
+                          tx.normalized_merchant ??
+                          tx.description ??
+                          "—"}
+                      </div>
+                    </div>
+                  ))}
+                  {!showAllMatches && samples.length > 6 ? (
+                    <button
+                      type="button"
+                      className="rm-btn ghost sm"
+                      onClick={() => setShowAllMatches(true)}
+                    >
+                      Show all {samples.length}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="rm-foot">
+                  <button
+                    type="button"
+                    className="rm-btn primary"
+                    disabled={
+                      saveBusy ||
+                      !localPayee.trim() ||
+                      !localLabel.trim() ||
+                      degenerate
+                    }
+                    onClick={() => {
+                      if (!localName.trim()) setLocalName(defaultRuleName());
+                      void createOrSave();
+                    }}
+                  >
+                    {saveBusy ? "Saving…" : "Save rule"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </RulePhonePortal>
+        <CategoryPhoneSheet
+          open={catSheetOpen}
+          onClose={() => setCatSheetOpen(false)}
+          categories={labels}
+          value={localLabel}
+          onPick={setLocalLabel}
+        />
+      </>
+    );
+  }
 
   const filterCol = (
     <div className="rule-analyze-col rule-analyze-col--filters">
