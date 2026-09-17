@@ -155,7 +155,7 @@ html, body{ overscroll-behavior-x: contain; }
 .topbar .navbtn{ display:none; width:36px; height:36px; margin-left:-8px; flex:0 0 auto; border:0; background:none; color:var(--ink);
   align-items:center; justify-content:center; border-radius:8px; cursor:pointer; padding:0; }
 .topbar .navbtn:hover{ background:color-mix(in srgb,var(--on-canvas) 6%, transparent); }
-.app-nav-scrim{ display:none; position:fixed; inset:49px 0 0 0; z-index:55; background:rgba(26,26,27,.38); border:0; padding:0; cursor:pointer; }
+.app-nav-scrim{ display:none; position:fixed; inset:49px 0 0 0; z-index:1000; background:rgba(26,26,27,.38); border:0; padding:0; cursor:pointer; }
 .app-nav-scrim.on{ display:block; }
 .topbar .spacer{ flex:1; }
 .topbar .who{ font-family:var(--font-mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); white-space:nowrap; }
@@ -251,7 +251,7 @@ html, body{ overscroll-behavior-x: contain; }
 .app{ min-height:100vh; background:var(--canvas); color:var(--ink); font-family:var(--font-ui); position:relative; }
 .app::before{ content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:var(--grain,0);
   background-image:url('data:image/svg+xml,%3Csvg viewBox=%220 0 160 160%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%222%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22/%3E%3C/svg%3E'); }
-.appbar{ position:sticky; top:0; z-index:30; }                 /* add together with .topbar */
+.appbar{ position:sticky; top:0; z-index:1010; } /* B30 — above nav scrim (1000) so hamburger/✕ stays tappable */
 .app-row{ display:flex; min-height:calc(100vh - 49px); position:relative; z-index:1; align-items:stretch; }
 /* Rail: FIXED (so it never scales with the content font), collapsed by default to a calm icon
    strip, its own internal scroll, and a foot that's always visible. Expands on hover / when pinned. */
@@ -623,8 +623,12 @@ textarea.letter:focus{ border-color:var(--brand); }
   .app-main,
   [data-r1] .app-main,
   [data-r1] .app.rail-pinned .app-main{ margin-left:0 !important; }
-  /* Beat [data-r1] .app-rail { z-index:30 } so the drawer sits above .app-nav-scrim (55).
-     Otherwise the dark scrim paints over the open rail and the sidebar looks dark. */
+  /* B30 — scrim + drawer share one stacking context (siblings under .app).
+     Scrim 1000 / rail 1001. Keep inset below topbar so hamburger/✕ stays tappable.
+     Do not rely on a trapped rail z-index inside .app-row. */
+  .app-nav-scrim,
+  [data-r1] .app-nav-scrim,
+  .app[data-r1] .app-nav-scrim{ z-index:1000; }
   .app-rail,
   [data-r1] .app-rail,
   [data-r1] .app.rail-pinned .app-rail{
@@ -632,7 +636,7 @@ textarea.letter:focus{ border-color:var(--brand); }
     max-width:84%;
     transform:translateX(-102%);
     transition:transform .22s ease, box-shadow .22s ease;
-    z-index:59;
+    z-index:1001;
     box-shadow:none;
     overflow:auto;
     background:var(--rail);
@@ -662,7 +666,20 @@ textarea.letter:focus{ border-color:var(--brand); }
   .cards3, .hub-actions{ grid-template-columns:1fr 1fr; }
   .app-main{ padding:24px 20px 80px; }
 }
-@media (max-width:560px){ .cards3, .hub-actions{ grid-template-columns:1fr; } .fgrid{ grid-template-columns:1fr; } }
+@media (max-width:560px){
+  .cards3, .hub-actions{ grid-template-columns:1fr; }
+  .fgrid{ grid-template-columns:1fr; }
+  /* B30 Part 2 — topbar never overflows the viewport */
+  .topbar{ gap:8px; padding:0 10px; overflow:hidden; }
+  .topbar .wm .wm-name{ display:none; }
+  .topbar .recpill{
+    min-width:0; max-width:min(42vw, 148px);
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  .topbar .ts-control{ display:none !important; }
+  .topbar .who{ display:none; }
+  .topbar .keypill{ flex:0 0 auto; }
+}
 
 /* ============================================================
    REVIEW FIXES (milestone gate) — dark-rail legibility, hub groups,

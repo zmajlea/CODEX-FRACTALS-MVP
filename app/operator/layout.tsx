@@ -11,6 +11,7 @@ import { BcnThemeProvider } from "@/components/bcn/BcnThemeContext";
 import type { Database } from "@/lib/database.types";
 import "@/app/styles/continuity.css";
 import "@/app/styles/summit-r1.css";
+import "@/app/styles/shell-phone.css"; // after summit-r1 — B30 cascade override
 
 export default async function OperatorLayout({
   children,

@@ -4790,7 +4790,7 @@ async function main() {
     );
   }
 
-  // 50 — B25 Part 1: shell hamburger + navOpen drawer (source-level)
+  // 50 — B25/B30: shell hamburger + navOpen drawer; B30 untrapped stacking + cascade
   {
     const shellSrc = readFileSync(
       join(ROOT, "components/bcn/BcnContinuityShell.tsx"),
@@ -4801,37 +4801,95 @@ async function main() {
       "utf8"
     );
     const cssSrc = readFileSync(join(ROOT, "app/styles/continuity.css"), "utf8");
+    const phoneCssSrc = readFileSync(
+      join(ROOT, "app/styles/shell-phone.css"),
+      "utf8"
+    );
     const clientShellSrc = readFileSync(
       join(ROOT, "components/platform/ClientShellFrame.tsx"),
       "utf8"
     );
+    const opLayoutSrc = readFileSync(
+      join(ROOT, "app/operator/layout.tsx"),
+      "utf8"
+    );
+    const clientLayoutSrc = readFileSync(
+      join(ROOT, "app/client/(shell)/layout.tsx"),
+      "utf8"
+    );
+
+    // Rail must not be nested inside .app-row (stacking trap).
+    const railOutOfRow =
+      /app-nav-scrim[\s\S]*?<aside[\s\S]*?app-rail[\s\S]*?<\/aside>[\s\S]*?<div className="app-row">/.test(
+        shellSrc
+      ) &&
+      /app-nav-scrim[\s\S]*?<aside[\s\S]*?app-rail[\s\S]*?<\/aside>[\s\S]*?<div className="app-row">/.test(
+        clientShellSrc
+      );
+    const noTrappedZ =
+      !/z-index:\s*59/.test(cssSrc) &&
+      /z-index:\s*1000/.test(cssSrc) &&
+      /z-index:\s*1001/.test(cssSrc);
+    const scrimInset =
+      cssSrc.includes("inset:49px 0 0 0") &&
+      cssSrc.includes("inset:52px 0 0 0");
+    const topbarMobile =
+      /@media\s*\(\s*max-width:\s*560px\s*\)/.test(cssSrc) &&
+      cssSrc.includes(".topbar .wm .wm-name") &&
+      cssSrc.includes("text-overflow:ellipsis") &&
+      cssSrc.includes(".topbar .ts-control");
+    const desktopPinHover =
+      cssSrc.includes(".app.rail-pinned .app-rail") &&
+      cssSrc.includes(".app.rail-pinned .app-main") &&
+      cssSrc.includes(".app:not(.rail-pinned) .app-rail:hover") &&
+      !/\.app-row\s+\.app-rail/.test(cssSrc);
+
+    const importOrderOk = (src: string) => {
+      const cont = src.indexOf('import "@/app/styles/continuity.css"');
+      const summit = src.indexOf('import "@/app/styles/summit-r1.css"');
+      const phone = src.indexOf('import "@/app/styles/shell-phone.css"');
+      return cont >= 0 && summit >= 0 && phone >= 0 && cont < summit && summit < phone;
+    };
+    const cascadeOk =
+      importOrderOk(opLayoutSrc) &&
+      importOrderOk(clientLayoutSrc) &&
+      /z-index:\s*1000\s*!important/.test(phoneCssSrc) &&
+      /z-index:\s*1001\s*!important/.test(phoneCssSrc) &&
+      /z-index:\s*1010\s*!important/.test(phoneCssSrc);
 
     const shellOk =
       /\bnavOpen\b/.test(shellSrc) &&
       shellSrc.includes("nav-open") &&
       shellSrc.includes("app-nav-scrim") &&
-      shellSrc.includes("onNavToggle");
+      shellSrc.includes("onNavToggle") &&
+      railOutOfRow;
     const topbarOk =
       topbarSrc.includes('className="navbtn"') &&
       topbarSrc.includes("onNavToggle") &&
-      topbarSrc.includes("aria-controls=\"rail\"");
+      topbarSrc.includes('aria-controls="rail"');
     const cssOk =
       /@media\s*\(\s*max-width:\s*1023px\s*\)/.test(cssSrc) &&
       cssSrc.includes(".app.nav-open .app-rail") &&
       cssSrc.includes(".topbar .navbtn") &&
+      noTrappedZ &&
+      scrimInset &&
+      topbarMobile &&
+      desktopPinHover &&
+      cascadeOk &&
       !/@media\s*\(\s*max-width:\s*880px\s*\)\s*\{\s*\.app-rail\s*\{\s*display:\s*none/.test(
         cssSrc
       );
     const clientOk =
       /\bnavOpen\b/.test(clientShellSrc) &&
       clientShellSrc.includes('className="navbtn"') &&
-      clientShellSrc.includes("nav-open");
+      clientShellSrc.includes("nav-open") &&
+      railOutOfRow;
 
     record(
       50,
-      "B25 shell navOpen + hamburger under 1024 (no display:none rail)",
+      "B30 shell: untrapped drawer+scrim, cascade after summit-r1, desktop pin/hover",
       shellOk && topbarOk && cssOk && clientOk,
-      `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk}`
+      `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk} railOut=${railOutOfRow} z=${noTrappedZ}`
     );
   }
 

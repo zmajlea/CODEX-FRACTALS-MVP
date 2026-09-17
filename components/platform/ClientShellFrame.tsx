@@ -115,30 +115,33 @@ export function ClientShellFrame({
             )}
           </svg>
         </button>
-        <span className="wm-name">{displayName}</span>
+        <span className="wm">
+          <span className="wm-name">{displayName}</span>
+        </span>
         <span className="grow" />
-        <SignOutButton className="btn sm ghost" />
+        <SignOutButton className="btn sm ghost who-signout" />
       </header>
+      {/* B30 — scrim + rail siblings under .app (parity with operator shell). */}
       <div
         className={`app-nav-scrim${navOpen ? " on" : ""}`}
         aria-hidden={!navOpen}
         onClick={() => setNavOpen(false)}
       />
+      <aside
+        className="rail app-rail flex flex-col"
+        id="rail"
+        onClickCapture={(e) => {
+          if (!navOpen) return;
+          const t = e.target as HTMLElement | null;
+          if (t?.closest("a,button")) setNavOpen(false);
+        }}
+      >
+        <div className="flex-1 min-h-0">
+          <ClientModuleRailSwitcher />
+        </div>
+        <RailBrandFoot showPoweredBy />
+      </aside>
       <div className="app-row">
-        <aside
-          className="rail app-rail flex flex-col"
-          id="rail"
-          onClickCapture={(e) => {
-            if (!navOpen) return;
-            const t = e.target as HTMLElement | null;
-            if (t?.closest("a,button")) setNavOpen(false);
-          }}
-        >
-          <div className="flex-1 min-h-0">
-            <ClientModuleRailSwitcher />
-          </div>
-          <RailBrandFoot showPoweredBy />
-        </aside>
         <main className="app-main">
           <div className="app-wrap">{children}</div>
         </main>

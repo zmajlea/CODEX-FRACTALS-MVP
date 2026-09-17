@@ -117,26 +117,27 @@ export function BcnContinuityShell({
           navOpen={navOpen}
           onNavToggle={() => setNavOpen((v) => !v)}
         />
+        {/* B30 — scrim + rail siblings under .app (same stacking context; not trapped in .app-row). */}
         <div
           className={`app-nav-scrim${navOpen ? " on" : ""}`}
           aria-hidden={!navOpen}
           onClick={() => setNavOpen(false)}
         />
+        <aside className="rail app-rail" id="rail">
+          <BcnRail
+            groups={railGroups}
+            footItems={railFootItems}
+            headContent={railHead}
+            pinned={railPinned}
+            dataBrand={dataBrand}
+            onTogglePin={() => setRailPinned((v) => !v)}
+            onLogout={onLogout}
+            onNavigate={() => setNavOpen(false)}
+            showPoweredBy
+            showBcnSolutionLine={showBcnSolutionLine}
+          />
+        </aside>
         <div className="app-row">
-          <aside className="rail app-rail" id="rail">
-            <BcnRail
-              groups={railGroups}
-              footItems={railFootItems}
-              headContent={railHead}
-              pinned={railPinned}
-              dataBrand={dataBrand}
-              onTogglePin={() => setRailPinned((v) => !v)}
-              onLogout={onLogout}
-              onNavigate={() => setNavOpen(false)}
-              showPoweredBy
-              showBcnSolutionLine={showBcnSolutionLine}
-            />
-          </aside>
           <main className="app-main">
             <div className="app-wrap">
               <div id="viewhost">{children}</div>
