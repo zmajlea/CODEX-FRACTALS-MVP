@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ReviewSnapshot } from "@/lib/treasury/review-assemble";
 
-/** Spec B12 — client lists published review issues (session RLS). */
+/**
+ * B26 — client lists Studies that have a live Edition (session RLS only).
+ * Resolve via treasury_review_versions (superseded_at IS NULL); do not gate on
+ * treasury_reviews.status (reopened drafts stay visible with their frozen Edition).
+ */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -12,16 +16,29 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: reviews, error } = await supabase
-    .from("treasury_reviews")
-    .select("id, title, period_month, status, current_version, updated_at")
-    .eq("client_user_id", user.id)
-    .eq("status", "published")
-    .order("period_month", { ascending: false });
+  const { data: versions, error } = await supabase
+    .from("treasury_review_versions")
+    .select("review_id, version, published_at, snapshot")
+    .is("superseded_at", null)
+    .order("published_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ reviews: reviews ?? [] });
+  const reviews = (versions ?? []).map((v) => {
+    const snap = v.snapshot as unknown as ReviewSnapshot | null;
+    const meta = snap?.meta;
+    return {
+      id: v.review_id,
+      title: meta?.title ?? "Study",
+      period_month: meta?.period_month ?? "",
+      /** Client-facing: live Edition present ⇒ published envelope. */
+      status: "published",
+      current_version: v.version,
+      updated_at: v.published_at,
+    };
+  });
+
+  return NextResponse.json({ reviews });
 }

@@ -732,7 +732,7 @@ async function main() {
       );
     }
 
-    // 11 — B19-B1: republish while published (no draft reopen) supersedes v1
+    // 11 — B19-B1: republish while published supersedes v1 (reopen not required)
     {
       await admin
         .from("treasury_review_blocks")
@@ -764,7 +764,7 @@ async function main() {
         .maybeSingle();
       record(
         11,
-        "republish v2 supersedes v1 (no draft reopen)",
+        "republish v2 supersedes v1 while published",
         pub.ok &&
           pub.version === 2 &&
           study?.status === "published" &&
@@ -3430,7 +3430,7 @@ async function main() {
           Math.abs(snap1Val - fresh1Val) < 0.01 &&
           snap1Val !== -999999;
 
-        // Spec B19-B1 — re-publish while still published (no draft reopen).
+        // Spec B19-B1 — re-publish while still published (reopen not required).
         const pub2 = await publishReview(
           admin,
           rid,
@@ -3531,10 +3531,14 @@ async function main() {
       panel.includes("Build this study like a page") &&
       panel.includes("Compose a metric");
     const editionsOk =
-      panel.includes('data-testid="editions-strip"') &&
+      panel.includes('data-testid="editions-revision-history"') &&
+      panel.includes("Editions (revision history)") &&
+      panel.includes('data-testid="reopen-to-edit"') &&
+      panel.includes("PUBLISH_CONTROL_LABEL") &&
       reviewGet.includes("editions: editionRows") &&
       reviewGet.includes("blocks: blocksWithMeta") &&
-      reviewGet.includes("preflight: lightPreflight");
+      reviewGet.includes("preflight: lightPreflight") &&
+      reviewGet.includes('action === "reopen"');
     const overlayGone =
       !studiesPanel.includes("StudyAuthorCanvas") &&
       studiesPanel.includes("Models") &&
@@ -3545,7 +3549,7 @@ async function main() {
       panel.includes("shelf-metric-wizard");
     record(
       44,
-      "B19-C2 landing fidelity: empty + editions + no overlay",
+      "B19-C2 + B26: empty + revision history + reopen + no overlay",
       emptyOk && editionsOk && overlayGone && headerOk,
       `empty=${emptyOk} editions=${editionsOk} overlayGone=${overlayGone} header=${headerOk}`
     );

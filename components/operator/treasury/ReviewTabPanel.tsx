@@ -32,6 +32,12 @@ import {
   type ReviewBlockLayout,
 } from "@/lib/treasury/review-block-layout";
 
+/**
+ * B26-D — Ana owns final wording for the publish control.
+ * One-line rename target; do not invent alternate product copy here.
+ */
+const PUBLISH_CONTROL_LABEL = "Publish";
+
 type StudyDateWindow = { from: string; to: string };
 
 type EditionMeta = {
@@ -82,6 +88,7 @@ type ReviewItem = {
   period_month: string;
   status: string;
   current_version: number;
+  current_version_published_at?: string | null;
   reply_count?: number;
   window?: StudyDateWindow | null;
 };
@@ -407,6 +414,29 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
     }
   }
 
+  /** B26 — published → draft; live Edition untouched. */
+  async function reopenReview(reviewId: string) {
+    if (busy || pendingAction) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen" }),
+      });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Reopen failed");
+      }
+      await refresh(reviewId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reopen failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function discardMetric(metricId: string) {
     setBusy(true);
     setError(null);
@@ -530,10 +560,18 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     });
-    const json = (await res.json()) as { error?: string };
+    const json = (await res.json()) as {
+      error?: string;
+      review?: { title?: string };
+    };
     if (!res.ok) {
       throw new Error(json.error ?? `Title save failed (${res.status})`);
     }
+    const saved = json.review?.title ?? title;
+    setTitle(saved);
+    setReviews((prev) =>
+      prev.map((r) => (r.id === activeId ? { ...r, title: saved } : r))
+    );
   }
 
   /** Spec B19 — persist Study window; server refreshes placed_snapshot preview cache. */
@@ -978,8 +1016,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             >
               <div className="t">{r.title || r.period_month}</div>
               <div className="m">
-                {r.status}
-                {r.current_version ? ` · v${r.current_version}` : ""}
+                {r.status === "published" && r.current_version
+                  ? `Edition v${r.current_version}${
+                      r.current_version_published_at
+                        ? ` · ${r.current_version_published_at.slice(0, 10)}`
+                        : ""
+                    }`
+                  : r.status}
+                {r.status !== "published" && r.current_version
+                  ? ` · v${r.current_version}`
+                  : ""}
                 {r.reply_count ? ` · ${r.reply_count} replies` : ""}
               </div>
             </button>
@@ -1098,51 +1144,53 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                 : status === "draft"
                   ? `Preflight clean · freezes ${blocks.length} blocks`
                   : status === "published"
-                    ? `Publish next Edition · v${nextVersion}`
+                    ? `${PUBLISH_CONTROL_LABEL} next Edition · v${nextVersion}`
                     : "Published"}
           </span>
           {canPublish && activeId ? (
             <>
-              <label className="rcx-win">
-                From
-                <input
-                  type="date"
-                  value={windowFrom}
-                  disabled={busy}
-                  onChange={(e) => setWindowFrom(e.target.value)}
-                  onBlur={() => {
-                    // Persist Study.window only while drafting; published uses local
-                    // window for preview + publish body (PATCH remains draft-only).
-                    if (
-                      status === "draft" &&
-                      windowFrom &&
-                      windowTo &&
-                      windowTo >= windowFrom
-                    ) {
-                      void saveStudyWindow(windowFrom, windowTo);
-                    }
-                  }}
-                />
-              </label>
-              <label className="rcx-win">
-                To
-                <input
-                  type="date"
-                  value={windowTo}
-                  disabled={busy}
-                  onChange={(e) => setWindowTo(e.target.value)}
-                  onBlur={() => {
-                    if (
-                      status === "draft" &&
-                      windowFrom &&
-                      windowTo &&
-                      windowTo >= windowFrom
-                    ) {
-                      void saveStudyWindow(windowFrom, windowTo);
-                    }
-                  }}
-                />
-              </label>
+              <div className="rcx-winrow">
+                <label className="rcx-win">
+                  From
+                  <input
+                    type="date"
+                    value={windowFrom}
+                    disabled={busy}
+                    onChange={(e) => setWindowFrom(e.target.value)}
+                    onBlur={() => {
+                      // Persist Study.window only while drafting; published uses local
+                      // window for preview + publish body (PATCH remains draft-only).
+                      if (
+                        status === "draft" &&
+                        windowFrom &&
+                        windowTo &&
+                        windowTo >= windowFrom
+                      ) {
+                        void saveStudyWindow(windowFrom, windowTo);
+                      }
+                    }}
+                  />
+                </label>
+                <label className="rcx-win">
+                  To
+                  <input
+                    type="date"
+                    value={windowTo}
+                    disabled={busy}
+                    onChange={(e) => setWindowTo(e.target.value)}
+                    onBlur={() => {
+                      if (
+                        status === "draft" &&
+                        windowFrom &&
+                        windowTo &&
+                        windowTo >= windowFrom
+                      ) {
+                        void saveStudyWindow(windowFrom, windowTo);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 className={`rcx-btn sm ghost rcx-preview${previewAsClient ? " on" : ""}`}
@@ -1153,13 +1201,26 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
               </button>
             </>
           ) : null}
+          {status === "published" && activeId ? (
+            <button
+              type="button"
+              className="rcx-btn sm ghost"
+              disabled={busy}
+              data-testid="reopen-to-edit"
+              onClick={() => void reopenReview(activeId)}
+            >
+              Reopen to edit
+            </button>
+          ) : null}
           <button
             type="button"
             className={`rcx-btn sm${gateLevel === "ready" && canPublish ? "" : " ghost"}`}
             disabled={busy || !canPublish || publishBlocked}
             onClick={() => openPublishDialog()}
           >
-            {canPublish ? `Publish v${nextVersion}` : "Published"}
+            {canPublish
+              ? `${PUBLISH_CONTROL_LABEL} v${nextVersion}`
+              : "Published"}
           </button>
         </div>
 
@@ -1208,8 +1269,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                   >
                     <div className="t">{r.title || r.period_month}</div>
                     <div className="m">
-                      {r.status}
-                      {r.current_version ? ` · v${r.current_version}` : ""}
+                      {r.status === "published" && r.current_version
+                        ? `Edition v${r.current_version}${
+                            r.current_version_published_at
+                              ? ` · ${r.current_version_published_at.slice(0, 10)}`
+                              : ""
+                          }`
+                        : r.status}
+                      {r.status !== "published" && r.current_version
+                        ? ` · v${r.current_version}`
+                        : ""}
                     </div>
                   </button>
                 ))}
@@ -1274,7 +1343,17 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                   value={title}
                   placeholder="Name this study"
                   disabled={status !== "draft"}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTitle(next);
+                    if (activeId) {
+                      setReviews((prev) =>
+                        prev.map((r) =>
+                          r.id === activeId ? { ...r, title: next } : r
+                        )
+                      );
+                    }
+                  }}
                   onBlur={() => {
                     void saveTitle().catch((e) =>
                       setError(e instanceof Error ? e.message : "Title save failed")
@@ -1322,25 +1401,27 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             </header>
 
             {editions.length > 0 ? (
-              <div className="rcx-editions" data-testid="editions-strip">
-                <span className="ed-k">Editions</span>
-                <ul className="ed-list">
+              <details
+                className="rcx-editions"
+                data-testid="editions-revision-history"
+              >
+                <summary className="ed-k">Editions (revision history)</summary>
+                <ul className="ed-list" style={{ listStyle: "none", padding: 0 }}>
                   {editions.map((ed) => {
                     const name =
                       (ed.label ?? "").trim() || `Edition ${ed.version}`;
-                    const win =
-                      ed.window?.from && ed.window?.to
-                        ? `${ed.window.from} → ${ed.window.to}`
-                        : "—";
                     const when = ed.published_at
                       ? ed.published_at.slice(0, 10)
                       : ed.reviewed_as_of?.slice(0, 10) ?? "";
+                    const note = (ed.change_note ?? "").trim();
                     return (
                       <li key={ed.id} className="ed-item">
-                        <span className="ed-n">{name}</span>
+                        <span className="ed-n">
+                          v{ed.version} · {name}
+                        </span>
                         <span className="ed-m">
-                          {win}
-                          {when ? ` · ${when}` : ""}
+                          {when}
+                          {note ? ` · ${note}` : ""}
                         </span>
                       </li>
                     );
@@ -1353,16 +1434,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                     disabled={busy || publishBlocked}
                     onClick={() => openPublishDialog()}
                   >
-                    Re-publish
+                    Re-{PUBLISH_CONTROL_LABEL.toLowerCase()}
                   </button>
                 ) : null}
-              </div>
+              </details>
             ) : null}
 
             {previewAsClient && clientPreview ? (
               <div className="rcx-client-prev" data-testid="preview-as-client">
                 <p className="rcx-muted" style={{ marginBottom: 12 }}>
-                  Client envelope preview · not frozen until Publish
+                  Client envelope preview · not frozen until {PUBLISH_CONTROL_LABEL}
                 </p>
                 <h2 className="rcx-prev-title">{clientPreview.meta.title}</h2>
                 <p className="rcx-muted">
@@ -2104,9 +2185,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             className="rcx-confirm"
             role="dialog"
             aria-modal="true"
-            aria-label="Publish edition"
+            aria-label={`${PUBLISH_CONTROL_LABEL} edition`}
           >
-            <div className="rcx-confirm-title">Publish Edition</div>
+            <div className="rcx-confirm-title">{PUBLISH_CONTROL_LABEL} Edition</div>
             <p className="rcx-muted" style={{ marginBottom: 12 }}>
               Freezes a fresh compute over this window — same path as preview.
             </p>
@@ -2155,7 +2236,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                 disabled={busy}
                 onClick={() => void publish()}
               >
-                Publish v{nextVersion}
+                {PUBLISH_CONTROL_LABEL} v{nextVersion}
               </button>
             </div>
           </div>
@@ -2323,6 +2404,7 @@ const RCX_CSS = `
 .rcx-gate[data-level="ready"] .hint{color:var(--su-accept)}
 .rcx-win{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mute);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 .rcx-win input{font:inherit;font-size:12px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink);border:1px solid var(--paper-edge);border-radius:6px;padding:3px 6px;background:var(--paper,#fff)}
+.rcx-winrow{flex:1 1 100%;display:flex;flex-wrap:nowrap;align-items:center;gap:14px;width:100%}
 .rcx-btn.ghost.on{background:color-mix(in srgb,var(--su-accept,#174a7a) 12%,#fff);border-color:color-mix(in srgb,var(--su-accept,#174a7a) 35%,var(--line))}
 .rcx-client-prev{margin-top:16px;padding-top:8px;border-top:1px solid var(--paper-edge)}
 .rcx-prev-title{font-size:20px;font-weight:700;margin:4px 0 6px}
@@ -2553,7 +2635,7 @@ const RCX_CSS = `
   .rcx-switch{flex:1 1 auto;order:1}
   .rcx-gate > .rcx-btn.sm:last-of-type{order:2}
   .rcx-gate .gc{order:3;flex-basis:100%}
-  .rcx-gate .hint,.rcx-gate .spacer,.rcx-win,.rcx-preview{display:none}
+  .rcx-gate .hint,.rcx-gate .spacer,.rcx-win,.rcx-winrow,.rcx-preview{display:none}
   .rcx-paper{padding:16px 14px;border-radius:10px}
   .rcx-ob{min-width:0}
   .rcx-editions{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}

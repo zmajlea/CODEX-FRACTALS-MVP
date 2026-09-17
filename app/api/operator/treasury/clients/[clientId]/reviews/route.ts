@@ -80,9 +80,16 @@ export async function POST(request: Request, context: RouteContext) {
     body = {};
   }
 
+  // B26 Part A — implicit (empty / no period_month & no label keys) vs explicit create.
+  const explicit =
+    Object.prototype.hasOwnProperty.call(body, "period_month") ||
+    Object.prototype.hasOwnProperty.call(body, "label");
+
   const periodMonth = body.period_month?.trim() || periodMonthFromDate();
-  const label = body.label?.trim() ?? "";
-  const title = body.title?.trim() || defaultTitle(new Date(periodMonth + "T00:00:00Z"));
+  let label = body.label?.trim() ?? "";
+  let title =
+    body.title?.trim() ||
+    defaultTitle(new Date(periodMonth + "T00:00:00Z"));
 
   const { data: existing } = await guard.admin
     .from("treasury_reviews")
@@ -94,20 +101,37 @@ export async function POST(request: Request, context: RouteContext) {
     .maybeSingle();
 
   if (existing) {
-    const { data: existingRow } = await guard.admin
+    if (explicit) {
+      const { data: existingRow } = await guard.admin
+        .from("treasury_reviews")
+        .select("*")
+        .eq("id", existing.id)
+        .single();
+      return NextResponse.json(
+        {
+          error: "Issue already exists for this period/label",
+          existing: existingRow
+            ? normalizeReviewRow(existingRow as Record<string, unknown>)
+            : { id: existing.id },
+        },
+        { status: 409 }
+      );
+    }
+
+    // Implicit: auto-disambiguate with smallest free ordinal "2", "3", …
+    const { data: siblings } = await guard.admin
       .from("treasury_reviews")
-      .select("*")
-      .eq("id", existing.id)
-      .single();
-    return NextResponse.json(
-      {
-        error: "Issue already exists for this period/label",
-        existing: existingRow
-          ? normalizeReviewRow(existingRow as Record<string, unknown>)
-          : { id: existing.id },
-      },
-      { status: 409 }
-    );
+      .select("label")
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .eq("period_month", periodMonth);
+
+    const used = new Set((siblings ?? []).map((r) => String(r.label ?? "")));
+    let n = 2;
+    while (used.has(String(n))) n += 1;
+    label = String(n);
+    const baseTitle = defaultTitle(new Date(periodMonth + "T00:00:00Z"));
+    title = body.title?.trim() || `${baseTitle} (${n})`;
   }
 
   const { data: created, error } = await guard.admin

@@ -5,7 +5,10 @@ import type { ReviewSnapshot } from "@/lib/treasury/review-assemble";
 
 type RouteContext = { params: Promise<{ reviewId: string }> };
 
-/** Spec B12 — client print/export from frozen snapshot (session RLS). */
+/**
+ * B26 — client print/export from frozen live Edition (session RLS).
+ * Version-first — do not gate on treasury_reviews.status.
+ */
 export async function GET(request: Request, context: RouteContext) {
   const { reviewId } = await context.params;
   const supabase = await createClient();
@@ -14,17 +17,6 @@ export async function GET(request: Request, context: RouteContext) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: review } = await supabase
-    .from("treasury_reviews")
-    .select("id, client_user_id")
-    .eq("id", reviewId)
-    .eq("client_user_id", user.id)
-    .maybeSingle();
-
-  if (!review) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const url = new URL(request.url);
