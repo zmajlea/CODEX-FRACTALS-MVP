@@ -561,6 +561,13 @@ export function OperatorTreasuryClientRecord({
                 <div className="eyebrow">Treasury record</div>
                 <h1 className="title">{clientName}</h1>
               </div>
+              <a
+                className="chip"
+                href={`/operator/treasury/clients/${clientUserId}/workbench`}
+                data-testid="client-record-workbench-link"
+              >
+                Models &amp; Metrics
+              </a>
             </div>
 
             {demo && csvOnly ? (

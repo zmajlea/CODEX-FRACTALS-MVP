@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
-import { MetricsTab } from "@/components/operator/treasury/analytics/MetricsTab";
 import { MetricChart } from "@/components/operator/treasury/analytics/MetricChart";
 import { MetricComparisonChart } from "@/components/operator/treasury/analytics/MetricComparisonChart";
 import {
@@ -10,7 +9,6 @@ import {
 } from "@/components/operator/treasury/analytics/MetricTable";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import { StudiesPanel } from "@/components/operator/treasury/StudiesPanel";
-import { ModelStudio } from "@/components/operator/treasury/ModelStudio";
 import { StudyBlockView } from "@/components/operator/treasury/StudyBlockView";
 import type { MetricComparison } from "@/lib/treasury/metrics-eval";
 import { isPlacedStudySnapshot } from "@/lib/treasury/study-assemble";
@@ -155,9 +153,6 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [shelfOpen, setShelfOpen] = useState(false);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [studioOpen, setStudioOpen] = useState(false);
-  const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [addingMetricId, setAddingMetricId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -940,7 +935,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
     <div
       className="rcx-stage"
       data-shelf={shelfOpen ? "open" : "collapsed"}
-      data-builder={builderOpen ? "open" : "closed"}
+      data-builder="closed"
       onClick={() => {
         if (menuOpenId) setMenuOpenId(null);
         if (switcherOpen) setSwitcherOpen(false);
@@ -1409,17 +1404,14 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                   this side until you publish an Edition.
                 </div>
                 <div className="rcx-ecards">
-                  <button
-                    type="button"
+                  <a
                     className="rcx-ecard"
-                    onClick={() => {
-                      setShelfOpen(true);
-                      setBuilderOpen(true);
-                    }}
+                    href={`/operator/treasury/clients/${clientUserId}/workbench`}
+                    data-testid="study-empty-workbench-link"
                   >
-                    <b>Compose a metric</b>
-                    <span>“sum of checks, by week” — opens the wizard</span>
-                  </button>
+                    <b>Models &amp; Metrics</b>
+                    <span>Author metrics and models, then place from the shelf</span>
+                  </a>
                   <button
                     type="button"
                     className="rcx-ecard"
@@ -1953,8 +1945,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
               if (activeId) void loadReview(activeId);
             }}
             onError={setError}
-            onOpenStudio={() => setStudioOpen(true)}
-            refreshKey={modelsRefreshKey}
+            authoringHref={`/operator/treasury/clients/${clientUserId}/workbench`}
             placedStudyIds={blocks
               .filter((b) => b.role === "study" && b.study_id)
               .map((b) => b.study_id as string)}
@@ -2028,74 +2019,27 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             ))}
             {metrics.length === 0 ? (
               <p className="rcx-muted" style={{ fontSize: 12 }}>
-                No metrics yet. Compose one below.
+                No metrics yet. Author them in Models &amp; Metrics.
               </p>
             ) : null}
           </div>
           <div className="rcx-sfoot">
-            <button
-              type="button"
+            <a
               className="rcx-btn sm"
-              style={{ width: "100%" }}
-              onClick={() => setBuilderOpen(true)}
+              style={{ width: "100%", display: "block", textAlign: "center" }}
+              href={`/operator/treasury/clients/${clientUserId}/workbench`}
+              data-testid="shelf-metrics-workbench-link"
             >
-              + New metric
-            </button>
+              Models &amp; Metrics →
+            </a>
             <p className="rcx-muted" style={{ fontSize: 11, marginTop: 6 }}>
-              Opens the sentence wizard in a popup. Never client-visible.
+              Author metrics there; place existing ones above.
             </p>
           </div>
             </>
           </aside>
         </>
       ) : null}
-
-      {/* ── New-metric wizard (popup) ─────────────────── */}
-      {builderOpen ? (
-        <div
-          className="rcx-modal-scrim"
-          onClick={() => {
-            setBuilderOpen(false);
-            void loadMetrics();
-          }}
-        >
-          <div
-            className="rcx-modal"
-            data-testid="shelf-metric-wizard"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sh" style={{ marginBottom: 12 }}>
-              <span className="st">New metric</span>
-              <button
-                type="button"
-                className="rcx-tool"
-                onClick={() => {
-                  setBuilderOpen(false);
-                  void loadMetrics();
-                }}
-              >
-                Done
-              </button>
-            </div>
-            <MetricsTab clientUserId={clientUserId} dataThrough={dataThrough} />
-          </div>
-        </div>
-      ) : null}
-
-      <ModelStudio
-        clientUserId={clientUserId}
-        reviewId={activeId}
-        reviewStatus={status}
-        open={studioOpen}
-        onClose={() => setStudioOpen(false)}
-        onSaved={({ placed }) => {
-          setModelsRefreshKey((k) => k + 1);
-          if (placed && activeId) void loadReview(activeId);
-        }}
-        onError={setError}
-      />
 
       {publishOpen ? (
         <>

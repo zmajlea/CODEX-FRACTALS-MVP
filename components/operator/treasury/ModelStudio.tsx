@@ -40,6 +40,8 @@ type Props = {
   onClose: () => void;
   onSaved: (opts: { placed: boolean }) => void;
   onError: (msg: string) => void;
+  /** B28 — workbench: hide Save & place (author-only). */
+  allowPlace?: boolean;
 };
 
 type Step = "kind" | "setup" | "preview";
@@ -255,6 +257,7 @@ export function ModelStudio({
   onClose,
   onSaved,
   onError,
+  allowPlace = true,
 }: Props) {
   const base = `/api/operator/treasury/clients/${clientUserId}`;
   // Studio authors every listed kind with a form — Runway (cash_model),
@@ -374,7 +377,8 @@ export function ModelStudio({
   if (!open) return null;
 
   const grade = preview?.confidence.grade ?? null;
-  const canPlace = !!reviewId && reviewStatus === "draft" && grade !== "refused";
+  const canPlace =
+    allowPlace && !!reviewId && reviewStatus === "draft" && grade !== "refused";
 
   return (
     <div className="wz-scrim" onClick={onClose}>
@@ -539,14 +543,16 @@ export function ModelStudio({
                   >
                     Save
                   </button>
-                  <button
-                    type="button"
-                    className="rcx-btn sm"
-                    disabled={saving || !preview || !canPlace}
-                    onClick={() => void save(true)}
-                  >
-                    Save &amp; place
-                  </button>
+                  {allowPlace ? (
+                    <button
+                      type="button"
+                      className="rcx-btn sm"
+                      disabled={saving || !preview || !canPlace}
+                      onClick={() => void save(true)}
+                    >
+                      Save &amp; place
+                    </button>
+                  ) : null}
                 </>
               )}
             </>

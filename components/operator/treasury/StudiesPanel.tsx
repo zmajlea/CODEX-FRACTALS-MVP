@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { isStudyPlaceable } from "@/lib/treasury/study-assemble";
 import { getModelKind } from "@/lib/treasury/model-kinds";
 
@@ -22,8 +23,13 @@ type Props = {
   busy: boolean;
   onPlaced: () => void;
   onError: (msg: string) => void;
-  /** Open the Model Studio (mounted by the parent composer). */
-  onOpenStudio: () => void;
+  /** Open the Model Studio (mounted by the parent). Omit when authoringHref is set. */
+  onOpenStudio?: () => void;
+  /**
+   * B28 — when set, create affordances become a link to Models & Metrics
+   * (authoring moved out of the Studies composer).
+   */
+  authoringHref?: string;
   /** Refresh signal — bump to reload the models list after a Studio save. */
   refreshKey?: number;
   /** study_ids already placed on the open draft, to mark "placed". */
@@ -58,6 +64,7 @@ export function StudiesPanel({
   onPlaced,
   onError,
   onOpenStudio,
+  authoringHref,
   refreshKey,
   placedStudyIds,
 }: Props) {
@@ -142,6 +149,7 @@ export function StudiesPanel({
 
   const locked = busy || localBusy != null;
   const placedSet = new Set(placedStudyIds ?? []);
+  const createViaLink = !!authoringHref;
 
   return (
     <div className="studies-panel" data-testid="studies-panel">
@@ -150,33 +158,54 @@ export function StudiesPanel({
         <span className="rcx-muted" style={{ fontSize: 10, marginLeft: 6 }}>
           · {studies.length}
         </span>
-        <button
-          type="button"
-          className="rcx-linkbtn"
-          style={{ marginLeft: "auto" }}
-          disabled={locked}
-          onClick={onOpenStudio}
-        >
-          + New model
-        </button>
+        {createViaLink ? (
+          <Link
+            href={authoringHref}
+            className="rcx-linkbtn"
+            style={{ marginLeft: "auto" }}
+            data-testid="shelf-models-workbench-link"
+          >
+            Models &amp; Metrics →
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className="rcx-linkbtn"
+            style={{ marginLeft: "auto" }}
+            disabled={locked || !onOpenStudio}
+            onClick={onOpenStudio}
+          >
+            + New model
+          </button>
+        )}
       </div>
       <p className="rcx-muted" style={{ fontSize: 11, marginBottom: 8 }}>
         Engine-computed from the ledger and your assumptions. Assistant submissions land
         pending and need your Confirm.
       </p>
 
-      <button
-        type="button"
-        className="rcx-sitem new"
-        disabled={locked}
-        onClick={onOpenStudio}
-      >
-        <span className="ico">+</span>
-        <span className="sn">New model</span>
-        <span className="sk">
-          Runway · Forecast · Seasonality — pick a kind, set the assumptions, watch it compute.
-        </span>
-      </button>
+      {createViaLink ? (
+        <p className="rcx-muted" style={{ fontSize: 11, marginBottom: 8 }}>
+          Author new models in{" "}
+          <Link href={authoringHref} className="rcx-linkbtn">
+            Models &amp; Metrics
+          </Link>
+          . Place existing ones below.
+        </p>
+      ) : (
+        <button
+          type="button"
+          className="rcx-sitem new"
+          disabled={locked || !onOpenStudio}
+          onClick={onOpenStudio}
+        >
+          <span className="ico">+</span>
+          <span className="sn">New model</span>
+          <span className="sk">
+            Runway · Forecast · Seasonality — pick a kind, set the assumptions, watch it compute.
+          </span>
+        </button>
+      )}
 
       {loading ? (
         <p className="rcx-muted" style={{ fontSize: 12 }}>
