@@ -4790,7 +4790,7 @@ async function main() {
     );
   }
 
-  // 50 — B25 Part 1: shell hamburger + navOpen drawer (source-level)
+  // 50 — B25/B30: shell hamburger + navOpen drawer; B30 untrapped stacking
   {
     const shellSrc = readFileSync(
       join(ROOT, "components/bcn/BcnContinuityShell.tsx"),
@@ -4806,32 +4806,64 @@ async function main() {
       "utf8"
     );
 
+    // Rail must not be nested inside .app-row (stacking trap).
+    const railOutOfRow =
+      /app-nav-scrim[\s\S]*?<aside[\s\S]*?app-rail[\s\S]*?<\/aside>[\s\S]*?<div className="app-row">/.test(
+        shellSrc
+      ) &&
+      /app-nav-scrim[\s\S]*?<aside[\s\S]*?app-rail[\s\S]*?<\/aside>[\s\S]*?<div className="app-row">/.test(
+        clientShellSrc
+      );
+    const noTrappedZ =
+      !/z-index:\s*59/.test(cssSrc) &&
+      /z-index:\s*1000/.test(cssSrc) &&
+      /z-index:\s*1001/.test(cssSrc);
+    const scrimInset =
+      cssSrc.includes("inset:49px 0 0 0") &&
+      cssSrc.includes("inset:52px 0 0 0");
+    const topbarMobile =
+      /@media\s*\(\s*max-width:\s*560px\s*\)/.test(cssSrc) &&
+      cssSrc.includes(".topbar .wm .wm-name") &&
+      cssSrc.includes("text-overflow:ellipsis") &&
+      cssSrc.includes(".topbar .ts-control");
+    const desktopPinHover =
+      cssSrc.includes(".app.rail-pinned .app-rail") &&
+      cssSrc.includes(".app.rail-pinned .app-main") &&
+      cssSrc.includes(".app:not(.rail-pinned) .app-rail:hover") &&
+      !/\.app-row\s+\.app-rail/.test(cssSrc);
+
     const shellOk =
       /\bnavOpen\b/.test(shellSrc) &&
       shellSrc.includes("nav-open") &&
       shellSrc.includes("app-nav-scrim") &&
-      shellSrc.includes("onNavToggle");
+      shellSrc.includes("onNavToggle") &&
+      railOutOfRow;
     const topbarOk =
       topbarSrc.includes('className="navbtn"') &&
       topbarSrc.includes("onNavToggle") &&
-      topbarSrc.includes("aria-controls=\"rail\"");
+      topbarSrc.includes('aria-controls="rail"');
     const cssOk =
       /@media\s*\(\s*max-width:\s*1023px\s*\)/.test(cssSrc) &&
       cssSrc.includes(".app.nav-open .app-rail") &&
       cssSrc.includes(".topbar .navbtn") &&
+      noTrappedZ &&
+      scrimInset &&
+      topbarMobile &&
+      desktopPinHover &&
       !/@media\s*\(\s*max-width:\s*880px\s*\)\s*\{\s*\.app-rail\s*\{\s*display:\s*none/.test(
         cssSrc
       );
     const clientOk =
       /\bnavOpen\b/.test(clientShellSrc) &&
       clientShellSrc.includes('className="navbtn"') &&
-      clientShellSrc.includes("nav-open");
+      clientShellSrc.includes("nav-open") &&
+      railOutOfRow;
 
     record(
       50,
-      "B25 shell navOpen + hamburger under 1024 (no display:none rail)",
+      "B30 shell: untrapped drawer+scrim, topbar ≤560, desktop pin/hover intact",
       shellOk && topbarOk && cssOk && clientOk,
-      `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk}`
+      `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk} railOut=${railOutOfRow} z=${noTrappedZ}`
     );
   }
 
