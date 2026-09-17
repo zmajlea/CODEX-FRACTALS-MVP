@@ -966,6 +966,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
     (!publishedDeleteNeedsType || confirmTyped.trim() === pendingLabel);
 
   const openShelfFor = (role: "figure" | "exhibit") => {
+    setSwitcherOpen(false);
     setShelfOpen(true);
     setError(
       role === "figure"
@@ -973,6 +974,11 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
         : "Pick an analytics metric from the Shelf → Exhibit."
     );
   };
+
+  function openShelf() {
+    setSwitcherOpen(false);
+    setShelfOpen(true);
+  }
 
   return (
     <div
