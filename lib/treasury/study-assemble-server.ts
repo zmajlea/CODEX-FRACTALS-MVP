@@ -60,7 +60,7 @@ export async function previewModelKind(
   admin: Admin,
   clientUserId: string,
   studyRow: Record<string, unknown>,
-  opts?: { openingBalance?: number | null }
+  opts?: { openingBalance?: number | null; asOf?: string | null }
 ): Promise<ModelPreviewResult | null> {
   return runModelKind(admin, clientUserId, studyRow, opts, {
     requirePlaceable: false,
@@ -71,7 +71,7 @@ async function runModelKind(
   admin: Admin,
   clientUserId: string,
   studyRow: Record<string, unknown>,
-  opts: { openingBalance?: number | null } | undefined,
+  opts: { openingBalance?: number | null; asOf?: string | null } | undefined,
   flags: { requirePlaceable: boolean }
 ): Promise<ModelPreviewResult | null> {
   const row = asModelRow(studyRow);
@@ -105,7 +105,11 @@ async function runModelKind(
     clientUserId,
     row.scope,
     kind.inputs,
-    { openingBalance: override, params: paramsForOb }
+    {
+      openingBalance: override,
+      params: paramsForOb,
+      asOf: opts?.asOf ?? undefined,
+    }
   );
 
   const result = kind.compute(inputs, parsed.data, scenarios as never, row);

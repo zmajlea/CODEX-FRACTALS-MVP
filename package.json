@@ -55,7 +55,8 @@
     "treasury:verify-label-survival": "npx tsx scripts/verify-label-survival.ts",
     "treasury:verify-spend-plan": "npx tsx scripts/verify-spend-plan.ts",
     "treasury:verify-tx-predicate": "npx tsx scripts/verify-tx-predicate.ts",
-    "gate:b8": "npx tsx scripts/gate-metrics-analytics-placement-b8.ts"
+    "gate:b8": "npx tsx scripts/gate-metrics-analytics-placement-b8.ts",
+    "gate:b28": "npx tsx scripts/gate-b28-workbench.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

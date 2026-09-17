@@ -19,6 +19,8 @@ type PreviewBody = {
   derived_snapshot?: unknown;
   status?: string | null;
   openingBalance?: number | null;
+  /** Optional as-of date for cash loaders (workbench Run window). */
+  asOf?: string | null;
 };
 
 /**
@@ -63,6 +65,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const out = await previewModelKind(guard.admin, clientId, row, {
     openingBalance: body.openingBalance ?? null,
+    asOf: typeof body.asOf === "string" ? body.asOf : null,
   });
 
   if (!out) {
