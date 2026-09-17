@@ -560,10 +560,18 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     });
-    const json = (await res.json()) as { error?: string };
+    const json = (await res.json()) as {
+      error?: string;
+      review?: { title?: string };
+    };
     if (!res.ok) {
       throw new Error(json.error ?? `Title save failed (${res.status})`);
     }
+    const saved = json.review?.title ?? title;
+    setTitle(saved);
+    setReviews((prev) =>
+      prev.map((r) => (r.id === activeId ? { ...r, title: saved } : r))
+    );
   }
 
   /** Spec B19 — persist Study window; server refreshes placed_snapshot preview cache. */
@@ -1141,46 +1149,48 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
           </span>
           {canPublish && activeId ? (
             <>
-              <label className="rcx-win">
-                From
-                <input
-                  type="date"
-                  value={windowFrom}
-                  disabled={busy}
-                  onChange={(e) => setWindowFrom(e.target.value)}
-                  onBlur={() => {
-                    // Persist Study.window only while drafting; published uses local
-                    // window for preview + publish body (PATCH remains draft-only).
-                    if (
-                      status === "draft" &&
-                      windowFrom &&
-                      windowTo &&
-                      windowTo >= windowFrom
-                    ) {
-                      void saveStudyWindow(windowFrom, windowTo);
-                    }
-                  }}
-                />
-              </label>
-              <label className="rcx-win">
-                To
-                <input
-                  type="date"
-                  value={windowTo}
-                  disabled={busy}
-                  onChange={(e) => setWindowTo(e.target.value)}
-                  onBlur={() => {
-                    if (
-                      status === "draft" &&
-                      windowFrom &&
-                      windowTo &&
-                      windowTo >= windowFrom
-                    ) {
-                      void saveStudyWindow(windowFrom, windowTo);
-                    }
-                  }}
-                />
-              </label>
+              <div className="rcx-winrow">
+                <label className="rcx-win">
+                  From
+                  <input
+                    type="date"
+                    value={windowFrom}
+                    disabled={busy}
+                    onChange={(e) => setWindowFrom(e.target.value)}
+                    onBlur={() => {
+                      // Persist Study.window only while drafting; published uses local
+                      // window for preview + publish body (PATCH remains draft-only).
+                      if (
+                        status === "draft" &&
+                        windowFrom &&
+                        windowTo &&
+                        windowTo >= windowFrom
+                      ) {
+                        void saveStudyWindow(windowFrom, windowTo);
+                      }
+                    }}
+                  />
+                </label>
+                <label className="rcx-win">
+                  To
+                  <input
+                    type="date"
+                    value={windowTo}
+                    disabled={busy}
+                    onChange={(e) => setWindowTo(e.target.value)}
+                    onBlur={() => {
+                      if (
+                        status === "draft" &&
+                        windowFrom &&
+                        windowTo &&
+                        windowTo >= windowFrom
+                      ) {
+                        void saveStudyWindow(windowFrom, windowTo);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 className={`rcx-btn sm ghost rcx-preview${previewAsClient ? " on" : ""}`}
@@ -1333,7 +1343,17 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                   value={title}
                   placeholder="Name this study"
                   disabled={status !== "draft"}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTitle(next);
+                    if (activeId) {
+                      setReviews((prev) =>
+                        prev.map((r) =>
+                          r.id === activeId ? { ...r, title: next } : r
+                        )
+                      );
+                    }
+                  }}
                   onBlur={() => {
                     void saveTitle().catch((e) =>
                       setError(e instanceof Error ? e.message : "Title save failed")
@@ -2384,6 +2404,7 @@ const RCX_CSS = `
 .rcx-gate[data-level="ready"] .hint{color:var(--su-accept)}
 .rcx-win{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mute);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 .rcx-win input{font:inherit;font-size:12px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink);border:1px solid var(--paper-edge);border-radius:6px;padding:3px 6px;background:var(--paper,#fff)}
+.rcx-winrow{flex:1 1 100%;display:flex;flex-wrap:nowrap;align-items:center;gap:14px;width:100%}
 .rcx-btn.ghost.on{background:color-mix(in srgb,var(--su-accept,#174a7a) 12%,#fff);border-color:color-mix(in srgb,var(--su-accept,#174a7a) 35%,var(--line))}
 .rcx-client-prev{margin-top:16px;padding-top:8px;border-top:1px solid var(--paper-edge)}
 .rcx-prev-title{font-size:20px;font-weight:700;margin:4px 0 6px}
@@ -2614,7 +2635,7 @@ const RCX_CSS = `
   .rcx-switch{flex:1 1 auto;order:1}
   .rcx-gate > .rcx-btn.sm:last-of-type{order:2}
   .rcx-gate .gc{order:3;flex-basis:100%}
-  .rcx-gate .hint,.rcx-gate .spacer,.rcx-win,.rcx-preview{display:none}
+  .rcx-gate .hint,.rcx-gate .spacer,.rcx-win,.rcx-winrow,.rcx-preview{display:none}
   .rcx-paper{padding:16px 14px;border-radius:10px}
   .rcx-ob{min-width:0}
   .rcx-editions{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
