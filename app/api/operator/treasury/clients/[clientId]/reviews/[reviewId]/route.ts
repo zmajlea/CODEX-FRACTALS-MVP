@@ -118,6 +118,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   // Spec B15-FIXES-2: restore must run BEFORE the draft-only edit gate.
+  // B26 Part B: reopen (published → draft) likewise before the draft gate.
   if (body.action === "restore") {
     const { data: row } = await guard.admin
       .from("treasury_reviews")
@@ -150,6 +151,47 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (error || !data) {
       return NextResponse.json(
         { error: error?.message ?? "Restore failed" },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({
+      review: normalizeReviewRow(data as Record<string, unknown>),
+    });
+  }
+
+  if (body.action === "reopen") {
+    const { data: row } = await guard.admin
+      .from("treasury_reviews")
+      .select("id, status")
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .maybeSingle();
+
+    if (!row) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (row.status !== "published") {
+      return NextResponse.json(
+        { error: "Only published studies can be reopened" },
+        { status: 409 }
+      );
+    }
+
+    // Do not touch treasury_review_versions — live Edition stays client-visible.
+    const { data, error } = await guard.admin
+      .from("treasury_reviews")
+      .update({ status: "draft" })
+      .eq("id", reviewId)
+      .eq("tenant_id", guard.grant.tenantId)
+      .eq("client_user_id", clientId)
+      .eq("status", "published")
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: error?.message ?? "Reopen failed" },
         { status: 500 }
       );
     }

@@ -32,6 +32,12 @@ import {
   type ReviewBlockLayout,
 } from "@/lib/treasury/review-block-layout";
 
+/**
+ * B26-D — Ana owns final wording for the publish control.
+ * One-line rename target; do not invent alternate product copy here.
+ */
+const PUBLISH_CONTROL_LABEL = "Publish";
+
 type StudyDateWindow = { from: string; to: string };
 
 type EditionMeta = {
@@ -82,6 +88,7 @@ type ReviewItem = {
   period_month: string;
   status: string;
   current_version: number;
+  current_version_published_at?: string | null;
   reply_count?: number;
   window?: StudyDateWindow | null;
 };
@@ -402,6 +409,29 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
       await refresh(reviewId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** B26 — published → draft; live Edition untouched. */
+  async function reopenReview(reviewId: string) {
+    if (busy || pendingAction) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/reviews/${reviewId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen" }),
+      });
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Reopen failed");
+      }
+      await refresh(reviewId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reopen failed");
     } finally {
       setBusy(false);
     }
@@ -978,8 +1008,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             >
               <div className="t">{r.title || r.period_month}</div>
               <div className="m">
-                {r.status}
-                {r.current_version ? ` · v${r.current_version}` : ""}
+                {r.status === "published" && r.current_version
+                  ? `Edition v${r.current_version}${
+                      r.current_version_published_at
+                        ? ` · ${r.current_version_published_at.slice(0, 10)}`
+                        : ""
+                    }`
+                  : r.status}
+                {r.status !== "published" && r.current_version
+                  ? ` · v${r.current_version}`
+                  : ""}
                 {r.reply_count ? ` · ${r.reply_count} replies` : ""}
               </div>
             </button>
@@ -1098,7 +1136,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                 : status === "draft"
                   ? `Preflight clean · freezes ${blocks.length} blocks`
                   : status === "published"
-                    ? `Publish next Edition · v${nextVersion}`
+                    ? `${PUBLISH_CONTROL_LABEL} next Edition · v${nextVersion}`
                     : "Published"}
           </span>
           {canPublish && activeId ? (
@@ -1153,13 +1191,26 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
               </button>
             </>
           ) : null}
+          {status === "published" && activeId ? (
+            <button
+              type="button"
+              className="rcx-btn sm ghost"
+              disabled={busy}
+              data-testid="reopen-to-edit"
+              onClick={() => void reopenReview(activeId)}
+            >
+              Reopen to edit
+            </button>
+          ) : null}
           <button
             type="button"
             className={`rcx-btn sm${gateLevel === "ready" && canPublish ? "" : " ghost"}`}
             disabled={busy || !canPublish || publishBlocked}
             onClick={() => openPublishDialog()}
           >
-            {canPublish ? `Publish v${nextVersion}` : "Published"}
+            {canPublish
+              ? `${PUBLISH_CONTROL_LABEL} v${nextVersion}`
+              : "Published"}
           </button>
         </div>
 
@@ -1208,8 +1259,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                   >
                     <div className="t">{r.title || r.period_month}</div>
                     <div className="m">
-                      {r.status}
-                      {r.current_version ? ` · v${r.current_version}` : ""}
+                      {r.status === "published" && r.current_version
+                        ? `Edition v${r.current_version}${
+                            r.current_version_published_at
+                              ? ` · ${r.current_version_published_at.slice(0, 10)}`
+                              : ""
+                          }`
+                        : r.status}
+                      {r.status !== "published" && r.current_version
+                        ? ` · v${r.current_version}`
+                        : ""}
                     </div>
                   </button>
                 ))}
@@ -1322,25 +1381,27 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             </header>
 
             {editions.length > 0 ? (
-              <div className="rcx-editions" data-testid="editions-strip">
-                <span className="ed-k">Editions</span>
-                <ul className="ed-list">
+              <details
+                className="rcx-editions"
+                data-testid="editions-revision-history"
+              >
+                <summary className="ed-k">Editions (revision history)</summary>
+                <ul className="ed-list" style={{ listStyle: "none", padding: 0 }}>
                   {editions.map((ed) => {
                     const name =
                       (ed.label ?? "").trim() || `Edition ${ed.version}`;
-                    const win =
-                      ed.window?.from && ed.window?.to
-                        ? `${ed.window.from} → ${ed.window.to}`
-                        : "—";
                     const when = ed.published_at
                       ? ed.published_at.slice(0, 10)
                       : ed.reviewed_as_of?.slice(0, 10) ?? "";
+                    const note = (ed.change_note ?? "").trim();
                     return (
                       <li key={ed.id} className="ed-item">
-                        <span className="ed-n">{name}</span>
+                        <span className="ed-n">
+                          v{ed.version} · {name}
+                        </span>
                         <span className="ed-m">
-                          {win}
-                          {when ? ` · ${when}` : ""}
+                          {when}
+                          {note ? ` · ${note}` : ""}
                         </span>
                       </li>
                     );
@@ -1353,16 +1414,16 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                     disabled={busy || publishBlocked}
                     onClick={() => openPublishDialog()}
                   >
-                    Re-publish
+                    Re-{PUBLISH_CONTROL_LABEL.toLowerCase()}
                   </button>
                 ) : null}
-              </div>
+              </details>
             ) : null}
 
             {previewAsClient && clientPreview ? (
               <div className="rcx-client-prev" data-testid="preview-as-client">
                 <p className="rcx-muted" style={{ marginBottom: 12 }}>
-                  Client envelope preview · not frozen until Publish
+                  Client envelope preview · not frozen until {PUBLISH_CONTROL_LABEL}
                 </p>
                 <h2 className="rcx-prev-title">{clientPreview.meta.title}</h2>
                 <p className="rcx-muted">
@@ -2104,9 +2165,9 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
             className="rcx-confirm"
             role="dialog"
             aria-modal="true"
-            aria-label="Publish edition"
+            aria-label={`${PUBLISH_CONTROL_LABEL} edition`}
           >
-            <div className="rcx-confirm-title">Publish Edition</div>
+            <div className="rcx-confirm-title">{PUBLISH_CONTROL_LABEL} Edition</div>
             <p className="rcx-muted" style={{ marginBottom: 12 }}>
               Freezes a fresh compute over this window — same path as preview.
             </p>
@@ -2155,7 +2216,7 @@ export function ReviewTabPanel({ clientUserId, dataThrough, onPick }: Props) {
                 disabled={busy}
                 onClick={() => void publish()}
               >
-                Publish v{nextVersion}
+                {PUBLISH_CONTROL_LABEL} v{nextVersion}
               </button>
             </div>
           </div>
