@@ -1,0 +1,83 @@
+/* B30 follow-up — phone shell overrides that MUST load after summit-r1.css.
+   summit-r1 re-declares [data-r1] .app-rail { z-index:30 } with equal specificity
+   and no media query; that undoes continuity's @media z-index:1001. This file
+   wins by import order + !important. Do not move the layout import before summit-r1. */
+
+@media (max-width: 1023px) {
+  /* Layering — same stacking context under .app; scrim under drawer under topbar */
+  .app-nav-scrim,
+  [data-r1] .app-nav-scrim,
+  .app[data-r1] .app-nav-scrim {
+    z-index: 1000 !important;
+  }
+
+  .app-rail,
+  [data-r1] .app-rail,
+  [data-r1] .app.rail-pinned .app-rail {
+    z-index: 1001 !important;
+    width: 280px !important;
+    max-width: 84%;
+    background: var(--rail);
+    background-color: var(--rail);
+    box-shadow: none;
+  }
+
+  .app.nav-open .app-rail,
+  [data-r1].app.nav-open .app-rail,
+  .app.nav-open[data-r1] .app-rail {
+    transform: none;
+    box-shadow: 12px 0 40px rgba(26, 26, 27, 0.18);
+  }
+
+  .topbar.appbar,
+  .appbar {
+    z-index: 1010 !important;
+  }
+
+  /* Reflow — kill desktop minmax() that clips / leaves gutters at ~505px */
+  .app-wrap {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .app-row,
+  .app-main,
+  [data-r1] .app-main {
+    min-width: 0;
+  }
+
+  /* Clip content overflow, not .app — preserves drawer box-shadow / shell overlays */
+  .app-main,
+  [data-r1] .app-main,
+  .app-wrap {
+    overflow-x: clip;
+  }
+
+  [data-r1] .tile-row {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  }
+
+  [data-r1] .navgrid,
+  [data-r1] .clgrid,
+  [data-r1] .reccards,
+  [data-r1] .pf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clgrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 880px) {
+  .app-main,
+  [data-r1] .app-main {
+    padding: 24px 20px 80px;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-r1] .tile-row {
+    grid-template-columns: 1fr;
+  }
+}

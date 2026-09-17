@@ -4790,7 +4790,7 @@ async function main() {
     );
   }
 
-  // 50 — B25/B30: shell hamburger + navOpen drawer; B30 untrapped stacking
+  // 50 — B25/B30: shell hamburger + navOpen drawer; B30 untrapped stacking + cascade
   {
     const shellSrc = readFileSync(
       join(ROOT, "components/bcn/BcnContinuityShell.tsx"),
@@ -4801,8 +4801,20 @@ async function main() {
       "utf8"
     );
     const cssSrc = readFileSync(join(ROOT, "app/styles/continuity.css"), "utf8");
+    const phoneCssSrc = readFileSync(
+      join(ROOT, "app/styles/shell-phone.css"),
+      "utf8"
+    );
     const clientShellSrc = readFileSync(
       join(ROOT, "components/platform/ClientShellFrame.tsx"),
+      "utf8"
+    );
+    const opLayoutSrc = readFileSync(
+      join(ROOT, "app/operator/layout.tsx"),
+      "utf8"
+    );
+    const clientLayoutSrc = readFileSync(
+      join(ROOT, "app/client/(shell)/layout.tsx"),
       "utf8"
     );
 
@@ -4832,6 +4844,19 @@ async function main() {
       cssSrc.includes(".app:not(.rail-pinned) .app-rail:hover") &&
       !/\.app-row\s+\.app-rail/.test(cssSrc);
 
+    const importOrderOk = (src: string) => {
+      const cont = src.indexOf('import "@/app/styles/continuity.css"');
+      const summit = src.indexOf('import "@/app/styles/summit-r1.css"');
+      const phone = src.indexOf('import "@/app/styles/shell-phone.css"');
+      return cont >= 0 && summit >= 0 && phone >= 0 && cont < summit && summit < phone;
+    };
+    const cascadeOk =
+      importOrderOk(opLayoutSrc) &&
+      importOrderOk(clientLayoutSrc) &&
+      /z-index:\s*1000\s*!important/.test(phoneCssSrc) &&
+      /z-index:\s*1001\s*!important/.test(phoneCssSrc) &&
+      /z-index:\s*1010\s*!important/.test(phoneCssSrc);
+
     const shellOk =
       /\bnavOpen\b/.test(shellSrc) &&
       shellSrc.includes("nav-open") &&
@@ -4850,6 +4875,7 @@ async function main() {
       scrimInset &&
       topbarMobile &&
       desktopPinHover &&
+      cascadeOk &&
       !/@media\s*\(\s*max-width:\s*880px\s*\)\s*\{\s*\.app-rail\s*\{\s*display:\s*none/.test(
         cssSrc
       );
@@ -4861,7 +4887,7 @@ async function main() {
 
     record(
       50,
-      "B30 shell: untrapped drawer+scrim, topbar ≤560, desktop pin/hover intact",
+      "B30 shell: untrapped drawer+scrim, cascade after summit-r1, desktop pin/hover",
       shellOk && topbarOk && cssOk && clientOk,
       `shell=${shellOk} topbar=${topbarOk} css=${cssOk} client=${clientOk} railOut=${railOutOfRow} z=${noTrappedZ}`
     );

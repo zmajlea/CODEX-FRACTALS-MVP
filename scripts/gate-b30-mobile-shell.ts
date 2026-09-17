@@ -1,5 +1,5 @@
 /**
- * B30 gate — mobile shell stacking + topbar fit (static).
+ * B30 gate — mobile shell stacking + topbar fit + cascade override (static).
  * Usage: npm run gate:b30
  */
 import { readFileSync } from "fs";
@@ -25,13 +25,30 @@ function read(rel: string): string {
   return readFileSync(join(ROOT, rel), "utf8");
 }
 
+/** Import order: continuity → summit-r1 → shell-phone (shell-phone must be last). */
+function assertShellPhoneAfterSummit(layoutSrc: string, label: string) {
+  const cont = layoutSrc.indexOf('import "@/app/styles/continuity.css"');
+  const summit = layoutSrc.indexOf('import "@/app/styles/summit-r1.css"');
+  const phone = layoutSrc.indexOf('import "@/app/styles/shell-phone.css"');
+  assert(cont >= 0, `${label}: missing continuity.css import`);
+  assert(summit >= 0, `${label}: missing summit-r1.css import`);
+  assert(phone >= 0, `${label}: missing shell-phone.css import`);
+  assert(
+    cont < summit && summit < phone,
+    `${label}: shell-phone.css must import after summit-r1.css (got cont=${cont} summit=${summit} phone=${phone})`
+  );
+}
+
 function main() {
   log("B30 mobile shell gate");
 
   const shell = read("components/bcn/BcnContinuityShell.tsx");
   const client = read("components/platform/ClientShellFrame.tsx");
   const css = read("app/styles/continuity.css");
+  const phoneCss = read("app/styles/shell-phone.css");
   const topbar = read("components/bcn/BcnTopbarContinuity.tsx");
+  const opLayout = read("app/operator/layout.tsx");
+  const clientLayout = read("app/client/(shell)/layout.tsx");
 
   const railSibling = (src: string) =>
     /app-nav-scrim[\s\S]*?<aside[\s\S]*?app-rail[\s\S]*?<\/aside>[\s\S]*?className="app-row"/.test(
@@ -62,11 +79,36 @@ function main() {
     "desktop hover expand"
   );
   assert(!/\.app-row\s+\.app-rail/.test(css), "no .app-row .app-rail descendant selector");
+  assert(!/\.app-row\s+\.app-rail/.test(phoneCss), "shell-phone must not add .app-row .app-rail");
   pass(4, "Desktop pin + hover-expand intact; no .app-row .app-rail", "pixel-identical path");
 
   assert(topbar.includes("navbtn") && topbar.includes("ts-control"), "topbar controls present");
   assert(shell.includes("onNavigate={() => setNavOpen(false)}"), "rail closes on navigate");
   pass(5, "Nav toggle + onNavigate close drawer", "routing path preserved");
+
+  assertShellPhoneAfterSummit(opLayout, "operator layout");
+  assertShellPhoneAfterSummit(clientLayout, "client layout");
+  assert(
+    /z-index:\s*1000\s*!important/.test(phoneCss),
+    "shell-phone must force scrim z-index:1000 !important"
+  );
+  assert(
+    /z-index:\s*1001\s*!important/.test(phoneCss),
+    "shell-phone must force rail z-index:1001 !important"
+  );
+  assert(
+    /z-index:\s*1010\s*!important/.test(phoneCss),
+    "shell-phone must force topbar z-index:1010 !important"
+  );
+  assert(
+    phoneCss.includes("overflow-x: clip") && !/\.app\s*\{[^}]*overflow-x:\s*clip/.test(phoneCss),
+    "clip on main/wrap only — not on .app (drawer shadow / overlays)"
+  );
+  pass(
+    6,
+    "shell-phone.css after summit-r1 + !important z + safe overflow-x",
+    "cascade cannot silently regress"
+  );
 
   log("Done — static checks passed");
 }

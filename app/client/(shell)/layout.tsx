@@ -16,6 +16,7 @@ import { defaultWordmark } from "@/components/bcn/brand/BcnBrandMarks";
 import type { Database } from "@/lib/database.types";
 import "@/app/styles/continuity.css";
 import "@/app/styles/summit-r1.css";
+import "@/app/styles/shell-phone.css"; // after summit-r1 — B30 cascade override
 
 export default async function ClientShellLayout({
   children,
