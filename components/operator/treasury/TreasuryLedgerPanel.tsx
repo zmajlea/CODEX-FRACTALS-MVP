@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPicker } from "@/components/operator/treasury/CategoryPicker";
 import { TreasuryRangeCalendar } from "@/components/operator/treasury/TreasuryRangeCalendar";
 import { TreasuryTxRow } from "@/components/operator/treasury/TreasuryTxRow";
+import { TxActionPhoneSheet } from "@/components/operator/treasury/TxActionPhoneSheet";
 import { PickButton } from "@/components/operator/treasury/PickButton";
 import type { DraftKind, Pickable } from "@/lib/treasury/pickable";
 import type {
@@ -13,6 +14,7 @@ import type {
   TreasuryInstitutionView,
   TreasuryTransactionRow,
 } from "@/lib/treasury/types";
+import { useRulesPhone } from "@/lib/ui/useMaxWidth";
 
 type AmountMode = "between" | "exact";
 type StatusFilter = "all" | "needs_label" | "suggested" | "labeled";
@@ -143,6 +145,8 @@ export function TreasuryLedgerPanel({
   const [pinnedRows, setPinnedRows] = useState<
     Map<string, TreasuryTransactionRow>
   >(() => new Map());
+  const isPhone = useRulesPhone();
+  const [actionTx, setActionTx] = useState<TreasuryTransactionRow | null>(null);
 
   // Draft (composer) vs applied (query)
   const [draftAccounts, setDraftAccounts] = useState<Set<string>>(new Set());
@@ -1137,7 +1141,14 @@ export function TreasuryLedgerPanel({
                   setLabelDraft(tx.label ?? "");
                   setDescDraft(tx.description ?? "");
                 }}
-                onMakeRule={onMakeRule ? () => onMakeRule(tx) : undefined}
+                onMakeRule={
+                  onMakeRule
+                    ? () => {
+                        if (isPhone) setActionTx(tx);
+                        else onMakeRule(tx);
+                      }
+                    : undefined
+                }
                 onPick={addPickableToDraft}
               />
             ))}
@@ -1204,6 +1215,18 @@ export function TreasuryLedgerPanel({
           </button>
         </div>
       ) : null}
+
+      <TxActionPhoneSheet
+        open={Boolean(actionTx)}
+        tx={actionTx}
+        onClose={() => setActionTx(null)}
+        onMakeRule={(tx) => onMakeRule?.(tx)}
+        onCategorize={(tx) => {
+          setEditingId(tx.id);
+          setLabelDraft(tx.label ?? "");
+          setDescDraft(tx.description ?? "");
+        }}
+      />
     </>
   );
 }

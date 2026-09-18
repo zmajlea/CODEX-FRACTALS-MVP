@@ -4968,7 +4968,48 @@ async function main() {
     );
   }
 
-  log("ALL 52/52 LIVE CHECKS PASSED");
+  // 53 — B31 Rules phone: portal sheets + desktop 3-col intact
+  {
+    const opLayout = readFileSync(join(ROOT, "app/operator/layout.tsx"), "utf8");
+    const phoneCss = readFileSync(join(ROOT, "app/styles/rules-phone.css"), "utf8");
+    const portal = readFileSync(
+      join(ROOT, "components/operator/treasury/RulePhonePortal.tsx"),
+      "utf8"
+    );
+    const analyze = readFileSync(
+      join(ROOT, "components/operator/treasury/RuleAmountAnalyzePopup.tsx"),
+      "utf8"
+    );
+    const panel = readFileSync(
+      join(ROOT, "components/operator/treasury/TreasuryRulesPanel.tsx"),
+      "utf8"
+    );
+    const shellIdx = opLayout.indexOf('import "@/app/styles/shell-phone.css"');
+    const rulesIdx = opLayout.indexOf('import "@/app/styles/rules-phone.css"');
+    const importOk = shellIdx >= 0 && rulesIdx >= 0 && shellIdx < rulesIdx;
+    const layerOk =
+      /z-index:\s*1020/.test(phoneCss) &&
+      portal.includes("createPortal") &&
+      portal.includes("document.body") &&
+      portal.includes("document.body.style.overflow");
+    const escapeOk =
+      analyze.includes("RulePhonePortal") &&
+      panel.includes("RuleQueuePhoneSheet") &&
+      !/className="rules-screen"[\s\S]*?<RulePhonePortal/.test(panel);
+    const desktopOk =
+      analyze.includes("rule-analyze-panel--3col") &&
+      panel.includes("triage-table") &&
+      /@media\s*\(\s*min-width:\s*1024px\s*\)/.test(phoneCss);
+
+    record(
+      53,
+      "B31 Rules phone: portal sheets z≥1020, escape container-type, desktop 3-col",
+      importOk && layerOk && escapeOk && desktopOk,
+      `import=${importOk} layer=${layerOk} escape=${escapeOk} desktop=${desktopOk}`
+    );
+  }
+
+  log("ALL 53/53 LIVE CHECKS PASSED");
 }
 
 main().catch((e) => {

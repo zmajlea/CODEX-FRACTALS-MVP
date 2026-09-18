@@ -362,7 +362,12 @@ export function OperatorTreasuryClientRecord({
       "";
     const assign = (tx.label ?? suggested).trim();
     setRuleDraft({
-      name: assign ? `Rule: ${assign}` : "Rule: transaction",
+      name:
+        (tx.normalized_merchant ?? tx.merchant_name) && assign
+          ? `${tx.normalized_merchant ?? tx.merchant_name} → ${assign}`
+          : assign
+            ? `Rule: ${assign}`
+            : "Rule: transaction",
       match_merchant: tx.normalized_merchant ?? tx.merchant_name ?? "",
       assign_label: assign,
       // Spec 63 — no silent ±20% amount band; band is chosen in Step 2.

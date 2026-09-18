@@ -12,6 +12,7 @@ import type { Database } from "@/lib/database.types";
 import "@/app/styles/continuity.css";
 import "@/app/styles/summit-r1.css";
 import "@/app/styles/shell-phone.css"; // after summit-r1 — B30 cascade override
+import "@/app/styles/rules-phone.css"; // after shell-phone — B31 Rules phone sheets
 
 export default async function OperatorLayout({
   children,
