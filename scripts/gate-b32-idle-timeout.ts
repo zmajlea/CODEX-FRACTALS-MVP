@@ -58,6 +58,11 @@ function main() {
   assert(hook.includes("followLogoutBroadcast"), "cross-tab receivers must redirect");
   assert(hook.includes("router.replace"), "redirect on idle");
   assert(hook.includes("reason=idle"), "idle query param");
+  assert(hook.includes("writeLastActive(Date.now())"), "mount must stamp lastActive");
+  assert(
+    !/if\s*\(\s*!window\.localStorage\.getItem\(LAST_ACTIVE_KEY\)\s*\)/.test(hook),
+    "must not skip stamp when stale last-active key exists (re-login bounce)"
+  );
   pass(1, "useIdleTimeout: 1h default, activity, cross-tab, visibility-before-activity", "hook");
 
   assert(provider.includes("useIdleTimeout"), "provider mounts hook");

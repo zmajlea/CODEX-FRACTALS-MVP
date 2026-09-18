@@ -190,9 +190,11 @@ export function useIdleTimeout({
       channel = null;
     }
 
-    if (!window.localStorage.getItem(LAST_ACTIVE_KEY)) {
-      writeLastActive(Date.now());
-    }
+    // Always stamp on mount: an authed shell that just loaded cannot have
+    // accrued in-page idle. Leaving a stale key after idle logout would make
+    // re-login schedule a 0ms timer and bounce straight back to login.
+    writeLastActive(Date.now());
+    lastWriteRef.current = Date.now();
     scheduleFrom(readLastActive());
 
     const activityOpts: AddEventListenerOptions = { passive: true };
