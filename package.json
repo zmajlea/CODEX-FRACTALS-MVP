@@ -58,7 +58,8 @@
     "gate:b8": "npx tsx scripts/gate-metrics-analytics-placement-b8.ts",
     "gate:b26": "npx tsx scripts/gate-b26-studies-patch.ts",
     "gate:b30": "npx tsx scripts/gate-b30-mobile-shell.ts",
-    "gate:b31": "npx tsx scripts/gate-b31-rules-mobile.ts"
+    "gate:b31": "npx tsx scripts/gate-b31-rules-mobile.ts",
+    "gate:b32": "npx tsx scripts/gate-b32-idle-timeout.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

@@ -28,6 +28,7 @@ export function PortalLoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
   const invite = searchParams.get("invite");
+  const idleSignedOut = searchParams.get("reason") === "idle";
 
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
   const [email, setEmail] = useState("");
@@ -183,6 +184,12 @@ export function PortalLoginForm() {
         </div>
       }
     >
+      {idleSignedOut && (
+        <p className="text-sm text-center text-codex-muted mb-4">
+          Signed out due to inactivity.
+        </p>
+      )}
+
       {invitePreview?.valid && (
         <div className="auth-alert auth-alert-success mb-4 text-sm">
           Invited as <strong>{roleLabel}</strong>
