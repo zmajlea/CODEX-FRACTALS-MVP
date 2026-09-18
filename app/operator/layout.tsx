@@ -8,6 +8,7 @@ import {
   themeToStyleBlock,
 } from "@/lib/branding/resolve-theme";
 import { BcnThemeProvider } from "@/components/bcn/BcnThemeContext";
+import { IdleTimeoutProvider } from "@/components/auth/IdleTimeoutProvider";
 import type { Database } from "@/lib/database.types";
 import "@/app/styles/continuity.css";
 import "@/app/styles/summit-r1.css";
@@ -57,7 +58,7 @@ export default async function OperatorLayout({
   return (
     <BcnThemeProvider theme={theme}>
       <style>{themeToStyleBlock(theme)}</style>
-      {children}
+      <IdleTimeoutProvider loginUrl={PORTAL_LOGIN}>{children}</IdleTimeoutProvider>
     </BcnThemeProvider>
   );
 }

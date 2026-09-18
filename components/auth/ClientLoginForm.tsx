@@ -28,6 +28,7 @@ export function ClientLoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
   const invite = searchParams.get("invite");
+  const idleSignedOut = searchParams.get("reason") === "idle";
 
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
   const [email, setEmail] = useState("");
@@ -162,6 +163,12 @@ export function ClientLoginForm() {
           )}
           {invitePreview.email ? ` · use ${invitePreview.email}` : ""}
         </div>
+      )}
+
+      {idleSignedOut && (
+        <p className="text-sm text-center text-codex-muted mb-4">
+          Signed out due to inactivity.
+        </p>
       )}
 
       {clientRedirecting && (

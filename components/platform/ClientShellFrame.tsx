@@ -8,6 +8,8 @@ import { RailBrandFoot } from "@/components/bcn/RailBrandFoot";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BcnThemeStyleInjector } from "@/components/bcn/BcnThemeStyleInjector";
 import { useBcnThemeOptional } from "@/components/bcn/BcnThemeContext";
+import { CLIENT_LOGIN } from "@/lib/auth/login-flow";
+import { useIdleTimeout } from "@/lib/auth/useIdleTimeout";
 
 type Grant = {
   id: string;
@@ -43,6 +45,8 @@ export function ClientShellFrame({
   const bcnOwnsChrome = pathname?.startsWith("/client/bcn");
   const treasuryR1 = pathname?.startsWith("/client/treasury");
   const [navOpen, setNavOpen] = useState(false);
+
+  useIdleTimeout({ loginUrl: CLIENT_LOGIN });
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
