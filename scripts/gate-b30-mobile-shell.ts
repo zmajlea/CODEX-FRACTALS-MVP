@@ -101,13 +101,17 @@ function main() {
     "shell-phone must force topbar z-index:1010 !important"
   );
   assert(
-    phoneCss.includes("overflow-x: clip") && !/\.app\s*\{[^}]*overflow-x:\s*clip/.test(phoneCss),
-    "clip on main/wrap only — not on .app (drawer shadow / overlays)"
+    !phoneCss.includes("overflow-x: clip") && !phoneCss.includes("overflow-x:clip"),
+    "overflow-x: clip on .app-main traps phone vertical scroll (CSS pairs y→clip)"
+  );
+  assert(
+    phoneCss.includes("min-width: 0") || phoneCss.includes("min-width:0"),
+    "phone main must keep min-width:0 for horizontal reflow"
   );
   pass(
     6,
-    "shell-phone.css after summit-r1 + !important z + safe overflow-x",
-    "cascade cannot silently regress"
+    "shell-phone.css after summit-r1 + !important z; no overflow-x clip on main",
+    "window remains the scroller on phone"
   );
 
   log("Done — static checks passed");
