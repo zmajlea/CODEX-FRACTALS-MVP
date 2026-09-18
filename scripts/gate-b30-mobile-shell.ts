@@ -101,8 +101,8 @@ function main() {
     "shell-phone must force topbar z-index:1010 !important"
   );
   assert(
-    !phoneCss.includes("overflow-x: clip") && !phoneCss.includes("overflow-x:clip"),
-    "overflow-x: clip on .app-main traps phone vertical scroll (CSS pairs y→clip)"
+    !/overflow-x:\s*clip/.test(phoneCss),
+    "overflow-x clip on .app-main traps phone vertical scroll (CSS pairs y→clip)"
   );
   assert(
     phoneCss.includes("min-width: 0") || phoneCss.includes("min-width:0"),

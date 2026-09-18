@@ -46,9 +46,9 @@
     min-width: 0;
   }
 
-  /* Do NOT set overflow-x: clip on .app-main/.app-wrap — CSS pairs that to
-     overflow-y: clip as well, which traps touch scroll on Studies (window is
-     the scroller). Horizontal bleed is handled by min-width:0 + grid minmax. */
+  /* Do NOT set overflow-x clip on .app-main/.app-wrap — CSS pairs that axis
+     with overflow-y clip as well, which traps touch scroll on Studies (window
+     is the scroller). Horizontal bleed is handled by min-width:0 + grid minmax. */
 
   [data-r1] .tile-row {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
